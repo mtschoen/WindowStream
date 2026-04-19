@@ -12,9 +12,17 @@
     <InternalsVisibleTo Include="WindowStream.Core.Tests" />
   </ItemGroup>
 
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows10.0.19041.0'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Makaretu.Dns" Version="2.0.1" />
     <PackageReference Include="Makaretu.Dns.Multicast" Version="0.27.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows10.0.19041.0'">
+    <PackageReference Include="Silk.NET.Direct3D11" Version="2.22.0" />
   </ItemGroup>
 
 </Project>
