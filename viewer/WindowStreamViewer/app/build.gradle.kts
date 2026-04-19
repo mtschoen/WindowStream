@@ -89,6 +89,7 @@ kover {
                 // evaluates to false. This is an inherent, unreachable branch in the
                 // Kotlin coroutine cooperative-cancellation idiom.
                 classes(
+                    "com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver\$start\$1",
                     "com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver\$start\$2"
                 )
                 // The Kotlin coroutines compiler plugin generates continuation state-machine
