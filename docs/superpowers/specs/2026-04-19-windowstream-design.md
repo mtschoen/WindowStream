@@ -147,8 +147,8 @@ These are acceptable for v1 proof-of-concept; later slices address them.
   - `discovery` — Android NSD (Network Service Discovery) client for `_windowstream._tcp`; exposes `Flow<ServerInformation>`
   - `control` — TCP client with kotlinx.serialization JSON; suspending request/response plus event flow
   - `transport` — UDP receiver, packet reassembly; exposes `Flow<EncodedFrame>`
-  - `decoder` — MediaCodec in async callback mode; output Surface feeds the panel's input surface; handles SPS/PPS parsing and routes keyframe requests to `control`
-  - `xr` — Jetpack Compose for XR. One `PanelEntity` per active stream, each hosting a `SpatialExternalSurface`. Default world pose is 1.5 meters forward, eye-height, slightly angled toward the viewer. OS-provided grab and drag gesture is enabled.
+  - `decoder` — MediaCodec in async callback mode; emits decoded frames into a `FrameSink` abstraction (production binding: the panel's input surface via `XrPanelSink`; test binding: a plain `SurfaceTexture` via `TextureSink`). Handles SPS/PPS parsing and routes keyframe requests to `control`. The `FrameSink` boundary keeps the decoder pipeline testable on a standard Android emulator without the XR runtime.
+  - `xr` — Jetpack Compose for XR. Provides `XrPanelSink : FrameSink` wrapping `SpatialExternalSurface`. One `PanelEntity` per active stream; default world pose is 1.5 meters forward, eye-height, slightly angled toward the viewer. OS-provided grab and drag gesture is enabled.
   - `app` — Compose entry point, service lifecycle, wires everything together
 - **Depends on**: Jetpack XR SDK, Jetpack Compose for XR, kotlinx-coroutines, kotlinx-serialization
 
@@ -375,10 +375,13 @@ xUnit test framework; Coverlet for coverage measurement.
 
 JUnit 5 + kotlinx-coroutines-test.
 
-### Viewer — integration tests
+### Viewer — integration tests (Android emulator)
 
-Mostly skipped in v1. Android XR has no emulator as of 2026-04. One exception:
-- **MediaCodec configuration with known SPS/PPS** — runs on a standard Android emulator; verifies decoder accepts our codec-configuration byte layout.
+Android XR has no emulator as of 2026-04, so XR-specific behavior (panel placement, hand drag, gesture response) remains manual-acceptance territory. Everything below the XR layer *can* be tested on a standard Android emulator and is worth the investment — it lets agents iterate on viewer code without deploying to the headset on every change.
+
+- **End-to-end viewer loopback test** — Gradle Managed Devices provisions a standard Android emulator. A JVM test harness acts as a fake server, sending a pre-recorded H.264 stream to `127.0.0.1` over TCP (control) + UDP (video). The viewer application runs on the emulator with a `TextureSink` (headless `SurfaceTexture`) bound in place of `XrPanelSink`. Assertions: N decoded frames arrive within timeout, dimensions match the stream, frame content is non-black (sampled pixel check).
+
+This is the viewer-side analog of the server's CLI + loopback smoke test. Together they form the "everything below XR actually works" gate before manual acceptance — agents can make progress on either side of the wire without the headset in hand.
 
 ### End-to-end smoke test
 
