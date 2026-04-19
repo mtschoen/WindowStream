@@ -180,7 +180,7 @@ user picks window in GUI
   │                                ──TCP──▶
 SERVER_HELLO {serverVersion,
   activeStream: {streamId, udpPort=U,
-    codec=h264, width, height, fps}}
+    codec=h264, width, height, framesPerSecond}}
   │                                           ├─ open UDP receiver
   │                                           ├─ configure MediaCodec
   │                                      ◀── REQUEST_KEYFRAME
@@ -256,7 +256,7 @@ v1 message types:
 |---|---|---|---|
 | `HELLO` | viewer → server | `{viewerVersion, displayCapabilities}` | first message after connect |
 | `SERVER_HELLO` | server → viewer | `{serverVersion, activeStream?}` | response to HELLO |
-| `STREAM_STARTED` | server → viewer | `{streamId, udpPort, codec, width, height, fps}` | emitted when server picks a window |
+| `STREAM_STARTED` | server → viewer | `{streamId, udpPort, codec, width, height, framesPerSecond}` | emitted when server picks a window |
 | `STREAM_STOPPED` | server → viewer | `{streamId}` | emitted when user stops streaming or switches window |
 | `REQUEST_KEYFRAME` | viewer → server | `{streamId}` | emitted on connect and on decoder reset |
 | `HEARTBEAT` | both | `{}` | 2-second interval; 6-second silence terminates connection |
