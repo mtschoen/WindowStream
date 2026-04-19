@@ -6,17 +6,16 @@
     <AssemblyName>WindowStream.Core</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="WindowStream.Core.Tests" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows10.0.19041.0'">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
-
   <ItemGroup>
+    <PackageReference Include="FFmpeg.AutoGen" Version="7.0.0" />
+    <PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLinked" Version="7.0.0" />
     <PackageReference Include="Makaretu.Dns" Version="2.0.1" />
     <PackageReference Include="Makaretu.Dns.Multicast" Version="0.27.0" />
   </ItemGroup>
