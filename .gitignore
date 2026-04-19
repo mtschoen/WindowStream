@@ -1,0 +1,80 @@
+# ---------- .NET ----------
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+*.nuget.props
+*.nuget.targets
+
+# MSBuild / Visual Studio
+*.binlog
+*.tlog
+*.pdb
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+[Cc]overage*/
+*.coverage
+*.coveragexml
+
+# MAUI / .NET for Android / iOS
+Resources.Designer.cs
+Resource.designer.cs
+Resource.Designer.cs
+*.apk
+*.aab
+*.ipa
+
+# ---------- Android Studio / Gradle ----------
+viewer/**/.gradle/
+viewer/**/build/
+viewer/**/local.properties
+viewer/**/*.iml
+viewer/**/.idea/
+viewer/**/captures/
+viewer/**/.externalNativeBuild/
+viewer/**/.cxx/
+viewer/**/*.keystore
+viewer/**/*.jks
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Editor ----------
+*~
+*.bak
+*.orig
+*.rej
+
+# ---------- Claude / task scripts ----------
+.claude/scripts/
