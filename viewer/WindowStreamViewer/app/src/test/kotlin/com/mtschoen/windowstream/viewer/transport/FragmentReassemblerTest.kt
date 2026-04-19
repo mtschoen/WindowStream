@@ -147,4 +147,19 @@ class FragmentReassemblerTest {
         assertEquals(listOf<Byte>(0x0A, 0x1A), frameStreamOne?.payload?.toList())
         assertEquals(listOf<Byte>(0x0B, 0x1B), frameStreamTwo?.payload?.toList())
     }
+
+    @Test
+    fun `evictTimedOut returns empty list when nothing has timed out`() {
+        var now = 0L
+        val reassembler = FragmentReassembler(timeoutMilliseconds = 500) { now }
+        val partialPacket: ByteArray = makePacket(
+            streamId = 1, sequence = 9, presentationTimestampMicroseconds = 0,
+            flags = 0, fragmentIndex = 0, fragmentTotal = 2,
+            payload = byteArrayOf(1)
+        )
+        reassembler.offer(PacketHeader.parse(partialPacket, partialPacket.size))
+        now = 499 // still within timeout window
+        val evicted: List<Long> = reassembler.evictTimedOut()
+        assertEquals(emptyList<Long>(), evicted)
+    }
 }
