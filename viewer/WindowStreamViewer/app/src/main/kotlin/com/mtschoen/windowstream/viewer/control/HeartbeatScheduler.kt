@@ -1,8 +1,6 @@
 package com.mtschoen.windowstream.viewer.control
 
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 
 class HeartbeatScheduler(
@@ -23,7 +21,8 @@ class HeartbeatScheduler(
     ) {
         lastIncomingActivityMilliseconds = currentTimeMilliseconds()
         var lastSendTime: Long = currentTimeMilliseconds()
-        while (coroutineContext.isActive) {
+        while (true) {
+            delay(200)
             val now: Long = currentTimeMilliseconds()
             val sinceIncoming: Long = now - lastIncomingActivityMilliseconds
             if (sinceIncoming >= silenceTimeout.inWholeMilliseconds) {
@@ -35,7 +34,6 @@ class HeartbeatScheduler(
                 sendHeartbeat()
                 lastSendTime = currentTimeMilliseconds()
             }
-            delay(200)
         }
     }
 }
