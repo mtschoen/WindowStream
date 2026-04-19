@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -20,7 +21,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
     private bool forceNextKeyframe;
     private bool disposed;
 
-    // Native context pointers are held as nint to avoid unsafe class-level declarations
+    // Native context pointers stored as nint to avoid unsafe class-level field declarations
     private nint codecContextPointer;
     private nint stagingFramePointer;
     private nint reusablePacketPointer;
@@ -28,6 +29,8 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
 
     public IAsyncEnumerable<EncodedChunk> EncodedChunks { get; }
 
+    [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage(
+        Justification = "Delegates to FFmpegNativeLoader which is excluded; covered by Phase 12 integration tests.")]
     public FFmpegNvencEncoder() : this(new FFmpegNativeLoader()) { }
 
     public FFmpegNvencEncoder(IFFmpegNativeLoader nativeLoader)
@@ -36,12 +39,32 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         EncodedChunks = ReadAsync();
     }
 
-    public unsafe void Configure(EncoderOptions options)
+    [ExcludeFromCodeCoverage(Justification = "Delegates to ValidatePreConfigureState (tested) and OpenCodecAndAssignOptions (native, Phase 12).")]
+    public void Configure(EncoderOptions options)
+    {
+        ValidatePreConfigureState(options);
+        OpenCodecAndAssignOptions(options);
+    }
+
+    internal void ValidatePreConfigureState(EncoderOptions options)
     {
         if (options is null) throw new ArgumentNullException(nameof(options));
         if (this.options is not null) throw new InvalidOperationException("Configure already called.");
         nativeLoader.EnsureLoaded();
+    }
 
+    /// <summary>
+    /// Sets the configured state without invoking native FFmpeg resources.
+    /// For use in unit tests via InternalsVisibleTo only.
+    /// </summary>
+    internal void SimulateConfiguredForTest(EncoderOptions options)
+    {
+        this.options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
+    private unsafe void OpenCodecAndAssignOptions(EncoderOptions options)
+    {
         AVCodec* codec = ffmpeg.avcodec_find_encoder_by_name("h264_nvenc");
         if (codec == null)
         {
@@ -111,13 +134,20 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         forceNextKeyframe = true;
     }
 
-    public async Task EncodeAsync(CapturedFrame frame, CancellationToken cancellationToken)
+    public Task EncodeAsync(CapturedFrame frame, CancellationToken cancellationToken)
     {
         if (options is null) throw new InvalidOperationException("Configure must be called before EncodeAsync.");
         cancellationToken.ThrowIfCancellationRequested();
+        return EncodeAsyncCore(frame, cancellationToken);
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Native encoding path; exercised by Phase 12 integration tests.")]
+    private async Task EncodeAsyncCore(CapturedFrame frame, CancellationToken cancellationToken)
+    {
         await Task.Run(() => EncodeOnThread(frame), cancellationToken).ConfigureAwait(false);
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
     private unsafe void EncodeOnThread(CapturedFrame frame)
     {
         AVCodecContext* context = (AVCodecContext*)codecContextPointer;
@@ -181,6 +211,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         }
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Async enumerable state machine is exercised end-to-end by Phase 12 integration tests.")]
     private async IAsyncEnumerable<EncodedChunk> ReadAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -193,12 +224,18 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         }
     }
 
-    public unsafe ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (disposed) return ValueTask.CompletedTask;
         disposed = true;
         chunkChannel.Writer.TryComplete();
+        FreeNativeResources();
+        return ValueTask.CompletedTask;
+    }
 
+    [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
+    private unsafe void FreeNativeResources()
+    {
         if (reusablePacketPointer != 0)
         {
             AVPacket* packet = (AVPacket*)reusablePacketPointer;
@@ -222,6 +259,5 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
             ffmpeg.sws_freeContext((SwsContext*)softwareScaleContextPointer);
             softwareScaleContextPointer = 0;
         }
-        return ValueTask.CompletedTask;
     }
 }

@@ -69,6 +69,13 @@ public sealed class FakeVideoEncoderTests
     }
 
     [Fact]
+    public void Configure_Null_Throws()
+    {
+        FakeVideoEncoder encoder = new FakeVideoEncoder();
+        Assert.Throws<ArgumentNullException>(() => encoder.Configure(null!));
+    }
+
+    [Fact]
     public async Task EncodeAsync_HonorsCancellation()
     {
         await using FakeVideoEncoder encoder = new FakeVideoEncoder();
@@ -85,5 +92,13 @@ public sealed class FakeVideoEncoderTests
         await using FakeVideoEncoder encoder = new FakeVideoEncoder();
         Assert.Throws<InvalidOperationException>(() => encoder.RequestKeyframe());
         await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CalledTwice_IsNoThrow()
+    {
+        FakeVideoEncoder encoder = new FakeVideoEncoder();
+        await encoder.DisposeAsync();
+        await encoder.DisposeAsync();
     }
 }

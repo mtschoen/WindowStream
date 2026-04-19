@@ -18,7 +18,11 @@ public sealed class EncoderOptionsTests
             safetyKeyframeIntervalSeconds: 2);
 
         Assert.Equal(1920, options.widthPixels);
+        Assert.Equal(1080, options.heightPixels);
         Assert.Equal(60, options.framesPerSecond);
+        Assert.Equal(8_000_000, options.bitrateBitsPerSecond);
+        Assert.Equal(60, options.groupOfPicturesLength);
+        Assert.Equal(2, options.safetyKeyframeIntervalSeconds);
     }
 
     [Theory]

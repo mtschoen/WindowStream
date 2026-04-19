@@ -1,9 +1,11 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using FFmpeg.AutoGen;
 
 namespace WindowStream.Core.Encode;
 
+[ExcludeFromCodeCoverage(Justification = "Delegates entirely to native FFmpeg; covered by Phase 12 integration tests.")]
 public sealed class FFmpegNativeLoader : IFFmpegNativeLoader
 {
     private static readonly object synchronizationLock = new object();

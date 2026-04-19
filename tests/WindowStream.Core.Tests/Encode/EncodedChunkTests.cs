@@ -16,6 +16,7 @@ public sealed class EncodedChunkTests
             presentationTimestampMicroseconds: 1234);
         Assert.True(chunk.isKeyframe);
         Assert.Equal(5, chunk.payload.Length);
+        Assert.Equal(1234L, chunk.presentationTimestampMicroseconds);
     }
 
     [Fact]
@@ -30,5 +31,12 @@ public sealed class EncodedChunkTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new EncodedChunk(new byte[] { 1 }, false, -1));
+    }
+
+    [Fact]
+    public void Constructor_ZeroTimestamp_IsValid()
+    {
+        EncodedChunk chunk = new EncodedChunk(new byte[] { 1 }, false, 0);
+        Assert.Equal(0L, chunk.presentationTimestampMicroseconds);
     }
 }
