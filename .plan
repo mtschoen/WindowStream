@@ -1,0 +1,12 @@
+- phase 1: solution scaffolding + empty projects compile
+- phase 2: protocol message types + JSON serializers
+- phase 3: TCP length-prefix framing
+- phase 4: UDP packet header + NAL fragmenter/reassembler
+- phase 5: session state machine
+- phase 6: window capture (WGC) + enumerator
+- phase 7: FFmpeg NVENC encoder
+- phase 8: session pipeline wiring + TCP/UDP transport
+- phase 9: mDNS advertiser
+- phase 10: CLI commands (list, serve)
+- phase 11: MAUI GUI picker + live status
+- phase 12: integration smoke test
