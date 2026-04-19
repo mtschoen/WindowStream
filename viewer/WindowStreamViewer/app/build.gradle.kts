@@ -91,6 +91,13 @@ kover {
                 classes(
                     "com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver\$start\$2"
                 )
+                // The Kotlin coroutines compiler plugin generates continuation state-machine
+                // classes for local suspend functions. These inner classes contain synthetic
+                // resume-path branches that are unreachable from test code.
+                classes(
+                    "com.mtschoen.windowstream.viewer.control.ControlClient\$connect\$2\$sendMessage\$2",
+                    "com.mtschoen.windowstream.viewer.control.ControlConnection"
+                )
             }
         }
         verify {
