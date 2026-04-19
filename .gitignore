@@ -44,6 +44,7 @@ nunit-*.xml
 [Cc]overage*/
 *.coverage
 *.coveragexml
+*.cobertura.xml
 
 # MAUI / .NET for Android / iOS
 Resources.Designer.cs
