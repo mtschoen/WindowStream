@@ -79,3 +79,10 @@ desktop.ini
 
 # ---------- Claude / task scripts ----------
 .claude/scripts/
+.claude/worktrees/
+
+# ---------- Coverage artifacts ----------
+coverage.json
+coverage.cobertura.xml
+*.lcov
+TestResults/
