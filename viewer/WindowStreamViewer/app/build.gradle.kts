@@ -76,6 +76,13 @@ kover {
                     "com.mtschoen.windowstream.viewer.control.*\$\$serializer",
                     "com.mtschoen.windowstream.viewer.control.*\$Companion"
                 )
+                // NSD wrapper and its result type require Android runtime;
+                // covered by Phase 13 integration test.
+                classes(
+                    "com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient",
+                    "com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient\$*",
+                    "com.mtschoen.windowstream.viewer.discovery.ServerInformation"
+                )
             }
         }
         verify {
