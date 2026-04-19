@@ -35,4 +35,29 @@ class TextRecordParserTest {
             ))
         }
     }
+
+    @Test
+    fun `missing protocolRev throws`() {
+        assertThrows<MalformedTextRecordException> {
+            TextRecordParser.parse(mapOf("version" to "1".toByteArray(), "hostname" to "x".toByteArray()))
+        }
+    }
+
+    @Test
+    fun `missing hostname throws`() {
+        assertThrows<MalformedTextRecordException> {
+            TextRecordParser.parse(mapOf("version" to "1".toByteArray(), "protocolRev" to "1".toByteArray()))
+        }
+    }
+
+    @Test
+    fun `non-numeric protocolRev throws`() {
+        assertThrows<MalformedTextRecordException> {
+            TextRecordParser.parse(mapOf(
+                "version" to "1".toByteArray(),
+                "hostname" to "x".toByteArray(),
+                "protocolRev" to "abc".toByteArray()
+            ))
+        }
+    }
 }
