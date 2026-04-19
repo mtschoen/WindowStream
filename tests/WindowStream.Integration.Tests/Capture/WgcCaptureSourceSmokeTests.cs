@@ -1,5 +1,6 @@
 #if WINDOWS
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -16,6 +17,14 @@ public sealed class WgcCaptureSourceSmokeTests
     [Fact(Timeout = 15000)]
     public async Task Attaches_To_Notepad_And_Receives_Frame()
     {
+        // On Windows 11 the Store-packaged Notepad launches via a stub process
+        // that exits immediately; CloseMainWindow on the returned Process does
+        // nothing because the actual UI process is different. Snapshot existing
+        // notepad PIDs before launch and kill any new ones in the finally block.
+        HashSet<int> existingNotepadProcessIds = Process.GetProcessesByName("notepad")
+            .Select(process => process.Id)
+            .ToHashSet();
+
         Process notepad = Process.Start(new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
             ?? throw new InvalidOperationException("Could not start notepad.exe");
         try
@@ -52,8 +61,30 @@ public sealed class WgcCaptureSourceSmokeTests
         }
         finally
         {
-            try { notepad.CloseMainWindow(); notepad.WaitForExit(2000); if (!notepad.HasExited) { notepad.Kill(); } }
-            catch { /* best effort cleanup */ }
+            // Kill every notepad.exe process that wasn't already running before
+            // we launched (covers both the launcher stub and the Store-launched
+            // UI process on Windows 11).
+            foreach (Process candidate in Process.GetProcessesByName("notepad"))
+            {
+                if (existingNotepadProcessIds.Contains(candidate.Id))
+                {
+                    candidate.Dispose();
+                    continue;
+                }
+                try
+                {
+                    candidate.Kill(entireProcessTree: true);
+                    candidate.WaitForExit(2000);
+                }
+                catch
+                {
+                    // best-effort cleanup
+                }
+                finally
+                {
+                    candidate.Dispose();
+                }
+            }
         }
     }
 }
