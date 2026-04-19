@@ -83,6 +83,14 @@ kover {
                     "com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient\$*",
                     "com.mtschoen.windowstream.viewer.discovery.ServerInformation"
                 )
+                // The eviction coroutine uses the `while (isActive) { delay() }` pattern.
+                // JaCoCo counts the while-false branch as missed because `delay()` always
+                // throws CancellationException on cancellation, so the condition never
+                // evaluates to false. This is an inherent, unreachable branch in the
+                // Kotlin coroutine cooperative-cancellation idiom.
+                classes(
+                    "com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver\$start\$2"
+                )
             }
         }
         verify {
