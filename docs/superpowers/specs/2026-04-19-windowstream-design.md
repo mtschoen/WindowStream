@@ -305,7 +305,7 @@ Philosophy for v1: **fail loudly, recover manually.** Restart-the-application is
 |---|---|---|
 | WGC cannot attach (window closed between list and start) | exception on `CreateFromWindowId` | `ERROR{WINDOW_GONE}` to viewer if connected; GUI shows "window no longer available"; picker refreshes list |
 | WGC delivers black frames (DRM / protected content) | no automatic detection in v1 | documented limitation; user notices visually |
-| Minimized or occluded window stops producing frames | `Direct3D11CaptureFramePool` frame arrival stalls > N seconds | server logs; no virtual-monitor workaround in v1 |
+| Minimized or occluded window stops producing frames | `Direct3D11CaptureFramePool` frame arrival stalls > 5 seconds | server logs; no virtual-monitor workaround in v1 |
 | NVENC initialization fails | FFmpeg returns error on `avcodec_open2` | hard fail at session start; explicit error in GUI/CLI; no libx264 fallback |
 | Encoder stalls / back-pressure | input queue exceeds threshold | drop oldest un-encoded frames, log |
 
@@ -333,7 +333,7 @@ Philosophy for v1: **fail loudly, recover manually.** Restart-the-application is
 
 | Failure | Detection | v1 response |
 |---|---|---|
-| No servers discovered within N seconds | NSD empty list | UI: "no servers found"; offer manual IP entry as first-class v1 feature |
+| No servers discovered within 10 seconds | NSD empty list | UI: "no servers found"; offer manual IP entry as first-class v1 feature |
 | Server disappears mid-session | heartbeat timeout or TCP read error | UI: "disconnected"; return to server-picker screen; one auto-reconnect attempt with 2-second backoff; give up after that |
 | Control channel send failure | write exception | same as server disappearance |
 
@@ -435,10 +435,10 @@ Created in the implementation phase.
 │   │   ├── Discovery/                  # mDNS advertiser
 │   │   ├── Capture/
 │   │   │   ├── IWindowCaptureSource.cs
-│   │   │   ├── Windows/                # #if WINDOWS
-│   │   │   │   ├── WgcCaptureSource.cs
-│   │   │   │   └── WindowEnumerator.cs
-│   │   │   └── MacOS/                  # #if MACCATALYST (stubs in v1)
+│   │   │   └── Windows/                # #if WINDOWS
+│   │   │       ├── WgcCaptureSource.cs
+│   │   │       └── WindowEnumerator.cs
+│   │   │   # (MacOS/ and Linux/ directories added in later slices)
 │   │   └── Encode/
 │   │       ├── IVideoEncoder.cs
 │   │       └── FFmpegNvencEncoder.cs   # portable (FFmpeg handles hardware acceleration)
