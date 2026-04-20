@@ -31,7 +31,17 @@ android {
     }
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
+        managedDevices {
+            devices {
+                create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel6api36") {
+                    device = "Pixel 6"
+                    apiLevel = 36
+                    systemImageSource = "google"
+                }
+            }
+        }
     }
+    sourceSets["androidTest"].assets.srcDirs("src/androidTest/assets")
 }
 
 dependencies {
@@ -51,9 +61,23 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
 
-    androidTestImplementation(libs.junit.jupiter)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 }
+
+// Copies the pre-recorded H.264 sample from testdata/ into the androidTest assets directory
+// so it is available on the device at runtime. Run `pwsh testdata/generate-sample-h264.ps1`
+// to regenerate testdata/sample-h264.bin before building if the file is missing.
+// The copy is skipped if the source file does not exist (e.g. on a fresh checkout before
+// running the generator script).
+val copySampleH264 by tasks.registering(Copy::class) {
+    val sourceFile = rootProject.file("testdata/sample-h264.bin")
+    onlyIf { sourceFile.exists() }
+    from(sourceFile)
+    into("src/androidTest/assets")
+}
+tasks.named("preBuild").configure { dependsOn(copySampleH264) }
 
 kover {
     // Use JaCoCo as the coverage engine. JaCoCo correctly excludes synthetic

@@ -2,6 +2,7 @@ package com.mtschoen.windowstream.viewer.decoder
 
 import android.media.MediaCodec
 import android.media.MediaFormat
+import android.util.Log
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +15,9 @@ import java.nio.ByteBuffer
 
 class MediaCodecDecoder(
     private val frameSink: FrameSink,
-    private val onKeyframeRequested: suspend () -> Unit
+    private val onKeyframeRequested: suspend () -> Unit,
+    private val codecName: String? = null,
+    private val outputToSurface: Boolean = true
 ) {
     private var codec: MediaCodec? = null
     private var decodeJob: Job? = null
@@ -30,10 +33,14 @@ class MediaCodecDecoder(
     fun start(scope: CoroutineScope, frameFlow: Flow<EncodedFrame>, expectedWidth: Int, expectedHeight: Int) {
         width = expectedWidth
         height = expectedHeight
-        val surface = frameSink.acquireSurface(expectedWidth, expectedHeight)
+        val surface = if (outputToSurface) frameSink.acquireSurface(expectedWidth, expectedHeight) else null
 
         val mediaFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, expectedWidth, expectedHeight)
-        val newCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val newCodec = if (codecName != null) {
+            MediaCodec.createByCodecName(codecName)
+        } else {
+            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        }
         newCodec.setCallback(object : MediaCodec.Callback() {
             override fun onInputBufferAvailable(mediaCodec: MediaCodec, inputBufferIndex: Int) {
                 inputBufferIndexChannel.trySend(inputBufferIndex)
@@ -41,11 +48,15 @@ class MediaCodecDecoder(
             override fun onOutputBufferAvailable(
                 mediaCodec: MediaCodec, outputBufferIndex: Int, bufferInformation: MediaCodec.BufferInfo
             ) {
-                mediaCodec.releaseOutputBuffer(outputBufferIndex, true)
+                mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
                 frameSink.onFrameRendered(bufferInformation.presentationTimeUs)
             }
-            override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) { /* surfaced via stall */ }
-            override fun onOutputFormatChanged(mediaCodec: MediaCodec, newFormat: MediaFormat) { /* no-op */ }
+            override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) {
+                Log.e("MediaCodecDecoder", "onError: ${exception.diagnosticInfo} errorCode=${exception.errorCode} isRecoverable=${exception.isRecoverable} isTransient=${exception.isTransient}")
+            }
+            override fun onOutputFormatChanged(mediaCodec: MediaCodec, newFormat: MediaFormat) {
+                Log.d("MediaCodecDecoder", "onOutputFormatChanged: $newFormat")
+            }
         })
         newCodec.configure(mediaFormat, surface, null, 0)
         newCodec.start()
@@ -87,6 +98,6 @@ class MediaCodecDecoder(
             runCatching { it.release() }
         }
         codec = null
-        frameSink.releaseSurface()
+        if (outputToSurface) frameSink.releaseSurface()
     }
 }
