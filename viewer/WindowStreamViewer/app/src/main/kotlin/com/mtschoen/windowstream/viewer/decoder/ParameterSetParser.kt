@@ -70,12 +70,7 @@ object ParameterSetParser {
     }
 
     private fun positionAfterStartCode(bytes: ByteArray, startPosition: Int): Int {
-        return if (startPosition + 3 < bytes.size &&
-            bytes[startPosition] == 0.toByte() && bytes[startPosition + 1] == 0.toByte() &&
-            bytes[startPosition + 2] == 0.toByte() && bytes[startPosition + 3] == 1.toByte()) {
-            startPosition + 4
-        } else {
-            startPosition + 3
-        }
+        val isFourByteStartCode: Boolean = startPosition + 3 < bytes.size && bytes[startPosition + 3] == 1.toByte()
+        return if (isFourByteStartCode) startPosition + 4 else startPosition + 3
     }
 }

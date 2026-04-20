@@ -27,6 +27,26 @@ class StallMonitorTest {
     }
 
     @Test
+    fun `does not re-fire within threshold after first stall trigger`() = runTest {
+        var triggerCount = 0
+        val scheduler = testScheduler
+        val monitor = StallMonitor(
+            stallThreshold = 2.seconds,
+            currentTimeMilliseconds = { scheduler.currentTime }
+        )
+        val job = launch { monitor.run { triggerCount++ } }
+        monitor.recordFrameRendered()
+        // Advance past stall threshold — fires once.
+        advanceTimeBy(2_100.milliseconds)
+        assertEquals(1, triggerCount)
+        // Advance only 200 ms more — silence still > threshold but lastTriggerMilliseconds is recent,
+        // so the second condition (now - lastTriggerMilliseconds >= threshold) evaluates to false.
+        advanceTimeBy(200.milliseconds)
+        assertEquals(1, triggerCount)
+        job.cancel()
+    }
+
+    @Test
     fun `does not fire if frames arrive`() = runTest {
         var triggerCount = 0
         val scheduler = testScheduler

@@ -1,8 +1,6 @@
 package com.mtschoen.windowstream.viewer.decoder
 
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 
 class StallMonitor(
@@ -20,7 +18,8 @@ class StallMonitor(
 
     suspend fun run(onStalled: suspend () -> Unit) {
         lastFrameMilliseconds = currentTimeMilliseconds()
-        while (coroutineContext.isActive) {
+        while (true) {
+            delay(200)
             val now: Long = currentTimeMilliseconds()
             val silence: Long = now - lastFrameMilliseconds
             if (silence >= stallThreshold.inWholeMilliseconds &&
@@ -28,7 +27,6 @@ class StallMonitor(
                 onStalled()
                 lastTriggerMilliseconds = now
             }
-            delay(200)
         }
     }
 }
