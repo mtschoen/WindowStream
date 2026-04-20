@@ -5,6 +5,12 @@ Stream individual Windows app windows to headsets and phones as first-class XR /
 Pick a window on your PC, encode it live with NVENC, ship the frames over LAN, and see it floating in 3D space on a Galaxy XR — or as a 2D panel on a Quest, phone, or tablet. Keyboard input routes back. Multiple windows can be streamed at once.
 
 <p align="center">
+  <img src="docs/images/galaxy-xr.jpg" alt="First-person view through a Samsung Galaxy XR headset with a WindowStream panel floating in space showing a live PC window." width="900" />
+  <br />
+  <sub><i>First-person capture through a Samsung Galaxy XR. The floating panel is a live PC window streamed from the desk behind the author.</i></sub>
+</p>
+
+<p align="center">
   <img src="docs/images/fold-grid.png" alt="Two Windows PC windows streaming simultaneously to a Galaxy Z Fold 6, rendered side by side." width="780" />
   <br />
   <sub><i>Two PC windows streamed simultaneously to a Galaxy Z Fold 6. Left panel: this repo's source-code window. Right panel: a live <code>python</code> dashboard on the same PC.</i></sub>
