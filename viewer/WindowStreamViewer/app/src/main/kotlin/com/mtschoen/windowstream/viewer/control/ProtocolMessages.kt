@@ -66,4 +66,8 @@ sealed class ControlMessage {
     @Serializable
     @SerialName("VIEWER_READY")
     data class ViewerReady(val streamId: Int, val viewerUdpPort: Int) : ControlMessage()
+
+    @Serializable
+    @SerialName("KEY_EVENT")
+    data class KeyEvent(val keyCode: Int, val isUnicode: Boolean, val isDown: Boolean) : ControlMessage()
 }

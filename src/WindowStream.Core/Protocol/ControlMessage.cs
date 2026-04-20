@@ -11,4 +11,5 @@ namespace WindowStream.Core.Protocol;
 [JsonDerivedType(typeof(HeartbeatMessage), typeDiscriminator: "HEARTBEAT")]
 [JsonDerivedType(typeof(ErrorMessage), typeDiscriminator: "ERROR")]
 [JsonDerivedType(typeof(ViewerReadyMessage), typeDiscriminator: "VIEWER_READY")]
+[JsonDerivedType(typeof(KeyEventMessage), typeDiscriminator: "KEY_EVENT")]
 public abstract record ControlMessage;

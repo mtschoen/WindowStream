@@ -46,7 +46,7 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
             widthPixels: physicalWidth,
             heightPixels: physicalHeight,
             framesPerSecond: 30,
-            bitrateBitsPerSecond: 20_000_000,
+            bitrateBitsPerSecond: 6_000_000,
             groupOfPicturesLength: 2,
             safetyKeyframeIntervalSeconds: 1);
 

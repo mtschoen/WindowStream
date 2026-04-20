@@ -265,6 +265,12 @@ public sealed class SessionHost : IAsyncDisposable
                         RegisterViewerEndpoint(new System.Net.IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort));
                     }
                     break;
+                case KeyEventMessage keyEvent:
+#if WINDOWS
+                    WindowStream.Core.Session.Input.Win32InputInjector.InjectKey(
+                        keyEvent.KeyCode, keyEvent.IsUnicode, keyEvent.IsDown);
+#endif
+                    break;
             }
         }
     }

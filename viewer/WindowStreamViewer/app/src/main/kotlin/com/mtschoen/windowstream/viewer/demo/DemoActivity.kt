@@ -39,6 +39,7 @@ import java.net.InetAddress
 class DemoActivity : Activity() {
     private val demoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pipelineJob: Job? = null
+    @Volatile private var controlConnection: com.mtschoen.windowstream.viewer.control.ControlConnection? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +82,7 @@ class DemoActivity : Activity() {
             )
         )
         val connection = client.connect(demoScope)
+        controlConnection = connection
 
         val serverHello = withTimeout(10_000) {
             connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
@@ -120,7 +122,56 @@ class DemoActivity : Activity() {
         kotlinx.coroutines.delay(Long.MAX_VALUE)
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val isDown = when (event.action) {
+            android.view.KeyEvent.ACTION_DOWN -> true
+            android.view.KeyEvent.ACTION_UP -> false
+            else -> return super.dispatchKeyEvent(event)
+        }
+        val controlMessage = translateToControlMessage(event, isDown) ?: return super.dispatchKeyEvent(event)
+        demoScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { controlConnection?.send(controlMessage) }
+        }
+        return true
+    }
+
+    private fun translateToControlMessage(
+        event: android.view.KeyEvent,
+        isDown: Boolean
+    ): com.mtschoen.windowstream.viewer.control.ControlMessage? {
+        // Prefer Unicode for printable characters so we don't need a keycode table.
+        val unicode = event.unicodeChar
+        if (unicode != 0) {
+            return com.mtschoen.windowstream.viewer.control.ControlMessage.KeyEvent(
+                keyCode = unicode,
+                isUnicode = true,
+                isDown = isDown
+            )
+        }
+        // Fall back to Windows virtual-key codes for control keys.
+        val windowsVk = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_ENTER -> 0x0D
+            android.view.KeyEvent.KEYCODE_DEL -> 0x08       // Backspace
+            android.view.KeyEvent.KEYCODE_FORWARD_DEL -> 0x2E
+            android.view.KeyEvent.KEYCODE_TAB -> 0x09
+            android.view.KeyEvent.KEYCODE_ESCAPE -> 0x1B
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> 0x25
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> 0x26
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 0x27
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 0x28
+            android.view.KeyEvent.KEYCODE_HOME -> 0x24
+            android.view.KeyEvent.KEYCODE_MOVE_END -> 0x23
+            else -> return null
+        }
+        return com.mtschoen.windowstream.viewer.control.ControlMessage.KeyEvent(
+            keyCode = windowsVk,
+            isUnicode = false,
+            isDown = isDown
+        )
+    }
+
     override fun onDestroy() {
+        controlConnection = null
         demoScope.cancel()
         super.onDestroy()
     }
