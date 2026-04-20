@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
+using WindowStream.Core.Discovery;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Session;
 using WindowStream.Core.Session.Adapters;
@@ -80,9 +81,22 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
             tcpPort: tcpPort,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        // Advertise the running server over mDNS so the viewer's
+        // NetworkServiceDiscoveryClient can find it without a manually-entered
+        // IP. Service type `_windowstream._tcp`, text records per
+        // ServiceTextRecords.Build, control port = sessionHost.TcpPort.
+        string hostname = Environment.MachineName;
+        AdvertisementOptions advertisementOptions = new AdvertisementOptions(
+            hostname: hostname,
+            protocolMajorVersion: 1,
+            protocolRevision: 0);
+        await using ServerAdvertiser advertiser = new ServerAdvertiser(new MakaretuMulticastServiceHost());
+        await advertiser.StartAsync(advertisementOptions, sessionHost.TcpPort, cancellationToken).ConfigureAwait(false);
+
         output.WriteLine($"windowstream: serving window 0x{handle.value:X} ({physicalWidth}x{physicalHeight})");
         output.WriteLine($"  TCP control: 0.0.0.0:{sessionHost.TcpPort}");
         output.WriteLine($"  UDP video  : 0.0.0.0:{sessionHost.UdpPort}");
+        output.WriteLine($"  mDNS       : _windowstream._tcp as '{hostname}' on port {sessionHost.TcpPort}");
         output.WriteLine("  Press Ctrl-C to stop.");
 
         try
