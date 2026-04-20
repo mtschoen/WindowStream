@@ -1,9 +1,6 @@
-namespace WindowStreamServer;
+using Microsoft.Maui;
+using Microsoft.Maui.Hosting;
+using WindowStream.Server;
 
-public static class Program
-{
-    public static void Main(string[] arguments)
-    {
-        System.Console.WriteLine($"WindowStreamServer placeholder; {arguments.Length} argument(s).");
-    }
-}
+MauiApp app = MauiProgram.CreateMauiApp();
+app.Run();
