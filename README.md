@@ -4,6 +4,18 @@ Stream individual Windows app windows to headsets and phones as first-class XR /
 
 Pick a window on your PC, encode it live with NVENC, ship the frames over LAN, and see it floating in 3D space on a Galaxy XR — or as a 2D panel on a Quest, phone, or tablet. Keyboard input routes back. Multiple windows can be streamed at once.
 
+<p align="center">
+  <img src="docs/images/fold-grid.png" alt="Two Windows PC windows streaming simultaneously to a Galaxy Z Fold 6, rendered side by side." width="780" />
+  <br />
+  <sub><i>Two PC windows streamed simultaneously to a Galaxy Z Fold 6. Left panel: this repo's source-code window. Right panel: a live <code>python</code> dashboard on the same PC.</i></sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/fold-picker.png" alt="Multi-select server picker on the Galaxy Z Fold 6." width="420" />
+  <br />
+  <sub><i>Multi-select server picker. Servers auto-discover over mDNS; tick the ones you want to stream simultaneously.</i></sub>
+</p>
+
 **Status:** working proof-of-concept. Validated end-to-end on the author's LAN across three viewer platforms. Not production-ready — no release builds, rough edges, known latency issues, no packaging for non-developers yet. Built in two YOLO-mode sessions with [Claude Code](https://claude.com/claude-code).
 
 ## What works today
