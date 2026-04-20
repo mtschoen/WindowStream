@@ -1,10 +1,15 @@
-namespace WindowStream.Cli;
+using System;
+using System.CommandLine;
+using System.Threading;
+using System.Threading.Tasks;
+using WindowStream.Cli;
 
-public static class Program
+var services = CliServices.CreateDefault();
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArguments) =>
 {
-    public static int Main(string[] arguments)
-    {
-        System.Console.WriteLine($"windowstream cli placeholder; {arguments.Length} argument(s).");
-        return 0;
-    }
-}
+    eventArguments.Cancel = true;
+    cancellation.Cancel();
+};
+var root = RootCommandBuilder.Build(services);
+return await root.InvokeAsync(args);

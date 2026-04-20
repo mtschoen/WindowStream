@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WindowStream.Core\WindowStream.Core.csproj" />
+    <ProjectReference Include="..\..\src\WindowStream.Cli\WindowStream.Cli.csproj" />
   </ItemGroup>
 
 </Project>
