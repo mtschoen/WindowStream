@@ -16,6 +16,9 @@ public sealed class FakeWindowCaptureSource : IWindowCaptureSource
 
     public IEnumerable<WindowInformation> ListWindows() => windows;
 
+    public FakeWindowCapture? GetCapture(WindowHandle handle) =>
+        captures.TryGetValue(handle, out FakeWindowCapture? capture) ? capture : null;
+
     public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken)
     {
         if (!windows.Exists(window => window.handle.Equals(handle)))

@@ -17,6 +17,8 @@ public sealed class FakeVideoEncoder : IVideoEncoder
     private int nextIndex;
     private bool disposed;
 
+    public int KeyframeRequestCount { get; private set; }
+
     public IAsyncEnumerable<EncodedChunk> EncodedChunks { get; }
 
     public FakeVideoEncoder()
@@ -49,12 +51,15 @@ public sealed class FakeVideoEncoder : IVideoEncoder
         return Task.CompletedTask;
     }
 
+    public bool Stopped => disposed;
+
     public void RequestKeyframe()
     {
         if (options is null)
         {
             throw new InvalidOperationException("Configure must be called before RequestKeyframe.");
         }
+        KeyframeRequestCount++;
         nextKeyframe = true;
     }
 

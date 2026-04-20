@@ -50,8 +50,11 @@ public sealed class FakeWindowCapture : IWindowCapture
         }
     }
 
+    public bool Stopped { get; private set; }
+
     public ValueTask DisposeAsync()
     {
+        Stopped = true;
         channel.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }
