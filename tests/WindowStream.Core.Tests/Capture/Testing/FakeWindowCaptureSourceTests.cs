@@ -90,6 +90,24 @@ public sealed class FakeWindowCaptureSourceTests
         });
     }
 
+    [Fact]
+    public void GetCapture_ReturnsNull_WhenHandleNotStarted()
+    {
+        FakeWindowCaptureSource source = new FakeWindowCaptureSource(System.Array.Empty<WindowInformation>());
+        FakeWindowCapture? capture = source.GetCapture(new WindowHandle(999));
+        Assert.Null(capture);
+    }
+
+    [Fact]
+    public void GetCapture_ReturnsCapture_AfterStart()
+    {
+        WindowInformation window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
+        FakeWindowCaptureSource source = new FakeWindowCaptureSource(new[] { window });
+        source.Start(window.handle, new CaptureOptions(30, false), CancellationToken.None);
+        FakeWindowCapture? capture = source.GetCapture(window.handle);
+        Assert.NotNull(capture);
+    }
+
     private static CapturedFrame BuildSolidFrame(int width, int height, byte value)
     {
         byte[] buffer = new byte[width * 4 * height];
