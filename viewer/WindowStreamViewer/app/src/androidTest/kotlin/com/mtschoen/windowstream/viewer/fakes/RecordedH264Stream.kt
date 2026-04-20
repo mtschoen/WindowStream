@@ -3,28 +3,40 @@ package com.mtschoen.windowstream.viewer.fakes
 import java.io.InputStream
 
 object RecordedH264Stream {
+    /**
+     * Splits an Annex-B H.264 bitstream into individual NAL units.
+     *
+     * Both 3-byte (`00 00 01`) and 4-byte (`00 00 00 01`) start codes are
+     * recognised. Each returned ByteArray includes the leading start code so
+     * downstream consumers can use it as a self-contained NAL unit payload.
+     */
     fun loadAnnexBFrames(input: InputStream): List<ByteArray> {
         val raw: ByteArray = input.readBytes()
-        val frames: MutableList<ByteArray> = mutableListOf()
-        var cursor = 0
-        while (cursor < raw.size) {
-            val startIndex: Int = findStartCode(raw, cursor) ?: break
-            val nextStart: Int = findStartCode(raw, startIndex + 4) ?: raw.size
-            frames.add(raw.copyOfRange(startIndex, nextStart))
-            cursor = nextStart
-        }
-        return frames
-    }
-
-    private fun findStartCode(bytes: ByteArray, offset: Int): Int? {
-        var index: Int = offset
-        while (index < bytes.size - 3) {
-            if (bytes[index] == 0.toByte() && bytes[index + 1] == 0.toByte() &&
-                bytes[index + 2] == 0.toByte() && bytes[index + 3] == 1.toByte()) {
-                return index
+        val startCodePositions: MutableList<Int> = mutableListOf()
+        var index = 0
+        while (index < raw.size - 2) {
+            val isFourByte: Boolean = index < raw.size - 3 &&
+                raw[index] == 0.toByte() && raw[index + 1] == 0.toByte() &&
+                raw[index + 2] == 0.toByte() && raw[index + 3] == 1.toByte()
+            val isThreeByte: Boolean = !isFourByte &&
+                raw[index] == 0.toByte() && raw[index + 1] == 0.toByte() &&
+                raw[index + 2] == 1.toByte()
+            when {
+                isFourByte -> { startCodePositions.add(index); index += 4 }
+                isThreeByte -> { startCodePositions.add(index); index += 3 }
+                else -> index++
             }
-            index++
         }
-        return null
+        val nalUnits: MutableList<ByteArray> = mutableListOf()
+        for (positionIndex in startCodePositions.indices) {
+            val startPosition: Int = startCodePositions[positionIndex]
+            val endPosition: Int = if (positionIndex + 1 < startCodePositions.size) {
+                startCodePositions[positionIndex + 1]
+            } else {
+                raw.size
+            }
+            nalUnits.add(raw.copyOfRange(startPosition, endPosition))
+        }
+        return nalUnits
     }
 }

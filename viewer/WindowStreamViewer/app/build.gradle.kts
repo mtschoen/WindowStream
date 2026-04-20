@@ -36,7 +36,7 @@ android {
                 create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel6api36") {
                     device = "Pixel 6"
                     apiLevel = 36
-                    systemImageSource = "google-apis-playstore"
+                    systemImageSource = "google"
                 }
             }
         }
