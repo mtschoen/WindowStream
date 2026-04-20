@@ -99,6 +99,14 @@ kover {
                     "com.mtschoen.windowstream.viewer.control.ControlClient\$connect\$2\$sendMessage\$2",
                     "com.mtschoen.windowstream.viewer.control.ControlConnection"
                 )
+                // MediaCodecDecoder requires Android's MediaCodec framework, which is not
+                // available in the JVM unit-test environment. It is exercised by the Phase 23
+                // end-to-end emulator test. Excluded here following the same pattern as
+                // NetworkServiceDiscoveryClient (Phase 7).
+                classes(
+                    "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder",
+                    "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder\$*"
+                )
             }
         }
         verify {
