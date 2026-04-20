@@ -1,11 +1,22 @@
 package com.mtschoen.windowstream.viewer.demo
 
 import android.app.Activity
+import android.graphics.Color
 import android.os.Bundle
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
+import android.view.Gravity
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.View
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.GridLayout
+import android.widget.TextView
 import com.mtschoen.windowstream.viewer.control.ActiveStreamDescriptor
 import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
@@ -29,89 +40,188 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import java.net.InetAddress
+import kotlin.math.ceil
+import kotlin.math.sqrt
 
 /**
- * Phone-compatible demo activity that bypasses Jetpack XR. Connects directly to
- * a server via intent extras and renders decoded frames onto a plain SurfaceView.
+ * Phone- / Quest-compatible demo activity that bypasses Jetpack XR. Connects
+ * directly to one or more servers via intent extras and renders decoded
+ * frames onto a grid of plain SurfaceViews.
  *
- * Usage from a development machine:
+ * Single-server usage (legacy, adb-friendly):
  *   adb shell am start \
  *     -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
  *     --es streamHost 10.0.2.2 \
  *     --ei streamPort 64000
  *
- * The magic IP 10.0.2.2 is how an Android emulator reaches the host's loopback.
- * For a physical device on the same LAN, pass the host's real IP.
+ * Multi-server usage (via [com.mtschoen.windowstream.viewer.app.ServerSelectionActivity]):
+ *   putExtra("streamHosts", Array<String>)  // parallel to streamPorts
+ *   putExtra("streamPorts", IntArray)       // parallel to streamHosts
  *
- * Surface lifecycle: a window resize destroys and recreates the SurfaceView's
- * Surface. Each pipeline (ControlClient + UdpTransportReceiver + MediaCodec-
- * Decoder) is launched in its own CoroutineScope parented to [demoScope].
- * On surfaceDestroyed the pipeline scope is cancelled AND joined so every
- * worker coroutine — including MediaCodec's native output callbacks — has
- * finished before a new pipeline is permitted to start on the new Surface.
- * [pipelineLock] serializes the callbacks so create/destroy events can't
- * interleave.
+ * Tap anywhere on the streamed area to toggle the on-screen keyboard. Typed
+ * characters are relayed to the FIRST pipeline only (keeping tonight's
+ * scope sane); a preview overlay at the top of the screen echoes typed
+ * characters because the keyboard will hide the lower portion of the
+ * panels. Physical / Bluetooth keyboards continue to route through
+ * [dispatchKeyEvent], also targeting the first pipeline.
+ *
+ * Surface lifecycle: each pipeline runs in its own [CoroutineScope] parented
+ * to [demoScope]. On surfaceDestroyed for a given panel, its pipeline scope
+ * is cancelled and joined so every worker coroutine — including MediaCodec
+ * native output callbacks — has finished before a new pipeline is permitted
+ * to start on the new Surface. [pipelineLock] serializes the callbacks
+ * across all panels.
  */
 class DemoActivity : Activity() {
     private val demoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pipelineLock: Mutex = Mutex()
-    private var pipelineScope: CoroutineScope? = null
-    private var activeDecoder: MediaCodecDecoder? = null
-    @Volatile private var controlConnection: ControlConnection? = null
 
-    private lateinit var streamHost: String
-    private var streamPort: Int = -1
+    private data class StreamConfiguration(val host: String, val port: Int)
+    private data class StreamState(
+        var scope: CoroutineScope? = null,
+        var decoder: MediaCodecDecoder? = null,
+        var connection: ControlConnection? = null,
+    )
+
+    private lateinit var streamConfigurations: List<StreamConfiguration>
+    private lateinit var streamStates: MutableList<StreamState>
+
+    private lateinit var softInputEditText: EditText
+    private lateinit var inputPreviewTextView: TextView
+    private var previousSoftInputLength: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        streamHost = intent.getStringExtra("streamHost")
-            ?: error("DemoActivity requires --es streamHost <address>")
-        streamPort = intent.getIntExtra("streamPort", -1)
-        require(streamPort > 0) { "DemoActivity requires --ei streamPort <port>" }
+        streamConfigurations = parseStreamConfigurations()
+        streamStates = MutableList(streamConfigurations.size) { StreamState() }
 
-        Log.i(TAG, "connecting to $streamHost:$streamPort")
+        Log.i(TAG, "connecting to ${streamConfigurations.size} stream(s): " +
+            streamConfigurations.joinToString { "${it.host}:${it.port}" })
 
-        val surfaceView = SurfaceView(this)
-        setContentView(surfaceView)
+        val columnCount: Int = ceil(sqrt(streamConfigurations.size.toDouble())).toInt().coerceAtLeast(1)
+        val rowCount: Int = ceil(streamConfigurations.size.toDouble() / columnCount).toInt().coerceAtLeast(1)
 
-        surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
+        val grid: GridLayout = GridLayout(this).apply {
+            this.rowCount = rowCount
+            this.columnCount = columnCount
+        }
+        streamConfigurations.forEachIndexed { index, _ ->
+            val surfaceView = SurfaceView(this).apply {
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = 0
+                    columnSpec = GridLayout.spec(index % columnCount, 1f)
+                    rowSpec = GridLayout.spec(index / columnCount, 1f)
+                }
+                holder.addCallback(createSurfaceCallback(index))
+            }
+            grid.addView(surfaceView)
+        }
+
+        // Invisible focus target for the soft keyboard. A 1×1 alpha-0 EditText
+        // is focusable (needed for the IME to open) but doesn't take visible
+        // screen space. Text changes are relayed as KEY_EVENT messages via
+        // [softInputTextWatcher] to the first stream's control connection.
+        softInputEditText = EditText(this).apply {
+            alpha = 0f
+            isFocusable = true
+            isFocusableInTouchMode = true
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(false)
+            layoutParams = FrameLayout.LayoutParams(
+                1, 1, Gravity.START or Gravity.BOTTOM
+            )
+            addTextChangedListener(softInputTextWatcher())
+        }
+
+        inputPreviewTextView = TextView(this).apply {
+            setBackgroundColor(Color.argb(200, 0, 0, 0))
+            setTextColor(Color.WHITE)
+            textSize = 22f
+            setPadding(32, 20, 32, 20)
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+            )
+        }
+
+        val rootLayout: FrameLayout = FrameLayout(this).apply {
+            addView(
+                grid,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(softInputEditText)
+            addView(inputPreviewTextView)
+            isClickable = true
+            setOnClickListener { toggleSoftKeyboard() }
+        }
+        setContentView(rootLayout)
+    }
+
+    private fun parseStreamConfigurations(): List<StreamConfiguration> {
+        val hosts: Array<String>? = intent.getStringArrayExtra("streamHosts")
+        val ports: IntArray? = intent.getIntArrayExtra("streamPorts")
+        if (hosts != null && ports != null && hosts.size == ports.size && hosts.isNotEmpty()) {
+            return hosts.mapIndexed { index, host -> StreamConfiguration(host, ports[index]) }
+        }
+        // Legacy single-server intent shape — `adb am start ... --es streamHost ... --ei streamPort ...`
+        val singleHost: String = intent.getStringExtra("streamHost")
+            ?: error("DemoActivity requires streamHosts+streamPorts arrays OR --es streamHost")
+        val singlePort: Int = intent.getIntExtra("streamPort", -1)
+        require(singlePort > 0) { "DemoActivity requires --ei streamPort <port>" }
+        return listOf(StreamConfiguration(singleHost, singlePort))
+    }
+
+    private fun createSurfaceCallback(streamIndex: Int): SurfaceHolder.Callback =
+        object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 val surface: Surface = holder.surface
                 demoScope.launch {
                     pipelineLock.withLock {
-                        // Defensive: in case onResume created without a prior destroy,
-                        // or any residual state exists from a prior attempt.
-                        tearDownPipelineLocked()
-                        startPipelineLocked(surface)
+                        tearDownPipelineLocked(streamIndex)
+                        startPipelineLocked(streamIndex, surface)
                     }
                 }
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                // Size changes come through as destroy → create. No-op here.
+                // Size-only changes don't require a pipeline rebind — MediaCodec
+                // outputs to the same Surface; the compositor handles scaling.
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
                 demoScope.launch {
                     pipelineLock.withLock {
-                        tearDownPipelineLocked()
+                        tearDownPipelineLocked(streamIndex)
                     }
                 }
             }
-        })
-    }
+        }
 
-    private suspend fun startPipelineLocked(surface: Surface) {
+    private suspend fun startPipelineLocked(streamIndex: Int, surface: Surface) {
         val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        pipelineScope = scope
-        runCatching { runPipeline(scope, DirectSurfaceFrameSink(surface)) }
-            .onFailure { throwable -> Log.e(TAG, "pipeline failed to start", throwable) }
+        streamStates[streamIndex].scope = scope
+        runCatching {
+            runPipeline(streamIndex, scope, DirectSurfaceFrameSink(surface))
+        }.onFailure { throwable ->
+            Log.e(TAG, "pipeline $streamIndex failed to start", throwable)
+        }
     }
 
-    private suspend fun runPipeline(scope: CoroutineScope, frameSink: DirectSurfaceFrameSink) {
+    private suspend fun runPipeline(
+        streamIndex: Int,
+        scope: CoroutineScope,
+        frameSink: DirectSurfaceFrameSink
+    ) {
+        val configuration: StreamConfiguration = streamConfigurations[streamIndex]
         val client = ControlClient(
-            host = streamHost,
-            port = streamPort,
+            host = configuration.host,
+            port = configuration.port,
             displayCapabilities = DisplayCapabilities(
                 maximumWidth = 3840,
                 maximumHeight = 2160,
@@ -119,7 +229,7 @@ class DemoActivity : Activity() {
             )
         )
         val connection: ControlConnection = client.connect(scope)
-        controlConnection = connection
+        streamStates[streamIndex].connection = connection
 
         val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
             connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
@@ -127,7 +237,7 @@ class DemoActivity : Activity() {
         val stream: ActiveStreamDescriptor = serverHello.activeStream
             ?: error("server did not report an active stream")
 
-        Log.i(TAG, "stream ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, udp=${stream.udpPort}")
+        Log.i(TAG, "stream $streamIndex ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, udp=${stream.udpPort}")
 
         val udpReceiver = UdpTransportReceiver(
             bindAddress = InetAddress.getByName("0.0.0.0"),
@@ -135,7 +245,7 @@ class DemoActivity : Activity() {
         )
         val frames: Flow<EncodedFrame> = udpReceiver.start(scope)
         val viewerUdpPort: Int = udpReceiver.boundPort
-        Log.i(TAG, "viewer UDP bound on port $viewerUdpPort")
+        Log.i(TAG, "stream $streamIndex viewer UDP bound on port $viewerUdpPort")
 
         connection.send(ControlMessage.ViewerReady(streamId = stream.streamId, viewerUdpPort = viewerUdpPort))
         connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
@@ -146,26 +256,91 @@ class DemoActivity : Activity() {
                 connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
             }
         )
-        activeDecoder = decoder
+        streamStates[streamIndex].decoder = decoder
         decoder.start(scope, frames, stream.width, stream.height)
-        // No delay(Long.MAX_VALUE). The spawned worker coroutines in `scope`
-        // (ControlConnection read loop, UdpTransportReceiver, decoder input/
-        // output pumps) keep the scope alive until tearDownPipelineLocked
-        // cancels it.
     }
 
-    private suspend fun tearDownPipelineLocked() {
-        // Release MediaCodec native resources first so its output callback
-        // can't fire on the now-destroyed Surface while we await scope
-        // cancellation.
-        activeDecoder?.runCatching { stop() }
-        activeDecoder = null
-        controlConnection = null
+    private suspend fun tearDownPipelineLocked(streamIndex: Int) {
+        val state: StreamState = streamStates[streamIndex]
+        state.decoder?.runCatching { stop() }
+        state.decoder = null
+        state.connection = null
 
-        val scope: CoroutineScope = pipelineScope ?: return
-        pipelineScope = null
+        val scope: CoroutineScope = state.scope ?: return
+        state.scope = null
         val job: Job = scope.coroutineContext.job
         runCatching { job.cancelAndJoin() }
+    }
+
+    private fun toggleSoftKeyboard() {
+        val inputMethodManager: InputMethodManager =
+            getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        if (softInputEditText.hasFocus()) {
+            inputMethodManager.hideSoftInputFromWindow(softInputEditText.windowToken, 0)
+            softInputEditText.clearFocus()
+            inputPreviewTextView.visibility = View.GONE
+            softInputEditText.setText("")
+            previousSoftInputLength = 0
+            inputPreviewTextView.text = ""
+        } else {
+            softInputEditText.requestFocus()
+            inputMethodManager.showSoftInput(softInputEditText, InputMethodManager.SHOW_IMPLICIT)
+            inputPreviewTextView.visibility = View.VISIBLE
+        }
+    }
+
+    private fun softInputTextWatcher(): TextWatcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        override fun afterTextChanged(s: Editable?) {
+            val current: String = s?.toString() ?: ""
+            when {
+                current.length > previousSoftInputLength -> {
+                    val added: String = current.substring(previousSoftInputLength)
+                    added.forEach { character -> relayUnicodeCharacter(character) }
+                    appendPreview(added)
+                }
+                current.length < previousSoftInputLength -> {
+                    val removedCount: Int = previousSoftInputLength - current.length
+                    repeat(removedCount) { relayBackspace() }
+                    trimPreview(removedCount)
+                }
+            }
+            previousSoftInputLength = current.length
+        }
+    }
+
+    private fun relayUnicodeCharacter(character: Char) {
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = character.code, isUnicode = true, isDown = true))
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = character.code, isUnicode = true, isDown = false))
+    }
+
+    private fun relayBackspace() {
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = 0x08, isUnicode = false, isDown = true))
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = 0x08, isUnicode = false, isDown = false))
+    }
+
+    private fun sendKeyEventToPrimary(message: ControlMessage.KeyEvent) {
+        demoScope.launch {
+            runCatching { streamStates.firstOrNull()?.connection?.send(message) }
+        }
+    }
+
+    private fun appendPreview(text: String) {
+        val current: String = inputPreviewTextView.text.toString()
+        val combined: String = current + text
+        val maximumVisibleCharacters: Int = 80
+        inputPreviewTextView.text = if (combined.length > maximumVisibleCharacters) {
+            combined.takeLast(maximumVisibleCharacters)
+        } else {
+            combined
+        }
+    }
+
+    private fun trimPreview(count: Int) {
+        val current: String = inputPreviewTextView.text.toString()
+        val newLength: Int = (current.length - count).coerceAtLeast(0)
+        inputPreviewTextView.text = current.substring(0, newLength)
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
@@ -174,19 +349,16 @@ class DemoActivity : Activity() {
             android.view.KeyEvent.ACTION_UP -> false
             else -> return super.dispatchKeyEvent(event)
         }
-        val controlMessage: ControlMessage = translateToControlMessage(event, isDown)
+        val controlMessage: ControlMessage.KeyEvent = translateToControlMessage(event, isDown)
             ?: return super.dispatchKeyEvent(event)
-        demoScope.launch {
-            runCatching { controlConnection?.send(controlMessage) }
-        }
+        sendKeyEventToPrimary(controlMessage)
         return true
     }
 
     private fun translateToControlMessage(
         event: android.view.KeyEvent,
         isDown: Boolean
-    ): ControlMessage? {
-        // Prefer Unicode for printable characters so we don't need a keycode table.
+    ): ControlMessage.KeyEvent? {
         val unicode: Int = event.unicodeChar
         if (unicode != 0) {
             return ControlMessage.KeyEvent(
@@ -195,10 +367,9 @@ class DemoActivity : Activity() {
                 isDown = isDown
             )
         }
-        // Fall back to Windows virtual-key codes for control keys.
         val windowsVirtualKey: Int = when (event.keyCode) {
             android.view.KeyEvent.KEYCODE_ENTER -> 0x0D
-            android.view.KeyEvent.KEYCODE_DEL -> 0x08       // Backspace
+            android.view.KeyEvent.KEYCODE_DEL -> 0x08
             android.view.KeyEvent.KEYCODE_FORWARD_DEL -> 0x2E
             android.view.KeyEvent.KEYCODE_TAB -> 0x09
             android.view.KeyEvent.KEYCODE_ESCAPE -> 0x1B
@@ -220,9 +391,11 @@ class DemoActivity : Activity() {
     override fun onDestroy() {
         // Best-effort synchronous release of MediaCodec natives; remaining
         // teardown cascades via demoScope cancellation.
-        activeDecoder?.runCatching { stop() }
-        activeDecoder = null
-        controlConnection = null
+        streamStates.forEach { state ->
+            state.decoder?.runCatching { stop() }
+            state.decoder = null
+            state.connection = null
+        }
         demoScope.cancel()
         super.onDestroy()
     }

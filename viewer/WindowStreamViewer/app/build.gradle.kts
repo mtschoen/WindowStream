@@ -121,11 +121,16 @@ kover {
                 // be unit-tested on the JVM. ServerPickerScreen and ConnectedPanelScreen
                 // are thin wrappers over discovered-server state and XR scene composition;
                 // their correctness is verified by manual/emulator testing in Phase 13.
+                // MultiServerPickerScreen (portable flavor) drives the multi-window pick
+                // flow for Quest/phone/tablet — pure Compose state-management over a
+                // SharedFlow of discovered servers, same rationale as ServerPickerScreen.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt",
                     "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt\$*",
                     "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*"
+                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*",
+                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt",
+                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt\$*"
                 )
                 // The kotlinx-serialization compiler plugin emits $$serializer singleton
                 // objects and $Companion helper classes as infrastructure; they are not

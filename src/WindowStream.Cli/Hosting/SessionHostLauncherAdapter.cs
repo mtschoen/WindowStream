@@ -85,7 +85,12 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
         // NetworkServiceDiscoveryClient can find it without a manually-entered
         // IP. Service type `_windowstream._tcp`, text records per
         // ServiceTextRecords.Build, control port = sessionHost.TcpPort.
-        string hostname = Environment.MachineName;
+        //
+        // Include the TCP port in the advertised hostname so multiple server
+        // instances on the same machine (multi-window demo) get unique mDNS
+        // service instance names. Without this, Android NSD collapses all
+        // instances sharing MachineName into a single discovered entry.
+        string hostname = $"{Environment.MachineName}-{sessionHost.TcpPort}";
         AdvertisementOptions advertisementOptions = new AdvertisementOptions(
             hostname: hostname,
             protocolMajorVersion: 1,

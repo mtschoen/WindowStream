@@ -17,6 +17,7 @@
             android:name=".demo.DemoActivity"
             android:exported="true"
             android:screenOrientation="sensorLandscape"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|keyboard|keyboardHidden|navigation|fontScale" />
     </application>
 </manifest>
