@@ -71,11 +71,18 @@ public sealed class SessionHost : IAsyncDisposable
 
     private async Task RunCapturePumpAsync(CancellationToken cancellationToken)
     {
+        int frameCount = 0;
         try
         {
             await using IWindowCapture capture = captureSource.Start(targetWindow, captureOptions, cancellationToken);
+            System.Console.Error.WriteLine("[SessionHost] capture pump started");
             await foreach (CapturedFrame frame in capture.Frames.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
+                if (frameCount < 3 || frameCount % 30 == 0)
+                {
+                    System.Console.Error.WriteLine($"[SessionHost] capture frame #{frameCount} {frame.widthPixels}x{frame.heightPixels}");
+                }
+                frameCount++;
                 await videoEncoder.EncodeAsync(frame, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -83,18 +90,30 @@ public sealed class SessionHost : IAsyncDisposable
         {
             // Lifecycle cancelled — normal shutdown.
         }
+        catch (Exception exception)
+        {
+            System.Console.Error.WriteLine($"[SessionHost] capture pump DIED after {frameCount} frames: {exception.GetType().Name}: {exception.Message}");
+        }
     }
 
     private async Task RunEncodePumpAsync(CancellationToken cancellationToken)
     {
         NalFragmenter fragmenter = new NalFragmenter();
+        int chunkCount = 0;
+        int sentChunks = 0;
         try
         {
+            System.Console.Error.WriteLine("[SessionHost] encode pump started");
             await foreach (EncodedChunk chunk in videoEncoder.EncodedChunks.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
+                chunkCount++;
                 IPEndPoint? destination = activeViewerEndpoint;
                 if (destination is null)
                 {
+                    if (chunkCount <= 3 || chunkCount % 30 == 0)
+                    {
+                        System.Console.Error.WriteLine($"[SessionHost] encoded chunk #{chunkCount} but no viewer endpoint yet (dropped)");
+                    }
                     continue;
                 }
 
@@ -108,6 +127,11 @@ public sealed class SessionHost : IAsyncDisposable
                     nalUnit: nalUnit))
                 {
                     await udpSender.SendPacketAsync(packet, destination, cancellationToken).ConfigureAwait(false);
+                }
+                sentChunks++;
+                if (sentChunks <= 3 || sentChunks % 30 == 0)
+                {
+                    System.Console.Error.WriteLine($"[SessionHost] sent chunk #{sentChunks} to {destination} ({nalUnit.Length} bytes, idr={chunk.isKeyframe})");
                 }
             }
         }
@@ -214,7 +238,17 @@ public sealed class SessionHost : IAsyncDisposable
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            ControlMessage message = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            ControlMessage message;
+            try
+            {
+                message = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                System.Console.Error.WriteLine($"[SessionHost] ReceiveAsync failed: {exception.GetType().Name}: {exception.Message}");
+                throw;
+            }
+            System.Console.Error.WriteLine($"[SessionHost] got message: {message.GetType().Name}");
             switch (message)
             {
                 case RequestKeyframeMessage:
@@ -222,6 +256,14 @@ public sealed class SessionHost : IAsyncDisposable
                     break;
                 case HeartbeatMessage:
                     channel.NotifyHeartbeatReceived();
+                    break;
+                case ViewerReadyMessage viewerReady:
+                    System.Net.IPAddress? viewerAddress = channel.RemoteIpAddress;
+                    System.Console.Error.WriteLine($"[SessionHost] VIEWER_READY from {viewerAddress}:{viewerReady.ViewerUdpPort}");
+                    if (viewerAddress is not null)
+                    {
+                        RegisterViewerEndpoint(new System.Net.IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort));
+                    }
                     break;
             }
         }

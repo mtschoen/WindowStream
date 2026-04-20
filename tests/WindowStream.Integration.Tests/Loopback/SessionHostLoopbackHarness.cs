@@ -14,6 +14,7 @@ using WindowStream.Core.Encode;
 using WindowStream.Core.Protocol;
 using WindowStream.Core.Session;
 using WindowStream.Core.Transport;
+using WindowStream.Core.Session.Adapters;
 using WindowStream.Integration.Tests.Support;
 
 namespace WindowStream.Integration.Tests.Loopback;

@@ -62,4 +62,8 @@ sealed class ControlMessage {
     @Serializable
     @SerialName("ERROR")
     data class ErrorMessage(val code: String, val message: String) : ControlMessage()
+
+    @Serializable
+    @SerialName("VIEWER_READY")
+    data class ViewerReady(val streamId: Int, val viewerUdpPort: Int) : ControlMessage()
 }

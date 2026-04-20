@@ -1,22 +1,20 @@
-#if WINDOWS
 using System;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
-using WindowStream.Core.Session;
 using WindowStream.Core.Transport;
 
-namespace WindowStream.Integration.Tests.Support;
+namespace WindowStream.Core.Session.Adapters;
 
 /// <summary>
 /// Wraps a <see cref="TcpClient"/> stream and implements <see cref="IControlChannel"/>
 /// using length-prefix framing and <see cref="ControlMessageSerialization"/>.
-/// Used by the server side of the <see cref="TcpConnectionAcceptorAdapter"/>.
 /// </summary>
-internal sealed class TcpControlChannelAdapter : IControlChannel
+public sealed class TcpControlChannelAdapter : IControlChannel
 {
     private readonly TcpClient tcpClient;
     private readonly Stream stream;
@@ -24,7 +22,7 @@ internal sealed class TcpControlChannelAdapter : IControlChannel
     private DateTimeOffset lastHeartbeatReceived;
     private bool disposed;
 
-    internal TcpControlChannelAdapter(TcpClient tcpClient, TimeProvider timeProvider)
+    public TcpControlChannelAdapter(TcpClient tcpClient, TimeProvider timeProvider)
     {
         this.tcpClient = tcpClient ?? throw new ArgumentNullException(nameof(tcpClient));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
@@ -33,6 +31,8 @@ internal sealed class TcpControlChannelAdapter : IControlChannel
     }
 
     public DateTimeOffset LastHeartbeatReceived => lastHeartbeatReceived;
+
+    public IPAddress? RemoteIpAddress => (tcpClient.Client.RemoteEndPoint as IPEndPoint)?.Address;
 
     public void NotifyHeartbeatReceived()
     {
@@ -62,4 +62,3 @@ internal sealed class TcpControlChannelAdapter : IControlChannel
         return ValueTask.CompletedTask;
     }
 }
-#endif

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;net8.0-windows10.0.19041.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AssemblyName>windowstream</AssemblyName>
@@ -12,6 +12,42 @@
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <ProjectReference Include="..\WindowStream.Core\WindowStream.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Copy FFmpeg 7.x native DLLs from OBS Studio so FFmpegNativeLoader can find them at runtime.
+       Stopgap until a BtbN-builds MSBuild downloader replaces this. On machines without OBS,
+       install OBS or place the DLLs next to windowstream.exe manually. -->
+  <PropertyGroup>
+    <ObsFfmpegDir>$(ProgramFiles)\obs-studio\bin\64bit</ObsFfmpegDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(ObsFfmpegDir)\avutil-59.dll')">
+    <None Include="$(ObsFfmpegDir)\avcodec-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avdevice-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avfilter-10.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avformat-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avutil-59.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\swresample-5.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\swscale-8.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\zlib.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\libx264-164.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

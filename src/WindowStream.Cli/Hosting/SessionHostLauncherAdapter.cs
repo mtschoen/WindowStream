@@ -1,0 +1,139 @@
+#if WINDOWS
+using System;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using WindowStream.Core.Capture;
+using WindowStream.Core.Capture.Windows;
+using WindowStream.Core.Encode;
+using WindowStream.Core.Session;
+using WindowStream.Core.Session.Adapters;
+
+namespace WindowStream.Cli.Hosting;
+
+/// <summary>
+/// Production wiring for <see cref="ISessionHostLauncher"/>.
+/// Assembles a <see cref="SessionHost"/> against real WGC capture, FFmpeg NVENC encoder,
+/// and TCP/UDP adapters that bind to all interfaces so a LAN viewer (emulator or HMD) can connect.
+/// </summary>
+public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
+{
+    private readonly int tcpPort;
+    private readonly System.IO.TextWriter output;
+
+    public SessionHostLauncherAdapter(int tcpPort, System.IO.TextWriter output)
+    {
+        this.tcpPort = tcpPort;
+        this.output = output ?? throw new ArgumentNullException(nameof(output));
+    }
+
+    public async Task LaunchAsync(WindowHandle handle, CancellationToken cancellationToken)
+    {
+        // Probe WGC for one frame to learn the exact dimensions it produces —
+        // the sws_scale step inside FFmpegNvencEncoder requires src/dst dims
+        // to match the capture stream exactly, and GetWindowRect/GetClientRect
+        // computations differ by a few pixels from what WGC actually delivers.
+        (int probeWidth, int probeHeight) = await ProbeCaptureSizeAsync(handle, cancellationToken).ConfigureAwait(false);
+        // NVENC NV12 requires even dimensions. FFmpegNvencEncoder's sws_scale is
+        // configured with source == dest dims, so both must be ≤ the actual captured
+        // frame's dimensions. Round DOWN — we lose at most one row/column.
+        int physicalWidth = probeWidth - (probeWidth % 2);
+        int physicalHeight = probeHeight - (probeHeight % 2);
+        output.WriteLine($"windowstream: probed {probeWidth}x{probeHeight}, encoding at {physicalWidth}x{physicalHeight}");
+
+        EncoderOptions encoderOptions = new EncoderOptions(
+            widthPixels: physicalWidth,
+            heightPixels: physicalHeight,
+            framesPerSecond: 30,
+            bitrateBitsPerSecond: 20_000_000,
+            groupOfPicturesLength: 2,
+            safetyKeyframeIntervalSeconds: 1);
+
+        SessionHostOptions hostOptions = new SessionHostOptions(
+            HeartbeatIntervalMilliseconds: 2000,
+            HeartbeatTimeoutMilliseconds: 10000,
+            ServerVersion: 1,
+            StreamId: 1,
+            Codec: "h264");
+
+        WgcCaptureSource captureSource = new WgcCaptureSource();
+        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        TcpConnectionAcceptorAdapter tcpAcceptor = new TcpConnectionAcceptorAdapter(TimeProvider.System);
+        UdpVideoSenderAdapter udpSender = new UdpVideoSenderAdapter();
+
+        await using SessionHost sessionHost = new SessionHost(
+            options: hostOptions,
+            captureSource: captureSource,
+            videoEncoder: encoder,
+            tcpAcceptor: tcpAcceptor,
+            udpSender: udpSender,
+            timeProvider: TimeProvider.System);
+
+        CaptureOptions captureOptions = new CaptureOptions(targetFramesPerSecond: 30, includeCursor: false);
+
+        await sessionHost.StartAsync(
+            window: handle,
+            capture: captureOptions,
+            encoder: encoderOptions,
+            udpLocalEndpoint: new IPEndPoint(IPAddress.Any, 0),
+            tcpPort: tcpPort,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        output.WriteLine($"windowstream: serving window 0x{handle.value:X} ({physicalWidth}x{physicalHeight})");
+        output.WriteLine($"  TCP control: 0.0.0.0:{sessionHost.TcpPort}");
+        output.WriteLine($"  UDP video  : 0.0.0.0:{sessionHost.UdpPort}");
+        output.WriteLine("  Press Ctrl-C to stop.");
+
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { /* normal shutdown */ }
+    }
+
+    private static async Task<(int widthPixels, int heightPixels)> ProbeCaptureSizeAsync(WindowHandle handle, CancellationToken cancellationToken)
+    {
+        WgcCaptureSource probeSource = new WgcCaptureSource();
+        using CancellationTokenSource probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        probeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+        await using IWindowCapture probe = probeSource.Start(handle, new CaptureOptions(30, false), probeTimeout.Token);
+        await foreach (CapturedFrame frame in probe.Frames.WithCancellation(probeTimeout.Token))
+        {
+            return (frame.widthPixels, frame.heightPixels);
+        }
+        return (640, 360);
+    }
+
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetClientRect(IntPtr windowHandle, out NativeRect rectangle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int left, top, right, bottom; }
+
+    private static (int widthPixels, int heightPixels) GetPhysicalWindowSize(WindowHandle handle)
+    {
+        IntPtr hwnd = new IntPtr(handle.value);
+        // ClientRect excludes window chrome / borders / shadows, matching what WGC
+        // actually captures. Using GetWindowRect here mismatches WGC by ~15 pixels
+        // and causes sws_scale to hang on out-of-bounds reads.
+        if (!GetClientRect(hwnd, out NativeRect rect))
+        {
+            return (640, 360);
+        }
+        uint dpi = GetDpiForWindow(hwnd);
+        if (dpi == 0) dpi = 96;
+        double scale = dpi / 96.0;
+        int logicalWidth = rect.right - rect.left;
+        int logicalHeight = rect.bottom - rect.top;
+        int physicalWidth = (int)Math.Round(logicalWidth * scale);
+        int physicalHeight = (int)Math.Round(logicalHeight * scale);
+        return (AlignToEven(physicalWidth), AlignToEven(physicalHeight));
+    }
+
+    private static int AlignToEven(int value) => value % 2 == 0 ? value : value + 1;
+}
+#endif

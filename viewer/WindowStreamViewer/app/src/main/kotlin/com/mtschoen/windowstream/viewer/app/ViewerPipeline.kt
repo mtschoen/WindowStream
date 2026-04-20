@@ -102,6 +102,12 @@ class ViewerPipeline(
         val receiver = udpTransportReceiverFactory(InetAddress.getByName("0.0.0.0"), 0)
         val frameFlow = receiver.start(scope)
         transportReceiver = receiver
+        // Announce our UDP port so the server can address video packets at us.
+        scope.launch(Dispatchers.IO) {
+            controlConnection?.send(
+                ControlMessage.ViewerReady(streamId = descriptor.streamId, viewerUdpPort = receiver.boundPort)
+            )
+        }
         val newDecoder = mediaCodecDecoderFactory(frameSink) {
             controlConnection?.send(ControlMessage.RequestKeyframe(descriptor.streamId))
         }

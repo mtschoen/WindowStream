@@ -1,20 +1,18 @@
-#if WINDOWS
 using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using WindowStream.Core.Session;
 using WindowStream.Core.Transport;
 
-namespace WindowStream.Integration.Tests.Support;
+namespace WindowStream.Core.Session.Adapters;
 
 /// <summary>
 /// Real <see cref="IUdpVideoSender"/> backed by a <see cref="UdpClient"/>.
 /// Serialises each <see cref="FragmentedPacket"/> into a wire-format UDP datagram
-/// (24-byte header followed by payload) and sends it to the destination endpoint.
+/// (24-byte header + payload) and sends it to the destination endpoint.
 /// </summary>
-internal sealed class UdpVideoSenderAdapter : IUdpVideoSender
+public sealed class UdpVideoSenderAdapter : IUdpVideoSender
 {
     private UdpClient? udpClient;
     private IPEndPoint? localEndpoint;
@@ -51,4 +49,3 @@ internal sealed class UdpVideoSenderAdapter : IUdpVideoSender
         return ValueTask.CompletedTask;
     }
 }
-#endif
