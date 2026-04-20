@@ -11,6 +11,18 @@ Pick a window on your PC, encode it live with NVENC, ship the frames over LAN, a
 </p>
 
 <p align="center">
+  <img src="docs/images/quest-grid.jpg" alt="Meta Quest 3 view with two WindowStream panels streaming live PC windows side by side." width="900" />
+  <br />
+  <sub><i>Meta Quest 3, Horizon OS home space. Two PC windows streamed into a side-by-side grid as a 2D floating panel.</i></sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/quest-picker.jpg" alt="Meta Quest 3 view of the WindowStream server picker." width="900" />
+  <br />
+  <sub><i>Meta Quest 3, server picker with both LAN-discovered servers visible.</i></sub>
+</p>
+
+<p align="center">
   <img src="docs/images/fold-grid.png" alt="Two Windows PC windows streaming simultaneously to a Galaxy Z Fold 6, rendered side by side." width="780" />
   <br />
   <sub><i>Two PC windows streamed simultaneously to a Galaxy Z Fold 6. Left panel: this repo's source-code window. Right panel: a live <code>python</code> dashboard on the same PC.</i></sub>
