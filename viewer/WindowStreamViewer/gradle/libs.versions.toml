@@ -9,6 +9,8 @@ androidxCore = "1.15.0"
 androidxLifecycle = "2.8.7"
 jetpackXr = "1.0.0-alpha04"
 junitJupiter = "5.11.3"
+androidxTestExtJunit = "1.2.1"
+androidxTestRunner = "1.6.2"
 mockk = "1.13.13"
 kover = "0.8.3"
 
@@ -26,6 +28,8 @@ androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
 androidx-xr-scenecore = { module = "androidx.xr.scenecore:scenecore", version.ref = "jetpackXr" }
 androidx-xr-compose = { module = "androidx.xr.compose:compose", version.ref = "jetpackXr" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 [plugins]
