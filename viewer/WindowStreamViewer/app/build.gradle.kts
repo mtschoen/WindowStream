@@ -107,6 +107,16 @@ kover {
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder",
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder\$*"
                 )
+                // WindowStreamScene is a Compose-for-XR composable that hosts a SpatialExternalSurface
+                // panel entity. It requires the Jetpack XR runtime (android.xr.runtime) which is not
+                // available in the JVM unit-test environment. The pure dimension-computation helper
+                // (computePanelDimensionsMeters) is extracted as an internal function and is covered
+                // by PanelDimensionsTest. The wildcard pattern captures the Kotlin compiler-generated
+                // inner classes for the composable lambda bodies.
+                classes(
+                    "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt",
+                    "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt\$*"
+                )
             }
         }
         verify {
