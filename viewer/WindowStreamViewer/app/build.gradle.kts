@@ -67,7 +67,18 @@ kover {
                 // Lifecycle entry points are not unit-testable on the JVM.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication",
-                    "com.mtschoen.windowstream.viewer.app.MainActivity"
+                    "com.mtschoen.windowstream.viewer.app.MainActivity",
+                    "com.mtschoen.windowstream.viewer.app.MainActivity\$*"
+                )
+                // Compose UI composables require the Android Compose runtime and cannot
+                // be unit-tested on the JVM. ServerPickerScreen and ConnectedPanelScreen
+                // are thin wrappers over discovered-server state and XR scene composition;
+                // their correctness is verified by manual/emulator testing in Phase 13.
+                classes(
+                    "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt",
+                    "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt\$*",
+                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt",
+                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*"
                 )
                 // The kotlinx-serialization compiler plugin emits $$serializer singleton
                 // objects and $Companion helper classes as infrastructure; they are not
@@ -106,6 +117,19 @@ kover {
                 classes(
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder",
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder\$*"
+                )
+                // ViewerPipeline.Companion.create() constructs ControlClient,
+                // UdpTransportReceiver, and MediaCodecDecoder — all three require Android
+                // runtime or network sockets and cannot be called in JVM unit tests.
+                // Tests construct ViewerPipeline directly via its all-parameters constructor,
+                // injecting mock factories. The Companion object therefore remains uncalled
+                // in the unit-test environment. The connect$2 class is the Kotlin-compiler-
+                // generated continuation for the scope.launch block; it contains a synthetic
+                // resume-path branch unreachable from tests, following the same pattern as
+                // ControlClient$connect$2$sendMessage$2.
+                classes(
+                    "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$Companion",
+                    "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$connect\$2"
                 )
                 // WindowStreamScene is a Compose-for-XR composable that hosts a SpatialExternalSurface
                 // panel entity. It requires the Jetpack XR runtime (android.xr.runtime) which is not
