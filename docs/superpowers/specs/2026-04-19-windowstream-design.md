@@ -50,6 +50,11 @@ These are acceptable for v1 proof-of-concept; later slices address them.
 4. **Panel pose is not persisted.** Reconnect places the panel back at the default pose.
 5. **No authentication or encryption.** Any viewer on the LAN may connect.
 6. **NVENC is required.** No libx264 software fallback; encoder initialization failure is fatal.
+7. **Static windows emit only one frame.** Windows Graphics Capture produces frames on content-change events; a static window (e.g. a Notepad with no cursor / typing) renders once and then silently delivers nothing more. Demo-verified on Windows 11. v1.x fix either enables cursor capture (`CaptureOptions.includeCursor = true`) or calls `RedrawWindow` on a timer. Active-content windows (terminals, video players, anything with cursors or animation) are unaffected.
+8. **PC-side window resize is not yet adaptive.** Encoder dimensions are locked at session start via the probe pattern. Resizing the captured window on the PC causes `sws_scale` to mismatch and the capture pump to die silently. v1.x fix: a supervisor that detects dimension change on `CapturedFrame` and restarts the encode pipeline.
+9. **FFmpeg native DLLs are not bundled.** v1 copies them from OBS Studio (`$ProgramFiles\obs-studio\bin\64bit\`) when present. Machines without OBS set `WINDOWSTREAM_SKIP_NVENC=1` to skip or must place the DLLs manually. v1.x fix: an MSBuild target that downloads from BtbN's FFmpeg-Builds.
+10. **Windows Firewall rules must be added as admin on first run.** TCP + UDP inbound for the CLI's listener ports. `windowstream.exe Allow` rules created by the first-run UAC prompt may not cover OS-assigned ports; explicit port-range rules work. Tracked for an installer / setup script.
+11. **Galaxy XR radio parks while off-head.** The HMD's Wi-Fi stack appears to idle when the proximity sensor reports "off face," even though `dumpsys wifi` reports CONNECTED. Symptom: no packets flow to or from the device. Workaround: wear it or block the proximity sensor. Not our bug; documented for future troubleshooting.
 
 ## Architecture
 
@@ -259,6 +264,7 @@ v1 message types:
 | `STREAM_STARTED` | server → viewer | `{streamId, udpPort, codec, width, height, framesPerSecond, dpiScale?}` | emitted when server picks a window; see DPI handling below |
 | `STREAM_STOPPED` | server → viewer | `{streamId}` | emitted when user stops streaming or switches window |
 | `REQUEST_KEYFRAME` | viewer → server | `{streamId}` | emitted on connect and on decoder reset |
+| `VIEWER_READY` | viewer → server | `{streamId, viewerUdpPort}` | sent by viewer after binding its UDP receiver; server combines with TCP peer IP to register the outgoing video endpoint |
 | `HEARTBEAT` | both | `{}` | 2-second interval; 6-second silence terminates connection |
 | `ERROR` | both | `{code, message}` | fatal to session in v1 |
 
@@ -270,9 +276,15 @@ v1 error codes:
 - `ENCODE_FAILED` — encoder initialization or operation failed
 - `MALFORMED_MESSAGE` — received message could not be parsed
 
+### Viewer endpoint registration
+
+TCP gives the server the viewer's IP; `VIEWER_READY` gives it the viewer's UDP port. On receipt, the server registers `new IPEndPoint(tcpPeerAddress, viewerUdpPort)` as the destination for video packets. Without this message, the server has no way to address UDP output and silently drops encoded chunks. Viewers MUST emit `VIEWER_READY` after binding their UDP receiver; the first `REQUEST_KEYFRAME` may be sent immediately after so the server emits an IDR that arrives at a known endpoint.
+
 ### DPI handling
 
 `width` and `height` in `STREAM_STARTED` are **physical pixel dimensions of the encoded H.264 stream** — exactly what the decoder produces. The server is responsible for reading the source window's DPI (`GetDpiForWindow` on Windows) and configuring the encoder to match WGC's physical output; viewers never compute DPI from logical dimensions.
+
+**Implementation note (hard-won):** `GetWindowRect` and `GetClientRect` both give results that differ from WGC's actual captured frame size by a few pixels (window chrome, shadows, DPI rounding). The server MUST probe WGC for one frame, read the actual `CapturedFrame.widthPixels`/`heightPixels`, and use those dimensions to configure the encoder. Then align DOWN to even for NVENC's NV12 requirement — aligning up causes `sws_scale` to read past the source stride and either crash or hang.
 
 `dpiScale` is an optional informational float (e.g. `1.0`, `1.25`, `1.5`) reporting the source monitor's DPI divided by 96. Viewers may use it to pick a reasonable panel size in meters (a small logical window should be a small XR panel) but are not required to. If absent, viewers pick any sensible default.
 

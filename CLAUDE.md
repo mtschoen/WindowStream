@@ -32,6 +32,57 @@ build below 100% line or branch coverage on `WindowStream.Core`.
 - `async`/`await` for I/O; `CancellationToken` threaded through public async methods.
 - Commit messages in imperative mood. Small, frequent commits.
 
+## Running the demo end-to-end
+
+### Server side (Windows)
+
+1. Install OBS Studio (provides FFmpeg native DLLs) OR manually drop `avcodec-61.dll`, `avutil-59.dll`, `swscale-8.dll`, `swresample-5.dll`, `zlib.dll`, `libx264-164.dll` next to the CLI output.
+2. First run adds firewall rules as admin (UAC). If auto-prompt doesn't cover it, run in an elevated PowerShell:
+   ```powershell
+   New-NetFirewallRule -DisplayName WindowStream-Demo-TCP -Direction Inbound -LocalPort <tcpPort> -Protocol TCP -Action Allow -Profile Any
+   New-NetFirewallRule -DisplayName WindowStream-Demo-UDP -Direction Inbound -LocalPort <udpPort> -Protocol UDP -Action Allow -Profile Any
+   ```
+   (OS assigns ports per session; a broader rule covering the binary is cleaner once we productize.)
+3. Start the server:
+   ```bash
+   dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
+   # pick an HWND with actively-updating content
+   dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve --hwnd <handle>
+   ```
+4. Note the IP (your LAN address) and the TCP port in the server banner.
+
+### Viewer side (Galaxy XR via adb)
+
+1. Enable developer mode + wireless debugging on the headset.
+2. Pair over Wi-Fi once, then for subsequent sessions:
+   ```bash
+   adb connect <xr-ip>:5555
+   adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/debug/app-debug.apk
+   adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
+       --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
+   ```
+3. The HMD shows a 2D panel streaming the PC window. Force-stop with:
+   ```bash
+   adb shell am force-stop com.mtschoen.windowstream.viewer
+   ```
+
+### Gotchas — capture target selection
+
+- **Static windows emit ≤1 frame.** WGC only delivers frames on content change. Notepad with no typing + no cursor = one frame then silence. Pick a window with active content (terminal with spinner, video player, editor with cursor) or v1.x will need to enable cursor capture / timed RedrawWindow.
+- **Windows 11 Store-packaged apps** (Notepad, Terminal) use a launcher process that exits immediately; `Process.Start` returns a stub. Not a demo issue but affects test cleanup — snapshot existing PIDs, kill new ones in `finally`.
+
+### Gotchas — Galaxy XR
+
+- **Radio parks off-head.** HMD Wi-Fi stops routing packets when the proximity sensor reports "off face." Wear it or block the sensor with a card to keep it alive during multi-minute tests. Don't leave the card there long — thermal risk.
+- **Wi-Fi after OS update.** Toggle Wi-Fi off/on once after a big update — the driver can be wedged with a valid IP but no actual traffic.
+- **adb over Wi-Fi across sleep** — connection may drop when HMD sleeps. Reconnect with `adb connect <ip>:5555` after waking.
+
+### Debugging tips
+
+- Server has `Console.Error.WriteLine` diagnostics for capture/encode pump lifecycle, VIEWER_READY registration, per-chunk send counts. Redirect `2>&1` to capture.
+- Viewer logs: `adb logcat -d --pid=$(adb shell pidof com.mtschoen.windowstream.viewer) -s WindowStreamDemo:V MediaCodec:V MediaCodecDecoder:V *:E` filters to relevant output.
+- Frame flow check: `adb shell cat /proc/net/dev | grep wlan0` and watch RX bytes climb; steady 0 → server isn't actually sending → likely VIEWER_READY / endpoint issue.
+
 ## Dependency report
 
 Generate with:
