@@ -5,6 +5,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>WindowStream.Integration.Tests</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,10 +14,49 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="Makaretu.Dns" Version="2.0.1" />
     <PackageReference Include="Makaretu.Dns.Multicast" Version="0.27.0" />
+    <PackageReference Include="FFmpeg.AutoGen" Version="7.0.0" />
+    <PackageReference Include="FFmpeg.AutoGen.Bindings.DynamicallyLinked" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WindowStream.Core\WindowStream.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Copy FFmpeg 7.x native DLLs from OBS Studio so FFmpegNativeLoader can find them at test time.
+       This path is machine-specific to the developer's Windows machine. On CI/CD without OBS,
+       set WINDOWSTREAM_SKIP_NVENC=1 to skip the encoder integration tests. -->
+  <PropertyGroup>
+    <ObsFfmpegDir>$(ProgramFiles)\obs-studio\bin\64bit</ObsFfmpegDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(ObsFfmpegDir)\avutil-59.dll')">
+    <None Include="$(ObsFfmpegDir)\avcodec-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avdevice-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avfilter-10.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avformat-61.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\avutil-59.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\swresample-5.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\swscale-8.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Dependency DLLs that OBS's avcodec-61 links against -->
+    <None Include="$(ObsFfmpegDir)\zlib.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(ObsFfmpegDir)\libx264-164.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
