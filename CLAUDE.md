@@ -37,34 +37,54 @@ build below 100% line or branch coverage on `WindowStream.Core`.
 ### Server side (Windows)
 
 1. Install OBS Studio (provides FFmpeg native DLLs) OR manually drop `avcodec-61.dll`, `avutil-59.dll`, `swscale-8.dll`, `swresample-5.dll`, `zlib.dll`, `libx264-164.dll` next to the CLI output.
-2. First run adds firewall rules as admin (UAC). If auto-prompt doesn't cover it, run in an elevated PowerShell:
+2. **Network profile must be `Private`** on the LAN adapter — Windows Firewall blocks outbound mDNS multicast on `Public`, so the viewer never discovers the server:
    ```powershell
-   New-NetFirewallRule -DisplayName WindowStream-Demo-TCP -Direction Inbound -LocalPort <tcpPort> -Protocol TCP -Action Allow -Profile Any
-   New-NetFirewallRule -DisplayName WindowStream-Demo-UDP -Direction Inbound -LocalPort <udpPort> -Protocol UDP -Action Allow -Profile Any
+   Set-NetConnectionProfile -Name <ssid> -NetworkCategory Private
    ```
-   (OS assigns ports per session; a broader rule covering the binary is cleaner once we productize.)
-3. Start the server:
+3. First run adds firewall rules as admin (UAC). If auto-prompt doesn't cover it, run in an elevated PowerShell:
+   ```powershell
+   New-NetFirewallRule -DisplayName WindowStream-Session-TCP-<port> -Direction Inbound -LocalPort <tcpPort> -Protocol TCP -Action Allow -Profile Any
+   New-NetFirewallRule -DisplayName WindowStream-Session-UDP-<port> -Direction Inbound -LocalPort <udpPort> -Protocol UDP -Action Allow -Profile Any
+   ```
+   (OS assigns ports per session; a broader binary-based rule covering `windowstream.exe` is cleaner. `/wrap` removes `WindowStream-Session-*` rules at session end.)
+4. Start the server:
    ```bash
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
-   # pick an HWND with actively-updating content
+   # pick an HWND with actively-updating content AND even width/height
+   #   (odd-height windows crash the sws_scale pump — see Gotchas)
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve --hwnd <handle>
    ```
-4. Note the IP (your LAN address) and the TCP port in the server banner.
+   Server advertises itself via mDNS as `<MachineName>-<TcpPort>._windowstream._tcp` so the viewer's picker finds it automatically. Run the command N times with N different HWNDs for multi-window.
+5. Note the IP (your LAN address) and the TCP port in the server banner.
 
-### Viewer side (Galaxy XR via adb)
+### Viewer side — two Gradle flavors
 
-1. Enable developer mode + wireless debugging on the headset.
-2. Pair over Wi-Fi once, then for subsequent sessions:
-   ```bash
-   adb connect <xr-ip>:5555
-   adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/debug/app-debug.apk
-   adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
-       --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
-   ```
-3. The HMD shows a 2D panel streaming the PC window. Force-stop with:
-   ```bash
-   adb shell am force-stop com.mtschoen.windowstream.viewer
-   ```
+Build the flavor you want. APK paths changed with the portable-flavor split (commit `211bc15`); the pre-flavor `app-debug.apk` no longer exists.
+
+**Portable flavor** (Quest 3, phones, tablets, Fold, Galaxy XR as 2D window):
+```bash
+./gradlew :app:assemblePortableDebug
+adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk
+# Launcher: tap the WindowStream Viewer icon → multi-select picker → Connect.
+# Or bypass the picker (adb-only) with explicit IP:
+adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
+    --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
+# Multi-server via adb:
+adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
+    --esa streamHosts "<ip1>,<ip2>" --eia streamPorts "<port1>,<port2>"
+```
+
+**GXR flavor** (Samsung Galaxy XR immersive spatial panel):
+```bash
+./gradlew :app:assembleGxrDebug
+adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/gxr/debug/app-gxr-debug.apk
+```
+⚠ Icon-tap currently crashes on Galaxy XR's current OS — Jetpack XR alpha04 × system `XrExtensions` ABI mismatch (`NoSuchMethodError: createSplitEngineBridge`). Use the portable-flavor `DemoActivity` adb-launch pattern above as a workaround until the Jetpack XR dependency is bumped. See memory `project_gxr_jetpack_xr_alpha04_broken` and `docs/superpowers/specs/2026-04-20-multi-window-followups.md`.
+
+Force-stop any flavor with:
+```bash
+adb shell am force-stop com.mtschoen.windowstream.viewer
+```
 
 ### Gotchas — capture target selection
 

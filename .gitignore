@@ -80,6 +80,7 @@ desktop.ini
 # ---------- Claude / task scripts ----------
 .claude/scripts/
 .claude/worktrees/
+.claude/settings.local.json
 
 # ---------- Coverage artifacts ----------
 coverage.json
