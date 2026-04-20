@@ -5,8 +5,6 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
-    <uses-feature android:name="android.software.xr.immersive" android:required="true" />
-
     <application
         android:name=".app.WindowStreamViewerApplication"
         android:allowBackup="false"
@@ -14,12 +12,7 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".app.MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="true" />
         <activity
             android:name=".demo.DemoActivity"
             android:exported="true" />

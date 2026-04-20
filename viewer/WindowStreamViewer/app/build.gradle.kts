@@ -19,6 +19,21 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Two flavors: `portable` runs on Quest / phones / tablets / Galaxy XR as
+    // a plain 2D window (no Jetpack XR at runtime). `gxr` keeps the v1
+    // immersive panel experience for Samsung Galaxy XR. Both flavors share
+    // src/main/; only the LAUNCHER activity and xr.immersive feature
+    // declaration differ (see flavor-specific AndroidManifest.xml files).
+    flavorDimensions += "target"
+    productFlavors {
+        create("portable") {
+            dimension = "target"
+        }
+        create("gxr") {
+            dimension = "target"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -89,10 +104,18 @@ kover {
         filters {
             excludes {
                 // Lifecycle entry points are not unit-testable on the JVM.
+                // ServerSelectionActivity (portable flavor) is the launcher
+                // activity for non-XR devices; it drives mDNS discovery and
+                // hands off to DemoActivity on server pick. Same rationale as
+                // MainActivity — Android lifecycle classes require the
+                // emulator / device runtime and are covered by manual /
+                // integration testing.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication",
                     "com.mtschoen.windowstream.viewer.app.MainActivity",
-                    "com.mtschoen.windowstream.viewer.app.MainActivity\$*"
+                    "com.mtschoen.windowstream.viewer.app.MainActivity\$*",
+                    "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity",
+                    "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity\$*"
                 )
                 // Compose UI composables require the Android Compose runtime and cannot
                 // be unit-tested on the JVM. ServerPickerScreen and ConnectedPanelScreen
@@ -142,6 +165,20 @@ kover {
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder",
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder\$*"
                 )
+                // DemoActivity + DirectSurfaceFrameSink are Android lifecycle classes:
+                // DemoActivity hosts a SurfaceView, dispatches keyboard events, and drives
+                // the viewer pipeline. DirectSurfaceFrameSink wraps an Android Surface.
+                // Both require the Android runtime. TEST-REPORT.md endorses excluding
+                // these with the same rationale as MainActivity; tests are tracked there
+                // as future work. ControlMessage.KeyEvent (the V2 keyboard relay message)
+                // currently has no round-trip serialization test — also tracked in
+                // TEST-REPORT.md; exclude until paired with ViewerReady round-trip tests.
+                classes(
+                    "com.mtschoen.windowstream.viewer.demo.DemoActivity",
+                    "com.mtschoen.windowstream.viewer.demo.DemoActivity\$*",
+                    "com.mtschoen.windowstream.viewer.demo.DirectSurfaceFrameSink",
+                    "com.mtschoen.windowstream.viewer.control.ControlMessage\$KeyEvent"
+                )
                 // ViewerPipeline.Companion.create() constructs ControlClient,
                 // UdpTransportReceiver, and MediaCodecDecoder — all three require Android
                 // runtime or network sockets and cannot be called in JVM unit tests.
@@ -153,7 +190,8 @@ kover {
                 // ControlClient$connect$2$sendMessage$2.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$Companion",
-                    "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$connect\$2"
+                    "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$connect\$2",
+                    "com.mtschoen.windowstream.viewer.app.ViewerPipeline\$beginStreaming\$1"
                 )
                 // WindowStreamScene is a Compose-for-XR composable that hosts a SpatialExternalSurface
                 // panel entity. It requires the Jetpack XR runtime (android.xr.runtime) which is not
