@@ -256,7 +256,7 @@ v1 message types:
 |---|---|---|---|
 | `HELLO` | viewer → server | `{viewerVersion, displayCapabilities}` | first message after connect |
 | `SERVER_HELLO` | server → viewer | `{serverVersion, activeStream?}` | response to HELLO |
-| `STREAM_STARTED` | server → viewer | `{streamId, udpPort, codec, width, height, framesPerSecond}` | emitted when server picks a window |
+| `STREAM_STARTED` | server → viewer | `{streamId, udpPort, codec, width, height, framesPerSecond, dpiScale?}` | emitted when server picks a window; see DPI handling below |
 | `STREAM_STOPPED` | server → viewer | `{streamId}` | emitted when user stops streaming or switches window |
 | `REQUEST_KEYFRAME` | viewer → server | `{streamId}` | emitted on connect and on decoder reset |
 | `HEARTBEAT` | both | `{}` | 2-second interval; 6-second silence terminates connection |
@@ -269,6 +269,14 @@ v1 error codes:
 - `CAPTURE_FAILED` — WGC could not attach
 - `ENCODE_FAILED` — encoder initialization or operation failed
 - `MALFORMED_MESSAGE` — received message could not be parsed
+
+### DPI handling
+
+`width` and `height` in `STREAM_STARTED` are **physical pixel dimensions of the encoded H.264 stream** — exactly what the decoder produces. The server is responsible for reading the source window's DPI (`GetDpiForWindow` on Windows) and configuring the encoder to match WGC's physical output; viewers never compute DPI from logical dimensions.
+
+`dpiScale` is an optional informational float (e.g. `1.0`, `1.25`, `1.5`) reporting the source monitor's DPI divided by 96. Viewers may use it to pick a reasonable panel size in meters (a small logical window should be a small XR panel) but are not required to. If absent, viewers pick any sensible default.
+
+DPI is a cross-platform squishy problem — Windows' per-monitor-v2 manifesting, macOS' backing-scale-factor on Retina, GTK/Qt/MAUI/WinForms each handling scaling differently. v1 does not try to solve consistency across hosts. The protocol advertises the best information the server has; expect per-platform tuning knobs in later slices. Tests should cover at least 100%, 125%, 150%, and 175% DPI configurations on Windows.
 
 ### UDP video channel
 
