@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -119,6 +120,9 @@ public sealed class SessionHost : IAsyncDisposable
 
                 byte[] nalUnit = chunk.payload.ToArray();
                 int currentSequence = sequence++;
+                long fragWallClockMilliseconds = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+                System.Console.Error.WriteLine(
+                    $"[FRAMECOUNT] stage=frag ptsUs={chunk.presentationTimestampMicroseconds} wallMs={fragWallClockMilliseconds}");
                 foreach (FragmentedPacket packet in fragmenter.Fragment(
                     streamId: options.StreamId,
                     sequence: currentSequence,
