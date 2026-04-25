@@ -49,6 +49,10 @@ class MediaCodecDecoder(
                 mediaCodec: MediaCodec, outputBufferIndex: Int, bufferInformation: MediaCodec.BufferInfo
             ) {
                 mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
+                Log.d(
+                    "FRAMECOUNT",
+                    "stage=dec ptsUs=${bufferInformation.presentationTimeUs} wallMs=${System.currentTimeMillis()}"
+                )
                 frameSink.onFrameRendered(bufferInformation.presentationTimeUs)
             }
             override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) {
@@ -72,6 +76,10 @@ class MediaCodecDecoder(
 
         decodeJob = scope.launch(Dispatchers.IO) {
             frameFlow.collect { encodedFrame ->
+                Log.d(
+                    "FRAMECOUNT",
+                    "stage=reasm ptsUs=${encodedFrame.presentationTimestampMicroseconds} wallMs=${System.currentTimeMillis()}"
+                )
                 val parsedParameterSets: ParameterSets = ParameterSetParser.extract(encodedFrame.payload)
                 if (parsedParameterSets.sequenceParameterSet != null && parsedParameterSets.pictureParameterSet != null) {
                     cachedParameterSets = parsedParameterSets
