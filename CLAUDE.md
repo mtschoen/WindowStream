@@ -100,7 +100,7 @@ adb shell am force-stop com.mtschoen.windowstream.viewer
 ### Debugging tips
 
 - Server has `Console.Error.WriteLine` diagnostics for capture/encode pump lifecycle, VIEWER_READY registration, per-chunk send counts. Redirect `2>&1` to capture.
-- Viewer logs: `adb logcat -d --pid=$(adb shell pidof com.mtschoen.windowstream.viewer) -s WindowStreamDemo:V MediaCodec:V MediaCodecDecoder:V *:E` filters to relevant output.
+- Viewer logs: `adb logcat -d --pid=$(adb shell pidof com.mtschoen.windowstream.viewer) -s WindowStreamDemo:V MediaCodec:V MediaCodecDecoder:V FRAMECOUNT:V *:E` filters to relevant output. The `FRAMECOUNT` tag emits one line per frame at `stage=reasm` (reassembler complete) and `stage=dec` (output buffer rendered); pair with server stderr `[FRAMECOUNT]` lines (`stage=enc`/`stage=frag`) to measure pipeline-depth latency. PTS in microseconds is the join key across server/viewer.
 - Frame flow check: `adb shell cat /proc/net/dev | grep wlan0` and watch RX bytes climb; steady 0 → server isn't actually sending → likely VIEWER_READY / endpoint issue.
 
 ## Dependency report
