@@ -157,13 +157,21 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         SwsContext* scaleContext = (SwsContext*)softwareScaleContextPointer;
 
         int scaleResult;
+        // sws_scale's srcSliceH must be <= the source height passed to
+        // sws_getContext, otherwise it crashes with "Slice parameters 0, N
+        // are invalid". The CLI rounds probe dims down to even before
+        // configuring the encoder, so a frame whose actual height is odd
+        // (probe 1182x891 -> encoder configured at 1182x890) used to fault
+        // on the very first frame. Clamp to the configured height; matches
+        // the spec's "round down -- we lose at most one row".
+        int sourceSliceHeight = Math.Min(frame.heightPixels, options!.heightPixels);
         fixed (byte* sourcePointer = frame.pixelBuffer.Span)
         {
             byte*[] sourceData = new byte*[4] { sourcePointer, null, null, null };
             int[] sourceStride = new int[4] { frame.rowStrideBytes, 0, 0, 0 };
             scaleResult = ffmpeg.sws_scale(
                 scaleContext,
-                sourceData, sourceStride, 0, frame.heightPixels,
+                sourceData, sourceStride, 0, sourceSliceHeight,
                 stagingFrame->data, stagingFrame->linesize);
         }
         if (scaleResult < 0)
