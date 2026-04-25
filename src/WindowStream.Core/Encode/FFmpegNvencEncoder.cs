@@ -91,6 +91,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         ffmpeg.av_opt_set(context->priv_data, "tune", "ll", 0);
         ffmpeg.av_opt_set(context->priv_data, "zerolatency", "1", 0);
         ffmpeg.av_opt_set(context->priv_data, "rc", "cbr", 0);
+        ffmpeg.av_opt_set(context->priv_data, "surfaces", "1", 0);
 
         int openResult = ffmpeg.avcodec_open2(context, codec, null);
         if (openResult < 0)

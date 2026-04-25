@@ -30,7 +30,7 @@ No new files. No tests added (verification is end-to-end manual observation per 
 **Files:**
 - Modify: `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs` (imports at top; receive-packet loop in `EncodeOnThread` near lines 192-211)
 
-- [ ] **Step 1: Add `using System.Diagnostics;` import**
+- [x] **Step 1: Add `using System.Diagnostics;` import**
 
 Open `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs`. The current imports already include `System.Diagnostics.CodeAnalysis` but **not** `System.Diagnostics` itself. `Stopwatch` lives in the latter. Add it after the existing `System.Diagnostics.CodeAnalysis` line so the block reads:
 
@@ -48,7 +48,7 @@ using FFmpeg.AutoGen;
 using WindowStream.Core.Capture;
 ```
 
-- [ ] **Step 2: Insert the log line in the receive-packet loop**
+- [x] **Step 2: Insert the log line in the receive-packet loop**
 
 Locate this block in `EncodeOnThread` (around lines 204-210):
 
@@ -81,19 +81,19 @@ Notes:
 - The enclosing method is already annotated `[ExcludeFromCodeCoverage]` (FFmpeg native path), so the new line inherits the exclusion — coverage gate is unaffected.
 - Variable name uses full words per project convention. The log key `wallMs=` stays terse for greppability — log keys are output format, not code identifiers.
 
-- [ ] **Step 3: Build to confirm the file compiles**
+- [x] **Step 3: Build to confirm the file compiles**
 
 Run: `dotnet build src/WindowStream.Core/WindowStream.Core.csproj`
 
 Expected: build succeeds with no errors.
 
-- [ ] **Step 4: Run the full test suite to confirm nothing regressed**
+- [x] **Step 4: Run the full test suite to confirm nothing regressed**
 
 Run: `dotnet test`
 
 Expected: all tests pass; coverage gate (100% line + branch on `WindowStream.Core`) still passes. The single new line is unconditional (no branches) and lives inside `[ExcludeFromCodeCoverage]`, so it does not move coverage numbers.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs
@@ -117,7 +117,7 @@ EOF
 **Files:**
 - Modify: `src/WindowStream.Core/Session/SessionHost.cs` (imports at top; `RunEncodePumpAsync` near lines 99-142)
 
-- [ ] **Step 1: Add `using System.Diagnostics;` import**
+- [x] **Step 1: Add `using System.Diagnostics;` import**
 
 Open `src/WindowStream.Core/Session/SessionHost.cs`. Current imports do not include `System.Diagnostics`. Add it so the block reads:
 
@@ -133,7 +133,7 @@ using WindowStream.Core.Protocol;
 using WindowStream.Core.Transport;
 ```
 
-- [ ] **Step 2: Insert the log line just before the fragmenter `foreach`**
+- [x] **Step 2: Insert the log line just before the fragmenter `foreach`**
 
 Locate this block in `RunEncodePumpAsync` (around lines 120-130):
 
@@ -174,19 +174,19 @@ Notes:
 - Variable name `fragWallClockMilliseconds` follows full-word convention. Same `wallMs=` log key for greppability across stages.
 - This line is unconditional (no branches), so the 100% branch-coverage gate is unaffected. Existing integration tests exercise this path; line coverage will be picked up automatically.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `dotnet build`
 
 Expected: build succeeds.
 
-- [ ] **Step 4: Run the full test suite**
+- [x] **Step 4: Run the full test suite**
 
 Run: `dotnet test`
 
 Expected: all tests pass; coverage still 100% on `WindowStream.Core`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/WindowStream.Core/Session/SessionHost.cs
@@ -209,7 +209,7 @@ EOF
 **Files:**
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt` (imports already include `android.util.Log`; flow collect near line 73, output callback near line 48)
 
-- [ ] **Step 1: Insert `stage=reasm` log at the top of `frameFlow.collect`**
+- [x] **Step 1: Insert `stage=reasm` log at the top of `frameFlow.collect`**
 
 Locate the `decodeJob` block (around lines 73-90):
 
@@ -241,7 +241,7 @@ Add the log line as the first statement inside the `frameFlow.collect` lambda:
 
 `EncodedFrame.presentationTimestampMicroseconds` is the `Long` PTS field already used by `queueInputBuffer` lower in the same method — same value, same units as the server's `stage=enc` PTS, so direct PTS-equality joins are valid.
 
-- [ ] **Step 2: Insert `stage=dec` log in `onOutputBufferAvailable`**
+- [x] **Step 2: Insert `stage=dec` log in `onOutputBufferAvailable`**
 
 Locate the existing callback (around lines 48-53):
 
@@ -269,7 +269,7 @@ Insert one line between `releaseOutputBuffer` and `onFrameRendered`:
             }
 ```
 
-- [ ] **Step 3: Build the viewer to confirm it still compiles**
+- [x] **Step 3: Build the viewer to confirm it still compiles**
 
 Run from repo root:
 
@@ -279,7 +279,7 @@ cd viewer/WindowStreamViewer && ./gradlew :app:compilePortableDebugKotlin
 
 Expected: compilation succeeds.
 
-- [ ] **Step 4: Run viewer unit tests**
+- [x] **Step 4: Run viewer unit tests**
 
 Run from `viewer/WindowStreamViewer`:
 
@@ -289,7 +289,7 @@ Run from `viewer/WindowStreamViewer`:
 
 Expected: all unit tests pass. Both new log calls are unconditional (no branches), so Kover branch-coverage is unaffected. There is no direct unit test for `MediaCodecDecoder` (it is exercised by `LoopbackEndToEndTest` instrumented test) so no test file needs updating.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt
@@ -314,7 +314,7 @@ EOF
 **Files:**
 - Modify: `CLAUDE.md` line 103
 
-- [ ] **Step 1: Edit the logcat filter command**
+- [x] **Step 1: Edit the logcat filter command**
 
 The current line in `CLAUDE.md` reads:
 
@@ -328,7 +328,7 @@ Replace with:
 - Viewer logs: `adb logcat -d --pid=$(adb shell pidof com.mtschoen.windowstream.viewer) -s WindowStreamDemo:V MediaCodec:V MediaCodecDecoder:V FRAMECOUNT:V *:E` filters to relevant output. The `FRAMECOUNT` tag emits one line per frame at `stage=reasm` (reassembler complete) and `stage=dec` (output buffer rendered); pair with server stderr `[FRAMECOUNT]` lines (`stage=enc`/`stage=frag`) to measure pipeline-depth latency. PTS in microseconds is the join key across server/viewer.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add CLAUDE.md
@@ -450,7 +450,7 @@ These are the **before** decompositions for comparison after Phase 2.
 **Files:**
 - Modify: `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs` `OpenCodecAndAssignOptions` (around lines 89-92)
 
-- [ ] **Step 1: Add the `surfaces=1` option**
+- [x] **Step 1: Add the `surfaces=1` option**
 
 Locate the existing block:
 
@@ -512,7 +512,7 @@ EOF
 **Files:**
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt` (around lines 38-43)
 
-- [ ] **Step 1: Set `KEY_LOW_LATENCY` on the `MediaFormat` before `configure`**
+- [x] **Step 1: Set `KEY_LOW_LATENCY` on the `MediaFormat` before `configure`**
 
 Locate this block in `start`:
 
