@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -206,6 +207,9 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
             bool isKeyframe = (packet->flags & ffmpeg.AV_PKT_FLAG_KEY) != 0;
             long timestampMicroseconds = 1_000_000L * packet->pts
                 * context->time_base.num / context->time_base.den;
+            long wallClockMilliseconds = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+            System.Console.Error.WriteLine(
+                $"[FRAMECOUNT] stage=enc ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
             chunkChannel.Writer.TryWrite(new EncodedChunk(managed, isKeyframe, timestampMicroseconds));
             ffmpeg.av_packet_unref(packet);
         }
