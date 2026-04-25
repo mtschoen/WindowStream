@@ -48,11 +48,11 @@ class MediaCodecDecoder(
             override fun onOutputBufferAvailable(
                 mediaCodec: MediaCodec, outputBufferIndex: Int, bufferInformation: MediaCodec.BufferInfo
             ) {
-                mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
                 Log.d(
                     "FRAMECOUNT",
                     "stage=dec ptsUs=${bufferInformation.presentationTimeUs} wallMs=${System.currentTimeMillis()}"
                 )
+                mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
                 frameSink.onFrameRendered(bufferInformation.presentationTimeUs)
             }
             override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) {
