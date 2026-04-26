@@ -12,6 +12,17 @@
 
 ---
 
+## Status (closed 2026-04-26)
+
+Tasks 1-7 complete and committed on `main`. Task 8 (Phase 3 end-to-end verification on real hardware) **partially complete**:
+
+- ✅ **Server-side** validated by direct measurement on Fold 6: NVENC queue depth dropped from 3 frames to 1, `cap → enc` median 751ms → 252ms, matching the user's "4-5 keypresses behind" symptom and confirming the fix. Result section in spec captures the numbers.
+- ❌ **GXR end-to-end subjective test** blocked by a separately-tracked regression: `DemoActivity` reliably enters STOPPED state ~150ms after launch on Galaxy XR (same APK works on Fold 6). Documented as memory entry `project_gxr_demoactivity_lifecycle_regression` with a suggested bisect from commit `7079049 v1 thesis proved end-to-end: Windows → Galaxy XR streaming works!`. Treat that bisect as the next-session starting point.
+
+A bonus side fix that landed during measurement work: `d5a7f1c fix(encoder): clamp sws_scale srcSliceH to configured height` — unblocks any odd-dimensional capture target.
+
+---
+
 ## File-by-file scope
 
 | File | Change |
