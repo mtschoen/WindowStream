@@ -73,12 +73,21 @@ public sealed class SessionHost : IAsyncDisposable
     private async Task RunCapturePumpAsync(CancellationToken cancellationToken)
     {
         int frameCount = 0;
+        long captureSequence = 0;
         try
         {
             await using IWindowCapture capture = captureSource.Start(targetWindow, captureOptions, cancellationToken);
             System.Console.Error.WriteLine("[SessionHost] capture pump started");
             await foreach (CapturedFrame frame in capture.Frames.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
+                // stage=cap fires once per WGC-delivered frame, BEFORE the encoder
+                // sees it. Combined with stage=enc this exposes NVENC's internal
+                // input-surface queue depth, which is invisible to PTS-based
+                // measurement (PTS is assigned at encode emission, not capture).
+                long captureWallClockMilliseconds = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+                System.Console.Error.WriteLine(
+                    $"[FRAMECOUNT] stage=cap captureSequence={captureSequence} wallMs={captureWallClockMilliseconds}");
+                captureSequence++;
                 if (frameCount < 3 || frameCount % 30 == 0)
                 {
                     System.Console.Error.WriteLine($"[SessionHost] capture frame #{frameCount} {frame.widthPixels}x{frame.heightPixels}");
