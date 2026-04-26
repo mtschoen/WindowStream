@@ -43,12 +43,27 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
         int physicalHeight = probeHeight - (probeHeight % 2);
         output.WriteLine($"windowstream: probed {probeWidth}x{probeHeight}, encoding at {physicalWidth}x{physicalHeight}");
 
+        // GOP length is the IDR-keyframe interval (frames between forced keyframes).
+        // Default 30 = ~1 keyframe per second at 30fps. Keyframes are 5-10x larger
+        // than P-frames; aggressive GOP (e.g. =2 from earlier) packs bitrate into
+        // bursts that increase per-frame transit/decode jitter. The safety
+        // keyframe path (safetyKeyframeIntervalSeconds=1) still forces a keyframe
+        // every second as recovery floor regardless of GOP. Override via
+        // WINDOWSTREAM_NVENC_GOP if a source needs faster recovery from packet loss.
+        int gopLength = 30;
+        string? gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
+        if (gopOverride is not null && int.TryParse(gopOverride, out int parsedGop) && parsedGop >= 1)
+        {
+            gopLength = parsedGop;
+        }
+        output.WriteLine($"windowstream: gop_size={gopLength}");
+
         EncoderOptions encoderOptions = new EncoderOptions(
             widthPixels: physicalWidth,
             heightPixels: physicalHeight,
             framesPerSecond: 30,
             bitrateBitsPerSecond: 6_000_000,
-            groupOfPicturesLength: 2,
+            groupOfPicturesLength: gopLength,
             safetyKeyframeIntervalSeconds: 1);
 
         SessionHostOptions hostOptions = new SessionHostOptions(
