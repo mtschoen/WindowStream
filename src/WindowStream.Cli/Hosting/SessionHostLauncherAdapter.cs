@@ -56,13 +56,26 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
         {
             gopLength = parsedGop;
         }
-        output.WriteLine($"windowstream: gop_size={gopLength}");
+
+        // Capture & encode framerate. Default 60 cuts the inherent frame-period
+        // jitter floor from 33ms to 16ms when the source actually renders that
+        // fast (Unity Editor, games). Bandwidth scales linearly so we bump
+        // bitrate proportionally to keep per-frame quality. Override via
+        // WINDOWSTREAM_NVENC_FPS for sources that don't benefit (text terminals).
+        int framesPerSecond = 60;
+        string? fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
+        if (fpsOverride is not null && int.TryParse(fpsOverride, out int parsedFps) && parsedFps >= 1)
+        {
+            framesPerSecond = parsedFps;
+        }
+        int bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
+        output.WriteLine($"windowstream: gop_size={gopLength} fps={framesPerSecond} bitrate={bitrateBitsPerSecond}");
 
         EncoderOptions encoderOptions = new EncoderOptions(
             widthPixels: physicalWidth,
             heightPixels: physicalHeight,
-            framesPerSecond: 30,
-            bitrateBitsPerSecond: 6_000_000,
+            framesPerSecond: framesPerSecond,
+            bitrateBitsPerSecond: bitrateBitsPerSecond,
             groupOfPicturesLength: gopLength,
             safetyKeyframeIntervalSeconds: 1);
 
@@ -86,7 +99,7 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
             udpSender: udpSender,
             timeProvider: TimeProvider.System);
 
-        CaptureOptions captureOptions = new CaptureOptions(targetFramesPerSecond: 30, includeCursor: false);
+        CaptureOptions captureOptions = new CaptureOptions(targetFramesPerSecond: framesPerSecond, includeCursor: false);
 
         await sessionHost.StartAsync(
             window: handle,
