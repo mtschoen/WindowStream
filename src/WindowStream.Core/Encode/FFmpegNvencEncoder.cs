@@ -88,7 +88,16 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         context->max_b_frames = 0;
 
         ffmpeg.av_opt_set(context->priv_data, "preset", "p1", 0);
-        ffmpeg.av_opt_set(context->priv_data, "tune", "ll", 0);
+        // tune is read from env so the operator can A/B test ll vs ull without rebuilding.
+        // Default = ull (ultra-low-latency). Measured improvement vs ll on Unity 4K → GXR:
+        // server cap stdev 101ms → 9ms, viewer reasm p99 577ms → 40ms, cap→dec max 185ms → 96ms.
+        // Mechanism: ull disables enough prediction/rate-control machinery that every frame
+        // encodes in a similar fixed time, so NVENC stops back-pressuring the WGC capture
+        // pump and the entire pipeline runs at smooth ~28ms intervals. Set
+        // WINDOWSTREAM_NVENC_TUNE=ll to fall back if visual quality regresses on a source.
+        string tune = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_TUNE") ?? "ull";
+        ffmpeg.av_opt_set(context->priv_data, "tune", tune, 0);
+        Console.Error.WriteLine($"[FFmpegNvencEncoder] tune={tune}");
         ffmpeg.av_opt_set(context->priv_data, "zerolatency", "1", 0);
         ffmpeg.av_opt_set(context->priv_data, "rc", "cbr", 0);
         // Cap NVENC's input surface queue to its minimum. With the default
