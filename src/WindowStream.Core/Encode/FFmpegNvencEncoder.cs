@@ -91,6 +91,12 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         ffmpeg.av_opt_set(context->priv_data, "tune", "ll", 0);
         ffmpeg.av_opt_set(context->priv_data, "zerolatency", "1", 0);
         ffmpeg.av_opt_set(context->priv_data, "rc", "cbr", 0);
+        // Cap NVENC's input surface queue to its minimum. With the default
+        // (~4 surfaces), discrete-event capture (typing) shows 3 frames
+        // permanently buffered inside the encoder — measured 751ms cap->enc
+        // median lag at 250ms event spacing, perfectly matching the user-felt
+        // "4-5 keypresses behind" symptom.
+        ffmpeg.av_opt_set(context->priv_data, "surfaces", "1", 0);
 
         int openResult = ffmpeg.avcodec_open2(context, codec, null);
         if (openResult < 0)
