@@ -1,7 +1,9 @@
 package com.mtschoen.windowstream.viewer.demo
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -89,6 +91,7 @@ class DemoActivity : Activity() {
     private lateinit var softInputEditText: EditText
     private lateinit var inputPreviewTextView: TextView
     private var previousSoftInputLength: Int = 0
+    private var lowLatencyWifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -161,6 +164,21 @@ class DemoActivity : Activity() {
             setOnClickListener { toggleSoftKeyboard() }
         }
         setContentView(rootLayout)
+
+        // Hold a high-perf WifiLock for the entire streaming session. Goal is
+        // to suppress WiFi power-save batching on the HMD radio — without it,
+        // measurement showed inter-arrival p99 of ~810ms on the viewer side
+        // even though the server emitted at a steady ~70ms cadence (radio was
+        // grouping packets, then dumping them in bursts). WIFI_MODE_FULL_LOW_LATENCY
+        // is the standard Android API for low-latency real-time apps.
+        val wifiManager: WifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lock: WifiManager.WifiLock = wifiManager.createWifiLock(
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+            "WindowStreamDemoActivity"
+        )
+        lock.acquire()
+        lowLatencyWifiLock = lock
+        Log.i(TAG, "acquired WIFI_MODE_FULL_LOW_LATENCY lock")
     }
 
     private fun parseStreamConfigurations(): List<StreamConfiguration> {
@@ -407,6 +425,8 @@ class DemoActivity : Activity() {
     }
 
     override fun onDestroy() {
+        lowLatencyWifiLock?.runCatching { if (isHeld) release() }
+        lowLatencyWifiLock = null
         // Best-effort synchronous release of MediaCodec natives; remaining
         // teardown cascades via demoScope cancellation.
         streamStates.forEach { state ->
