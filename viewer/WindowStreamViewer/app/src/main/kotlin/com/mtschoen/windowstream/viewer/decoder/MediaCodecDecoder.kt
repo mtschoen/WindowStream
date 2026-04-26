@@ -2,7 +2,10 @@ package com.mtschoen.windowstream.viewer.decoder
 
 import android.media.MediaCodec
 import android.media.MediaFormat
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +26,10 @@ class MediaCodecDecoder(
     private var decodeJob: Job? = null
     private var stallJob: Job? = null
     private val inputBufferIndexChannel: Channel<Int> = Channel(Channel.UNLIMITED)
+    // For stage=present logging — Choreographer.postFrameCallback must run on
+    // a Looper thread, but onOutputBufferAvailable fires on MediaCodec's
+    // internal callback thread which has no Looper.
+    private val mainHandler: Handler = Handler(Looper.getMainLooper())
     @Volatile
     private var cachedParameterSets: ParameterSets? = null
     @Volatile
@@ -48,12 +55,26 @@ class MediaCodecDecoder(
             override fun onOutputBufferAvailable(
                 mediaCodec: MediaCodec, outputBufferIndex: Int, bufferInformation: MediaCodec.BufferInfo
             ) {
+                val capturedPtsUs: Long = bufferInformation.presentationTimeUs
                 Log.d(
                     "FRAMECOUNT",
-                    "stage=dec ptsUs=${bufferInformation.presentationTimeUs} wallMs=${System.currentTimeMillis()}"
+                    "stage=dec ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
                 )
                 mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
-                frameSink.onFrameRendered(bufferInformation.presentationTimeUs)
+                // Approximate the frame's actual on-screen present time by hopping
+                // to the main looper and posting a Choreographer frame callback;
+                // it fires at the next vsync, which is when SurfaceFlinger
+                // typically latches our just-queued buffer. Wall ms at fire is a
+                // lower-bound estimate of when the frame hit the panel.
+                mainHandler.post {
+                    Choreographer.getInstance().postFrameCallback {
+                        Log.d(
+                            "FRAMECOUNT",
+                            "stage=present ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
+                        )
+                    }
+                }
+                frameSink.onFrameRendered(capturedPtsUs)
             }
             override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) {
                 Log.e("MediaCodecDecoder", "onError: ${exception.diagnosticInfo} errorCode=${exception.errorCode} isRecoverable=${exception.isRecoverable} isTransient=${exception.isTransient}")
