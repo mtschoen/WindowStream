@@ -194,3 +194,32 @@ once the constant lag is gone:
   allocation and `sws_scale` CPU conversion).
 - Per-stage trace at all eight points if a future bug needs it.
 - Env gate / throttle on the FRAMECOUNT logs.
+
+## Result (measured 2026-04-26)
+
+Bug confirmed and fix applied. PTS-based instrumentation alone could not see
+the bug (PTS is assigned at encoder-emit, not capture). Adding a fifth
+`stage=cap` site at WGC frame arrival, combined with a discrete-event
+synthetic source (250ms timer mimicking typing pace), exposed NVENC's
+internal input-surface queue as the dominant lag source. Tested on a
+Samsung Fold 6 (`RFCRB0G5DLW`) over USB adb against `192.168.50.76`.
+
+| Metric | Before fix | After `surfaces=1` |
+|---|---:|---:|
+| Median NVENC queue depth (cap − enc) | 3 frames | 1 frame |
+| Median cap → enc per-frame lag | 751 ms | 252 ms |
+| Median enc → frag lag | 0 ms | 0 ms |
+
+The queue-depth drop matches the user's reported "4-5 keypresses behind"
+symptom: at ~250ms event spacing, 3 buffered frames produce ~750ms felt
+lag, and the fix reduces that to one in-flight frame's worth (~250ms,
+which is structural — NVENC cannot pipeline less than one frame).
+
+`KEY_LOW_LATENCY` was applied separately during the session by the user;
+its viewer-side effect was not isolated in this measurement (no overlap
+between viewer and server runs at the low event rate due to a
+VIEWER_READY race, see open followups). Subjective end-to-end typing
+verification on a live Claude session is the remaining validation step.
+
+The Phase 2 plan also called for fixing the `sws_scale` odd-height crash
+that was blocking measurement; that fix landed as commit `d5a7f1c`.
