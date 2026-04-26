@@ -180,11 +180,15 @@ class DemoActivity : Activity() {
     private fun createSurfaceCallback(streamIndex: Int): SurfaceHolder.Callback =
         object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                val surface: Surface = holder.surface
+                // Pass the long-lived SurfaceHolder, NOT holder.surface. The
+                // Surface object can be invalidated by the OS during the
+                // ~200ms TCP handshake before MediaCodec.configure runs;
+                // capturing the holder lets runPipeline re-read a fresh
+                // Surface at the last moment.
                 demoScope.launch {
                     pipelineLock.withLock {
                         tearDownPipelineLocked(streamIndex)
-                        startPipelineLocked(streamIndex, surface)
+                        startPipelineLocked(streamIndex, holder)
                     }
                 }
             }
@@ -203,20 +207,24 @@ class DemoActivity : Activity() {
             }
         }
 
-    private suspend fun startPipelineLocked(streamIndex: Int, surface: Surface) {
+    private suspend fun startPipelineLocked(streamIndex: Int, holder: SurfaceHolder) {
         val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         streamStates[streamIndex].scope = scope
         runCatching {
-            runPipeline(streamIndex, scope, DirectSurfaceFrameSink(surface))
+            runPipeline(streamIndex, scope, holder)
         }.onFailure { throwable ->
             Log.e(TAG, "pipeline $streamIndex failed to start", throwable)
+            // Clean up partial state (control connection, receiver) so the
+            // server doesn't keep a half-dead viewer registered. The next
+            // surfaceCreated callback will retry from scratch.
+            runCatching { tearDownPipelineLocked(streamIndex) }
         }
     }
 
     private suspend fun runPipeline(
         streamIndex: Int,
         scope: CoroutineScope,
-        frameSink: DirectSurfaceFrameSink
+        holder: SurfaceHolder
     ) {
         val configuration: StreamConfiguration = streamConfigurations[streamIndex]
         val client = ControlClient(
@@ -249,6 +257,16 @@ class DemoActivity : Activity() {
 
         connection.send(ControlMessage.ViewerReady(streamId = stream.streamId, viewerUdpPort = viewerUdpPort))
         connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
+
+        // Re-read the Surface from the holder at the LAST moment, after the
+        // TCP handshake has settled. If the OS recycled it during the gap,
+        // bail with a tagged error; the SurfaceView's next surfaceCreated
+        // callback will trigger a fresh attempt with the new Surface.
+        val freshSurface: Surface = holder.surface
+        if (!freshSurface.isValid) {
+            error("Surface for pipeline $streamIndex was released during pipeline startup; will retry on next surfaceCreated")
+        }
+        val frameSink = DirectSurfaceFrameSink(freshSurface)
 
         val decoder = MediaCodecDecoder(
             frameSink = frameSink,
