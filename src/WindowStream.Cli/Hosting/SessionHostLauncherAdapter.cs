@@ -121,7 +121,7 @@ public sealed class SessionHostLauncherAdapter : ISessionHostLauncher
         string hostname = $"{Environment.MachineName}-{sessionHost.TcpPort}";
         AdvertisementOptions advertisementOptions = new AdvertisementOptions(
             hostname: hostname,
-            protocolMajorVersion: 1,
+            protocolMajorVersion: 2,
             protocolRevision: 0);
         await using ServerAdvertiser advertiser = new ServerAdvertiser(new MakaretuMulticastServiceHost());
         await advertiser.StartAsync(advertisementOptions, sessionHost.TcpPort, cancellationToken).ConfigureAwait(false);
