@@ -7,5 +7,8 @@ public enum ProtocolErrorCode
     WindowGone,
     CaptureFailed,
     EncodeFailed,
-    MalformedMessage
+    MalformedMessage,
+    EncoderCapacity,
+    WindowNotFound,
+    StreamNotFound
 }

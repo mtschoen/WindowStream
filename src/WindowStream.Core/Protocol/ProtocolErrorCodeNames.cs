@@ -14,6 +14,9 @@ public static class ProtocolErrorCodeNames
             ProtocolErrorCode.CaptureFailed => "CAPTURE_FAILED",
             ProtocolErrorCode.EncodeFailed => "ENCODE_FAILED",
             ProtocolErrorCode.MalformedMessage => "MALFORMED_MESSAGE",
+            ProtocolErrorCode.EncoderCapacity => "ENCODER_CAPACITY",
+            ProtocolErrorCode.WindowNotFound => "WINDOW_NOT_FOUND",
+            ProtocolErrorCode.StreamNotFound => "STREAM_NOT_FOUND",
             _ => throw new ArgumentOutOfRangeException(nameof(code), code, "unknown error code")
         };
     }
@@ -28,6 +31,9 @@ public static class ProtocolErrorCodeNames
             "CAPTURE_FAILED" => ProtocolErrorCode.CaptureFailed,
             "ENCODE_FAILED" => ProtocolErrorCode.EncodeFailed,
             "MALFORMED_MESSAGE" => ProtocolErrorCode.MalformedMessage,
+            "ENCODER_CAPACITY" => ProtocolErrorCode.EncoderCapacity,
+            "WINDOW_NOT_FOUND" => ProtocolErrorCode.WindowNotFound,
+            "STREAM_NOT_FOUND" => ProtocolErrorCode.StreamNotFound,
             _ => throw new ArgumentException($"unknown protocol error code: {wireName}", nameof(wireName))
         };
     }

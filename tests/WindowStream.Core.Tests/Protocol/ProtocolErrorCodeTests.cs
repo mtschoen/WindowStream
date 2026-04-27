@@ -19,6 +19,16 @@ public sealed class ProtocolErrorCodeTests
         Assert.Equal(code, ProtocolErrorCodeNames.Parse(wireName));
     }
 
+    [Theory]
+    [InlineData(ProtocolErrorCode.EncoderCapacity, "ENCODER_CAPACITY")]
+    [InlineData(ProtocolErrorCode.WindowNotFound, "WINDOW_NOT_FOUND")]
+    [InlineData(ProtocolErrorCode.StreamNotFound, "STREAM_NOT_FOUND")]
+    public void NewV2Codes_RoundTrip(ProtocolErrorCode code, string wireName)
+    {
+        Assert.Equal(wireName, ProtocolErrorCodeNames.ToWireName(code));
+        Assert.Equal(code, ProtocolErrorCodeNames.Parse(wireName));
+    }
+
     [Fact]
     public void ParseThrowsForUnknownValue()
     {
