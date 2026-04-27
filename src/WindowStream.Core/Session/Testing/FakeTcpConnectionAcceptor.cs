@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -33,8 +34,10 @@ public sealed class FakeTcpConnectionAcceptor : ITcpConnectionAcceptor
     /// <summary>
     /// Creates a paired channel/viewer. The channel is queued for the server to accept;
     /// the viewer endpoint is returned to the caller (test code) for sending and receiving.
+    /// The optional <paramref name="remoteIpAddress"/> is reported back through
+    /// <see cref="IControlChannel.RemoteIpAddress"/> on the server-side channel.
     /// </summary>
-    public FakeViewerEndpoint EnqueueIncomingConnection()
+    public FakeViewerEndpoint EnqueueIncomingConnection(IPAddress? remoteIpAddress = null)
     {
         // viewerToServer: messages the viewer writes that the server reads
         Channel<ControlMessage> viewerToServer = Channel.CreateUnbounded<ControlMessage>(
@@ -43,7 +46,8 @@ public sealed class FakeTcpConnectionAcceptor : ITcpConnectionAcceptor
         Channel<ControlMessage> serverToViewer = Channel.CreateUnbounded<ControlMessage>(
             new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
 
-        FakeControlChannel serverSide = new FakeControlChannel(viewerToServer.Reader, serverToViewer.Writer, timeProvider);
+        FakeControlChannel serverSide = new FakeControlChannel(
+            viewerToServer.Reader, serverToViewer.Writer, timeProvider, remoteIpAddress);
         FakeViewerEndpoint viewerSide = new FakeViewerEndpoint(viewerToServer.Writer, serverToViewer.Reader);
 
         pendingConnections.Writer.TryWrite(serverSide);

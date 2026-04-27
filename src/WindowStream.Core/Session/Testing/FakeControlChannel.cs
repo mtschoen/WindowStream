@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -16,21 +17,26 @@ public sealed class FakeControlChannel : IControlChannel
     private readonly ChannelReader<ControlMessage> inbound;
     private readonly ChannelWriter<ControlMessage> outbound;
     private readonly TimeProvider timeProvider;
+    private readonly IPAddress? remoteIpAddress;
     private DateTimeOffset lastHeartbeatReceived;
     private bool disposed;
 
     internal FakeControlChannel(
         ChannelReader<ControlMessage> inbound,
         ChannelWriter<ControlMessage> outbound,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IPAddress? remoteIpAddress)
     {
         this.inbound = inbound;
         this.outbound = outbound;
         this.timeProvider = timeProvider;
+        this.remoteIpAddress = remoteIpAddress;
         this.lastHeartbeatReceived = timeProvider.GetUtcNow();
     }
 
     public DateTimeOffset LastHeartbeatReceived => lastHeartbeatReceived;
+
+    public IPAddress? RemoteIpAddress => remoteIpAddress;
 
     public void NotifyHeartbeatReceived()
     {
