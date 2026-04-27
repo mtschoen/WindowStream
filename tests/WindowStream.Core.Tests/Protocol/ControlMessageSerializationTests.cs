@@ -16,32 +16,77 @@ public sealed class ControlMessageSerializationTests
     }
 
     [Fact]
-    public void ServerHelloWithActiveStreamRoundTrips()
+    public void ServerHello_RoundTripsWithWindowsListAndUdpPort()
     {
-        ControlMessage original = new ServerHelloMessage(
-            ServerVersion: 1,
-            ActiveStream: new ActiveStreamInformation(7, 51001, "h264", 2560, 1440, 120));
-        AssertRoundTrip(original);
+        WindowDescriptor[] windows = new[]
+        {
+            new WindowDescriptor(1UL, 0x100, 99, "notepad", "Untitled - Notepad", 800, 600),
+            new WindowDescriptor(2UL, 0x200, 100, "devenv", "WindowStream.sln", 1920, 1080)
+        };
+        ServerHelloMessage original = new ServerHelloMessage(ServerVersion: 2, UdpPort: 64000, Windows: windows);
+
+        string serialized = ControlMessageSerialization.Serialize(original);
+        ControlMessage deserialized = ControlMessageSerialization.Deserialize(serialized);
+
+        ServerHelloMessage typed = Assert.IsType<ServerHelloMessage>(deserialized);
+        Assert.Equal(2, typed.ServerVersion);
+        Assert.Equal(64000, typed.UdpPort);
+        Assert.Equal(2, typed.Windows.Length);
+        Assert.Equal(1UL, typed.Windows[0].WindowId);
+        Assert.Equal("Untitled - Notepad", typed.Windows[0].Title);
     }
 
     [Fact]
-    public void ServerHelloWithNullActiveStreamRoundTrips()
+    public void StreamStarted_RoundTripsWithWindowId()
     {
-        ControlMessage original = new ServerHelloMessage(ServerVersion: 1, ActiveStream: null);
-        AssertRoundTrip(original);
+        StreamStartedMessage original = new StreamStartedMessage(
+            StreamId: 7,
+            WindowId: 42UL,
+            Codec: "h264",
+            Width: 1920,
+            Height: 1080,
+            FramesPerSecond: 60);
+
+        string serialized = ControlMessageSerialization.Serialize(original);
+        StreamStartedMessage typed = Assert.IsType<StreamStartedMessage>(ControlMessageSerialization.Deserialize(serialized));
+
+        Assert.Equal(7, typed.StreamId);
+        Assert.Equal(42UL, typed.WindowId);
+        Assert.Equal("h264", typed.Codec);
+        Assert.Equal(1920, typed.Width);
+        Assert.Equal(1080, typed.Height);
+        Assert.Equal(60, typed.FramesPerSecond);
     }
 
     [Fact]
-    public void StreamStartedRoundTrips()
+    public void StreamStopped_RoundTripsWithReason()
     {
-        ControlMessage original = new StreamStartedMessage(7, 51001, "h264", 2560, 1440, 120);
-        AssertRoundTrip(original);
+        StreamStoppedMessage original = new StreamStoppedMessage(StreamId: 3, Reason: StreamStoppedReason.EncoderFailed);
+        StreamStoppedMessage typed = Assert.IsType<StreamStoppedMessage>(
+            ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
+        Assert.Equal(3, typed.StreamId);
+        Assert.Equal(StreamStoppedReason.EncoderFailed, typed.Reason);
     }
 
     [Fact]
-    public void StreamStoppedRoundTrips()
+    public void ViewerReady_RoundTripsWithoutStreamId()
     {
-        AssertRoundTrip(new StreamStoppedMessage(7));
+        ViewerReadyMessage original = new ViewerReadyMessage(ViewerUdpPort: 12345);
+        ViewerReadyMessage typed = Assert.IsType<ViewerReadyMessage>(
+            ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
+        Assert.Equal(12345, typed.ViewerUdpPort);
+    }
+
+    [Fact]
+    public void KeyEvent_RoundTripsWithStreamId()
+    {
+        KeyEventMessage original = new KeyEventMessage(StreamId: 5, KeyCode: 0x41, IsUnicode: true, IsDown: true);
+        KeyEventMessage typed = Assert.IsType<KeyEventMessage>(
+            ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
+        Assert.Equal(5, typed.StreamId);
+        Assert.Equal(0x41, typed.KeyCode);
+        Assert.True(typed.IsUnicode);
+        Assert.True(typed.IsDown);
     }
 
     [Fact]

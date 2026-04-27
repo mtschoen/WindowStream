@@ -211,9 +211,14 @@ public sealed class SessionHost : IAsyncDisposable
                 return;
             }
 
-            ActiveStreamInformation activeStream = BuildActiveStreamDescriptor();
+            // TODO(v2-phase2): SessionHost being retired in Phase 2; for now
+            // construct a v2-shaped ServerHelloMessage with an empty windows
+            // list so WindowStream.Core continues to build.
             await channel.SendAsync(
-                new ServerHelloMessage(options.ServerVersion, activeStream),
+                new ServerHelloMessage(
+                    ServerVersion: options.ServerVersion,
+                    UdpPort: udpSender.LocalPort,
+                    Windows: System.Array.Empty<WindowDescriptor>()),
                 cancellationToken).ConfigureAwait(false);
 
             videoEncoder.RequestKeyframe();
@@ -280,6 +285,8 @@ public sealed class SessionHost : IAsyncDisposable
                     break;
                 case KeyEventMessage keyEvent:
 #if WINDOWS
+                    // TODO(v2-phase2): SessionHost being retired in Phase 2;
+                    // streamId routing is the coordinator's responsibility now.
                     WindowStream.Core.Session.Input.Win32InputInjector.InjectKey(
                         keyEvent.KeyCode, keyEvent.IsUnicode, keyEvent.IsDown);
 #endif
@@ -311,17 +318,8 @@ public sealed class SessionHost : IAsyncDisposable
         }
     }
 
-    private ActiveStreamInformation BuildActiveStreamDescriptor()
-    {
-        EncoderOptions encoder = encoderOptions!;
-        return new ActiveStreamInformation(
-            StreamId: options.StreamId,
-            UdpPort: udpSender.LocalPort,
-            Codec: options.Codec,
-            Width: encoder.widthPixels,
-            Height: encoder.heightPixels,
-            FramesPerSecond: encoder.framesPerSecond);
-    }
+    // TODO(v2-phase2): BuildActiveStreamDescriptor retired with SessionHost in
+    // Phase 2 — the v2 ServerHelloMessage no longer carries an ActiveStream.
 
     public void RegisterViewerEndpoint(IPEndPoint endpoint)
     {

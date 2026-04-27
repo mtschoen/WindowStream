@@ -30,12 +30,12 @@ public sealed class SessionHostTests
 
         ServerHelloMessage serverHello = await viewer.ReceiveAsync<ServerHelloMessage>(cancellation.Token);
 
+        // TODO(v2-phase2): SessionHost is being retired; this test will move
+        // to the coordinator harness in Phase 2. For now, just assert that the
+        // v2-shaped SERVER_HELLO carries the UDP port and an empty windows list.
         Assert.Equal(1, serverHello.ServerVersion);
-        Assert.NotNull(serverHello.ActiveStream);
-        Assert.Equal(harness.UdpPort, serverHello.ActiveStream!.UdpPort);
-        Assert.Equal(320, serverHello.ActiveStream.Width);
-        Assert.Equal(240, serverHello.ActiveStream.Height);
-        Assert.Equal("h264", serverHello.ActiveStream.Codec);
+        Assert.Equal(harness.UdpPort, serverHello.UdpPort);
+        Assert.Empty(serverHello.Windows);
     }
 
     [Fact]

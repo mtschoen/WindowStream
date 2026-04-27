@@ -10,7 +10,7 @@ public static class ControlMessageSerialization
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new ProtocolErrorCodeConverter() }
+        Converters = { new ProtocolErrorCodeConverter(), new StreamStoppedReasonConverter() }
     };
 
     public static string Serialize(ControlMessage message)
@@ -54,6 +54,24 @@ public static class ControlMessageSerialization
         public override void Write(Utf8JsonWriter writer, ProtocolErrorCode value, JsonSerializerOptions options)
         {
             writer.WriteStringValue(ProtocolErrorCodeNames.ToWireName(value));
+        }
+    }
+
+    private sealed class StreamStoppedReasonConverter : JsonConverter<StreamStoppedReason>
+    {
+        public override StreamStoppedReason Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            string? wireName = reader.GetString();
+            if (wireName is null)
+            {
+                throw new JsonException("null is not a valid stream-stopped reason");
+            }
+            return StreamStoppedReasonNames.Parse(wireName);
+        }
+
+        public override void Write(Utf8JsonWriter writer, StreamStoppedReason value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(StreamStoppedReasonNames.ToWireName(value));
         }
     }
 }
