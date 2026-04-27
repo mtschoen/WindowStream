@@ -27,7 +27,7 @@ public sealed class WindowPickerViewModelTests
     }
 
     [Fact]
-    public async Task Start_Stream_Invokes_Launcher_With_Selected_Window()
+    public async Task Start_Stream_Invokes_Launcher()
     {
         var information = new WindowInformation(new WindowHandle(99), "Rider", "rider", 1920, 1080);
         var captureSource = new FakeWindowCaptureSource(new[] { information });
@@ -37,7 +37,7 @@ public sealed class WindowPickerViewModelTests
 
         await viewModel.StartStreamAsync(information, CancellationToken.None);
 
-        Assert.Equal(information.handle, launcher.LaunchedHandle);
+        Assert.True(launcher.Launched);
     }
 
     [Fact]

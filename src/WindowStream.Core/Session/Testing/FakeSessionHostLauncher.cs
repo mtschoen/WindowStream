@@ -1,16 +1,15 @@
 using System.Threading;
 using System.Threading.Tasks;
-using WindowStream.Core.Capture;
 
 namespace WindowStream.Core.Session.Testing;
 
 public sealed class FakeSessionHostLauncher : ISessionHostLauncher
 {
-    public WindowHandle? LaunchedHandle { get; private set; }
+    public bool Launched { get; private set; }
 
-    public Task LaunchAsync(WindowHandle handle, CancellationToken cancellationToken)
+    public Task LaunchAsync(CancellationToken cancellationToken)
     {
-        LaunchedHandle = handle;
+        Launched = true;
         return Task.CompletedTask;
     }
 }

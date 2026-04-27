@@ -1,5 +1,7 @@
-using WindowStream.Core.Capture;
-
 namespace WindowStream.Cli.Commands;
 
-public sealed record ServeArguments(WindowHandle? Handle, string? TitlePattern);
+/// <summary>
+/// Arguments for the v2 <c>serve</c> command. Parameterless — the viewer
+/// selects the window remotely via OPEN_STREAM after connecting.
+/// </summary>
+public sealed record ServeArguments();

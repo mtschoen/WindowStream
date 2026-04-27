@@ -24,16 +24,17 @@ public sealed class CliServices : ICliServices
     }
 
     /// <summary>
-    /// Real-hardware wiring: WGC window capture, FFmpeg NVENC encoder,
-    /// TCP/UDP adapters bound to all interfaces so LAN viewers can connect.
-    /// Only available on the Windows target framework.
+    /// Real-hardware wiring: WGC window capture and the v2 coordinator (worker
+    /// supervisor + control server + load shedder + UDP fragmenter) bound to
+    /// all interfaces so LAN viewers can connect. Only available on the
+    /// Windows target framework.
     /// </summary>
     [ExcludeFromCodeCoverage]
     public static CliServices CreateDefault(int tcpPort = 0)
     {
 #if WINDOWS
         IWindowCaptureSource captureSource = new WgcCaptureSource();
-        ISessionHostLauncher hostLauncher = new SessionHostLauncherAdapter(tcpPort, Console.Out);
+        ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, Console.Out);
         return new CliServices(captureSource, hostLauncher, Console.Out);
 #else
         throw new PlatformNotSupportedException(

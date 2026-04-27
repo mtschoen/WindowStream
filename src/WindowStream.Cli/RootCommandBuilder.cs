@@ -22,29 +22,14 @@ public static class RootCommandBuilder
         });
         root.AddCommand(listCommand);
 
-        var handleOption = new Option<long?>("--hwnd", "HWND of window to stream");
-        var titleOption = new Option<string?>("--title-matches", "Regex matched against window titles");
-        var serveCommand = new Command("serve", "Start a streaming session")
-        {
-            handleOption,
-            titleOption
-        };
-        serveCommand.AddValidator(result =>
-        {
-            if (result.GetValueForOption(handleOption) is null && string.IsNullOrEmpty(result.GetValueForOption(titleOption)))
-            {
-                result.ErrorMessage = "Provide --hwnd or --title-matches";
-            }
-        });
+        var serveCommand = new Command(
+            "serve",
+            "Start the v2 coordinator. Viewer selects windows remotely via OPEN_STREAM.");
         serveCommand.SetHandler(async invocationContext =>
         {
-            var rawHandle = invocationContext.ParseResult.GetValueForOption(handleOption);
-            var titlePattern = invocationContext.ParseResult.GetValueForOption(titleOption);
-            var arguments = new ServeArguments(
-                Handle: rawHandle is null ? null : new WindowHandle(rawHandle.Value),
-                TitlePattern: titlePattern);
-            var handler = new ServeCommandHandler(services.CaptureSource, services.HostLauncher);
-            invocationContext.ExitCode = await handler.ExecuteAsync(arguments, invocationContext.GetCancellationToken());
+            var handler = new ServeCommandHandler(services.HostLauncher);
+            invocationContext.ExitCode = await handler.ExecuteAsync(
+                new ServeArguments(), invocationContext.GetCancellationToken());
         });
         root.AddCommand(serveCommand);
 

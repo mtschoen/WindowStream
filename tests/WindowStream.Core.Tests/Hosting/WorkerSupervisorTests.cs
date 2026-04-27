@@ -123,4 +123,21 @@ public class WorkerSupervisorTests
         StreamEndedEventArguments observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(handle.StreamId, observed.StreamId);
     }
+
+    [Fact]
+    public async Task StartStream_FiresStreamStartedEvent()
+    {
+        FakeLauncher launcher = new FakeLauncher();
+        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        TaskCompletionSource<StreamStartedEventArguments> startedSource = new();
+        supervisor.StreamStarted += (_, arguments) => startedSource.TrySetResult(arguments);
+
+        await supervisor.StartStreamAsync(
+            windowId: 42, hwnd: 0x100, DefaultEncoderOptions(), CancellationToken.None);
+
+        StreamStartedEventArguments started = await startedSource.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, started.StreamId);
+        Assert.Equal(42UL, started.WindowId);
+        Assert.NotNull(started.Pipe);
+    }
 }

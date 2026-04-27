@@ -8,6 +8,12 @@ using WindowStream.Core.Session;
 
 namespace WindowStream.Server.ViewModels;
 
+/// <summary>
+/// v1-era picker shell. With v2 the viewer (not the server-side GUI) selects
+/// the window remotely via OPEN_STREAM, so <see cref="StartStreamAsync"/>
+/// just kicks off the parameterless coordinator. The selected
+/// <see cref="WindowInformation"/> is retained for display only.
+/// </summary>
 public sealed class WindowPickerViewModel : INotifyPropertyChanged
 {
     private readonly IWindowCaptureSource captureSource;
@@ -36,7 +42,8 @@ public sealed class WindowPickerViewModel : INotifyPropertyChanged
 
     public Task StartStreamAsync(WindowInformation window, CancellationToken cancellationToken)
     {
-        return hostLauncher.LaunchAsync(window.handle, cancellationToken);
+        _ = window;
+        return hostLauncher.LaunchAsync(cancellationToken);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

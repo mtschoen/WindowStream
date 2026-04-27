@@ -19,6 +19,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     public event EventHandler<StreamEndedEventArguments>? StreamEnded;
 
+    public event EventHandler<StreamStartedEventArguments>? StreamStarted;
+
     public WorkerSupervisor(IWorkerProcessLauncher launcher, int maximumConcurrentStreams)
     {
         this.launcher = launcher;
@@ -48,6 +50,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
         ActiveStream record = new ActiveStream(streamId, windowId, handle);
         activeStreams[streamId] = record;
+
+        StreamStarted?.Invoke(this, new StreamStartedEventArguments(streamId, windowId, handle.Pipe));
 
         _ = MonitorAsync(record);
         return new StreamHandle(streamId, windowId);

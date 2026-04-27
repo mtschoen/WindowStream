@@ -23,27 +23,11 @@ public sealed class RootCommandBuilderTests
     }
 
     [Fact]
-    public void Serve_Parses_Hwnd_Option_As_Long()
-    {
-        var root = RootCommandBuilder.Build(new FakeCliServices());
-        var result = root.Parse(new[] { "serve", "--hwnd", "1234" });
-        Assert.Empty(result.Errors);
-    }
-
-    [Fact]
-    public void Serve_Parses_Title_Matches_Option_As_String()
-    {
-        var root = RootCommandBuilder.Build(new FakeCliServices());
-        var result = root.Parse(new[] { "serve", "--title-matches", "Notepad.*" });
-        Assert.Empty(result.Errors);
-    }
-
-    [Fact]
-    public void Serve_Rejects_When_Neither_Hwnd_Nor_Title_Matches_Provided()
+    public void Serve_Parses_With_No_Arguments()
     {
         var root = RootCommandBuilder.Build(new FakeCliServices());
         var result = root.Parse(new[] { "serve" });
-        Assert.NotEmpty(result.Errors);
+        Assert.Empty(result.Errors);
     }
 
     [Fact]
@@ -66,45 +50,7 @@ public sealed class RootCommandBuilderTests
     }
 
     [Fact]
-    public async Task Serve_Command_With_Hwnd_Invocation_Launches_Session()
-    {
-        var windows = new List<WindowInformation>
-        {
-            new WindowInformation(new WindowHandle(555), "Target", "app", 800, 600),
-        };
-        var captureSource = new FakeWindowCaptureSource(windows);
-        var hostLauncher = new FakeSessionHostLauncher();
-        using var output = new StringWriter();
-        var services = new NamedCliServices(captureSource, hostLauncher, output);
-
-        var root = RootCommandBuilder.Build(services);
-        var exitCode = await root.InvokeAsync(new[] { "serve", "--hwnd", "555" });
-
-        Assert.Equal(0, exitCode);
-        Assert.Equal(new WindowHandle(555), hostLauncher.LaunchedHandle);
-    }
-
-    [Fact]
-    public async Task Serve_Command_With_Title_Matches_Invocation_Launches_Session()
-    {
-        var windows = new List<WindowInformation>
-        {
-            new WindowInformation(new WindowHandle(777), "My App Window", "myapp", 800, 600),
-        };
-        var captureSource = new FakeWindowCaptureSource(windows);
-        var hostLauncher = new FakeSessionHostLauncher();
-        using var output = new StringWriter();
-        var services = new NamedCliServices(captureSource, hostLauncher, output);
-
-        var root = RootCommandBuilder.Build(services);
-        var exitCode = await root.InvokeAsync(new[] { "serve", "--title-matches", "My App.*" });
-
-        Assert.Equal(0, exitCode);
-        Assert.Equal(new WindowHandle(777), hostLauncher.LaunchedHandle);
-    }
-
-    [Fact]
-    public async Task Serve_Command_With_Title_Matches_No_Match_Returns_Error_Exit_Code()
+    public async Task Serve_Command_Invocation_Launches_Coordinator()
     {
         var captureSource = new FakeWindowCaptureSource(new List<WindowInformation>());
         var hostLauncher = new FakeSessionHostLauncher();
@@ -112,8 +58,9 @@ public sealed class RootCommandBuilderTests
         var services = new NamedCliServices(captureSource, hostLauncher, output);
 
         var root = RootCommandBuilder.Build(services);
-        var exitCode = await root.InvokeAsync(new[] { "serve", "--title-matches", "NoMatch" });
+        var exitCode = await root.InvokeAsync(new[] { "serve" });
 
-        Assert.Equal(2, exitCode);
+        Assert.Equal(0, exitCode);
+        Assert.True(hostLauncher.Launched);
     }
 }
