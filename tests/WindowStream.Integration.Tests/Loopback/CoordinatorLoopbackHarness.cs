@@ -91,6 +91,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         int maximumConcurrentStreams = 8,
         IWorkerProcessLauncher? workerLauncher = null,
         bool useRealWgcEnumeration = false,
+        IForegroundWindowApi? foregroundWindowApi = null,
         CancellationToken cancellationToken = default)
     {
         CancellationTokenSource lifecycle = new CancellationTokenSource();
@@ -118,7 +119,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         TcpConnectionAcceptorAdapter tcpAcceptor = new TcpConnectionAcceptorAdapter(
             TimeProvider.System, IPAddress.Loopback);
 
-        FocusRelay focusRelay = new FocusRelay(new NoOpForegroundWindowApi());
+        FocusRelay focusRelay = new FocusRelay(foregroundWindowApi ?? new NoOpForegroundWindowApi());
 
         // Heartbeat timeout deliberately generous: tests using FakeViewer often pause
         // between protocol steps and we don't want the server tearing the connection
