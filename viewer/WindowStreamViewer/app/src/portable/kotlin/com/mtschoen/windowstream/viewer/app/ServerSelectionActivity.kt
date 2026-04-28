@@ -14,6 +14,7 @@ import com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreen
 import com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
+import com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection
 import com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
@@ -39,6 +40,11 @@ import kotlinx.coroutines.launch
  */
 class ServerSelectionActivity : ComponentActivity() {
     private lateinit var discoveryClient: NetworkServiceDiscoveryClient
+    // The picker's TCP control connection. Held at activity-scope so we can
+    // close it cleanly before handing off to PanelSwitcherActivity — the v2
+    // server only allows one viewer at a time, so the second connection
+    // would be rejected with VIEWER_BUSY otherwise.
+    private var pickerConnection: MultiStreamControlConnection? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,6 +90,7 @@ class ServerSelectionActivity : ComponentActivity() {
                             )
                             runCatching {
                                 val connection = client.connect(this)
+                                pickerConnection = connection
                                 val viewModel = WindowPickerViewModel(
                                     initialWindows = connection.serverHello.windows,
                                     incomingMessages = connection.incoming,
@@ -92,8 +99,10 @@ class ServerSelectionActivity : ComponentActivity() {
                                 pickerViewModel = viewModel
                                 chosenServer = server
                                 // Keep the connection open so push events flow.
-                                // It will be cancelled when this coroutine scope
-                                // is torn down (activity lifecycle via lifecycleScope).
+                                // It is closed explicitly in launchStreamingActivity
+                                // before handing off to PanelSwitcherActivity so the
+                                // server's one-viewer rule isn't tripped, and as a
+                                // fallback when the activity is destroyed.
                             }.onFailure { throwable ->
                                 lastConnectionError = formatConnectionError(server, throwable)
                                 chosenServer = null
@@ -116,12 +125,24 @@ class ServerSelectionActivity : ComponentActivity() {
     }
 
     private fun launchStreamingActivity(server: ServerInformation, selectedWindowIds: LongArray) {
-        val intent = Intent(this, PanelSwitcherActivity::class.java).apply {
-            putExtra("streamHost", server.host.hostAddress)
-            putExtra("streamPort", server.controlPort)
-            putExtra("selectedWindowIds", selectedWindowIds)
+        // Close the picker's connection BEFORE launching the streaming
+        // activity. PanelSwitcherActivity opens its own MultiStreamControlClient
+        // and the v2 server rejects a second concurrent viewer with
+        // VIEWER_BUSY. We then finish() so the picker leaves the back stack.
+        lifecycleScope.launch {
+            try {
+                pickerConnection?.close()
+            } finally {
+                pickerConnection = null
+                val intent = Intent(this@ServerSelectionActivity, PanelSwitcherActivity::class.java).apply {
+                    putExtra("streamHost", server.host.hostAddress)
+                    putExtra("streamPort", server.controlPort)
+                    putExtra("selectedWindowIds", selectedWindowIds)
+                }
+                startActivity(intent)
+                finish()
+            }
         }
-        startActivity(intent)
     }
 
     private fun formatConnectionError(server: ServerInformation, throwable: Throwable): String {
@@ -131,6 +152,13 @@ class ServerSelectionActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // Best-effort: if launchStreamingActivity didn't close it (e.g. user
+        // backed out without picking), fire-and-forget close on the way out.
+        val connection: MultiStreamControlConnection? = pickerConnection
+        pickerConnection = null
+        if (connection != null) {
+            lifecycleScope.launch { runCatching { connection.close() } }
+        }
         discoveryClient.stop()
         super.onDestroy()
     }
