@@ -186,12 +186,19 @@ class DemoActivity : Activity() {
         if (hosts != null && ports != null && hosts.size == ports.size && hosts.isNotEmpty()) {
             return hosts.mapIndexed { index, host -> StreamConfiguration(host, ports[index]) }
         }
-        // Legacy single-server intent shape — `adb am start ... --es streamHost ... --ei streamPort ...`
+        // Single-server intent shape (v2 picker or legacy adb launch).
+        // When selectedWindowIds is present, create one StreamConfiguration per
+        // selected window — all pointing at the same host:port — so the grid has
+        // one SurfaceView per window. Without selectedWindowIds, fall back to a
+        // single pipeline (auto-selects first window in runPipeline).
         val singleHost: String = intent.getStringExtra("streamHost")
             ?: error("DemoActivity requires streamHosts+streamPorts arrays OR --es streamHost")
         val singlePort: Int = intent.getIntExtra("streamPort", -1)
         require(singlePort > 0) { "DemoActivity requires --ei streamPort <port>" }
-        return listOf(StreamConfiguration(singleHost, singlePort))
+        val selectedWindowIds: LongArray = intent.getLongArrayExtra("selectedWindowIds")
+            ?: LongArray(0)
+        val pipelineCount: Int = if (selectedWindowIds.isNotEmpty()) selectedWindowIds.size else 1
+        return List(pipelineCount) { StreamConfiguration(singleHost, singlePort) }
     }
 
     private fun createSurfaceCallback(streamIndex: Int): SurfaceHolder.Callback =
@@ -256,17 +263,26 @@ class DemoActivity : Activity() {
         val connection: ControlConnection = client.connect(scope)
         streamStates[streamIndex].connection = connection
 
-        // TODO(v2-phase5): Tasks 5.4-5.6 will replace this single-window-auto-pick
-        // path with a real picker driven by ServerHello.windows + WINDOW_ADDED/REMOVED.
-        // For now: read ServerHello, pick the first advertised window, OPEN_STREAM it,
-        // and wait for STREAM_STARTED. Keeps the demo flow compatible with the v2 server.
         val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
             connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
         }
-        val firstWindow = serverHello.windows.firstOrNull()
-            ?: error("server advertised no windows in ServerHello")
-        Log.i(TAG, "stream $streamIndex ServerHello: udpPort=${serverHello.udpPort}, advertising ${serverHello.windows.size} window(s); opening windowId=${firstWindow.windowId}")
-        connection.send(ControlMessage.OpenStream(windowId = firstWindow.windowId))
+
+        // Determine which window this pipeline should open.
+        // selectedWindowIds from the intent: if present, pick the windowId at position
+        // [streamIndex] in the array; fall back to the first advertised window so
+        // the legacy adb-direct launch path (no selectedWindowIds extra) still works.
+        val selectedWindowIds: LongArray = intent.getLongArrayExtra("selectedWindowIds")
+            ?: LongArray(0)
+        val windowId: ULong = when {
+            streamIndex < selectedWindowIds.size ->
+                selectedWindowIds[streamIndex].toULong()
+            else ->
+                (serverHello.windows.firstOrNull()
+                    ?: error("server advertised no windows in ServerHello"))
+                    .windowId
+        }
+        Log.i(TAG, "stream $streamIndex ServerHello: udpPort=${serverHello.udpPort}, advertising ${serverHello.windows.size} window(s); opening windowId=$windowId")
+        connection.send(ControlMessage.OpenStream(windowId = windowId))
 
         val stream: ControlMessage.StreamStarted = withTimeout(10_000) {
             connection.incoming.filterIsInstance<ControlMessage.StreamStarted>().first()

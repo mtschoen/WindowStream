@@ -124,13 +124,17 @@ kover {
                 // MultiServerPickerScreen (portable flavor) drives the multi-window pick
                 // flow for Quest/phone/tablet — pure Compose state-management over a
                 // SharedFlow of discovered servers, same rationale as ServerPickerScreen.
+                // WindowPickerScreen (Task 5.4) is the new window multi-select composable;
+                // it delegates all logic to WindowPickerViewModel which IS unit-tested.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt",
                     "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt\$*",
                     "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt",
                     "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*",
                     "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt\$*"
+                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt\$*",
+                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreenKt",
+                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreenKt\$*"
                 )
                 // The kotlinx-serialization compiler plugin emits $$serializer singleton
                 // objects and $Companion helper classes as infrastructure; they are not
@@ -228,6 +232,17 @@ kover {
                 classes(
                     "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt",
                     "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt\$*"
+                )
+                // WindowPickerViewModel launches three coroutines (one per event type) via
+                // scope.launch. The Kotlin compiler generates a $1/$2/$3 state-machine class per
+                // launch site and inlines filterIsInstance into a separate continuation class per
+                // collector. Each of these synthetic classes has one unreachable resume-path branch
+                // (the cooperative-cancellation exit that never fires in unit tests). This is the
+                // same pattern as MultiStreamControlClient$connect$2$readerJob$1. The ViewModel's
+                // testable logic (toggleSelection, selectedWindowIdsAsLongArray, catalogue mutations)
+                // is fully covered; only the compiler-generated continuation infrastructure is excluded.
+                classes(
+                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel\$*"
                 )
             }
         }
