@@ -39,7 +39,9 @@ import kotlinx.coroutines.flow.SharedFlow
 @Composable
 fun ServerPickerScreen(
     discoveredFlow: SharedFlow<ServerInformation>,
-    onServerPicked: (ServerInformation) -> Unit
+    onServerPicked: (ServerInformation) -> Unit,
+    connectingTo: ServerInformation? = null,
+    lastError: String? = null,
 ) {
     val discoveredServers = remember { mutableStateListOf<ServerInformation>() }
 
@@ -77,6 +79,25 @@ fun ServerPickerScreen(
                 )
                 Spacer(modifier = Modifier.height(24.dp))
 
+                if (lastError != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = lastError,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 14.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
                 if (discoveredServers.isEmpty()) {
                     Text(
                         text = "Searching the LAN for servers…",
@@ -86,18 +107,21 @@ fun ServerPickerScreen(
                 } else {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                         discoveredServers.forEach { server ->
+                            val isConnecting: Boolean =
+                                connectingTo?.host?.hostAddress == server.host.hostAddress &&
+                                    connectingTo.controlPort == server.controlPort
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp)
-                                    .clickable { onServerPicked(server) },
+                                    .clickable(enabled = connectingTo == null) { onServerPicked(server) },
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = server.hostname,
+                                        text = if (isConnecting) "${server.hostname} — connecting…" else server.hostname,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant

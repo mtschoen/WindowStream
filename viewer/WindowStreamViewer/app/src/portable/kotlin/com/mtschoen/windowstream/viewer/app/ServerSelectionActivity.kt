@@ -58,6 +58,8 @@ class ServerSelectionActivity : ComponentActivity() {
             // the window picker for the chosen server.
             var pickerViewModel: WindowPickerViewModel? by remember { mutableStateOf(null) }
             var chosenServer: ServerInformation? by remember { mutableStateOf(null) }
+            var connectingTo: ServerInformation? by remember { mutableStateOf(null) }
+            var lastConnectionError: String? by remember { mutableStateOf(null) }
 
             val currentServer: ServerInformation? = chosenServer
             val currentViewModel: WindowPickerViewModel? = pickerViewModel
@@ -65,8 +67,11 @@ class ServerSelectionActivity : ComponentActivity() {
             if (currentServer == null || currentViewModel == null) {
                 ServerPickerScreen(
                     discoveredFlow = discoveredFlow.asSharedFlow(),
+                    connectingTo = connectingTo,
+                    lastError = lastConnectionError,
                     onServerPicked = { server ->
-                        chosenServer = server
+                        connectingTo = server
+                        lastConnectionError = null
                         lifecycleScope.launch {
                             val client = MultiStreamControlClient(
                                 host = server.host.hostAddress ?: server.hostname,
@@ -85,14 +90,16 @@ class ServerSelectionActivity : ComponentActivity() {
                                     scope = this
                                 )
                                 pickerViewModel = viewModel
+                                chosenServer = server
                                 // Keep the connection open so push events flow.
                                 // It will be cancelled when this coroutine scope
                                 // is torn down (activity lifecycle via lifecycleScope).
-                            }.onFailure {
-                                // Connection failed — reset so the server list re-appears.
+                            }.onFailure { throwable ->
+                                lastConnectionError = formatConnectionError(server, throwable)
                                 chosenServer = null
                                 pickerViewModel = null
                             }
+                            connectingTo = null
                         }
                     }
                 )
@@ -115,6 +122,12 @@ class ServerSelectionActivity : ComponentActivity() {
             putExtra("selectedWindowIds", selectedWindowIds)
         }
         startActivity(intent)
+    }
+
+    private fun formatConnectionError(server: ServerInformation, throwable: Throwable): String {
+        val target = "${server.hostname} (${server.host.hostAddress}:${server.controlPort})"
+        val reason = throwable.message?.takeUnless { it.isBlank() } ?: throwable.javaClass.simpleName
+        return "Couldn't connect to $target: $reason"
     }
 
     override fun onDestroy() {
