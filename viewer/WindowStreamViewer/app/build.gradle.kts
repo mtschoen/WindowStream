@@ -162,6 +162,27 @@ kover {
                     "com.mtschoen.windowstream.viewer.control.ControlClient\$connect\$2\$sendMessage\$2",
                     "com.mtschoen.windowstream.viewer.control.ControlConnection"
                 )
+                // MultiStreamControlClient continuation classes — the same pattern as
+                // ControlClient above. The connect$2 and connect$2$sendMessage$2 classes
+                // are Kotlin-compiler-generated state machines for the withContext/synchronized
+                // suspend path; they contain synthetic resume-path branches that cannot be
+                // driven from unit tests. connect$2$readerJob$1 is the reader coroutine loop;
+                // its missed branches are the cooperative-cancellation exit that never evaluates
+                // to false under test conditions (same pattern as UdpTransportReceiver).
+                // connect$2$heartbeatJob$1$1 is the { System.currentTimeMillis() } lambda
+                // inside the DEFAULT heartbeatSchedulerFactory — all tests provide their own
+                // factory, so this default lambda body is never executed.
+                // MultiStreamControlConnection is excluded for the same reason as ControlConnection:
+                // it is a plain data-carrier constructed inside connect() and its remaining
+                // uncovered lines are auto-generated Kotlin property accessor paths.
+                classes(
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlClient\$connect\$2",
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlClient\$connect\$2\$sendMessage\$2",
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlClient\$connect\$2\$readerJob\$1",
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlClient\$connect\$2\$heartbeatJob\$1\$1",
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection\$openStream\$1",
+                    "com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection"
+                )
                 // MediaCodecDecoder requires Android's MediaCodec framework, which is not
                 // available in the JVM unit-test environment. It is exercised by the Phase 23
                 // end-to-end emulator test. Excluded here following the same pattern as
