@@ -19,7 +19,6 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.TextView
-import com.mtschoen.windowstream.viewer.control.ActiveStreamDescriptor
 import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
@@ -257,13 +256,23 @@ class DemoActivity : Activity() {
         val connection: ControlConnection = client.connect(scope)
         streamStates[streamIndex].connection = connection
 
+        // TODO(v2-phase5): Tasks 5.4-5.6 will replace this single-window-auto-pick
+        // path with a real picker driven by ServerHello.windows + WINDOW_ADDED/REMOVED.
+        // For now: read ServerHello, pick the first advertised window, OPEN_STREAM it,
+        // and wait for STREAM_STARTED. Keeps the demo flow compatible with the v2 server.
         val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
             connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
         }
-        val stream: ActiveStreamDescriptor = serverHello.activeStream
-            ?: error("server did not report an active stream")
+        val firstWindow = serverHello.windows.firstOrNull()
+            ?: error("server advertised no windows in ServerHello")
+        Log.i(TAG, "stream $streamIndex ServerHello: udpPort=${serverHello.udpPort}, advertising ${serverHello.windows.size} window(s); opening windowId=${firstWindow.windowId}")
+        connection.send(ControlMessage.OpenStream(windowId = firstWindow.windowId))
 
-        Log.i(TAG, "stream $streamIndex ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, udp=${stream.udpPort}")
+        val stream: ControlMessage.StreamStarted = withTimeout(10_000) {
+            connection.incoming.filterIsInstance<ControlMessage.StreamStarted>().first()
+        }
+
+        Log.i(TAG, "stream $streamIndex ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, windowId=${stream.windowId}")
 
         val udpReceiver = UdpTransportReceiver(
             bindAddress = InetAddress.getByName("0.0.0.0"),
@@ -273,7 +282,8 @@ class DemoActivity : Activity() {
         val viewerUdpPort: Int = udpReceiver.boundPort
         Log.i(TAG, "stream $streamIndex viewer UDP bound on port $viewerUdpPort")
 
-        connection.send(ControlMessage.ViewerReady(streamId = stream.streamId, viewerUdpPort = viewerUdpPort))
+        // TODO(v2-phase5): VIEWER_READY no longer carries streamId in v2.
+        connection.send(ControlMessage.ViewerReady(viewerUdpPort = viewerUdpPort))
         connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
 
         // Re-read the Surface from the holder at the LAST moment, after the
@@ -347,13 +357,15 @@ class DemoActivity : Activity() {
     }
 
     private fun relayUnicodeCharacter(character: Char) {
-        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = character.code, isUnicode = true, isDown = true))
-        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = character.code, isUnicode = true, isDown = false))
+        // TODO(v2-phase5): use the focused panel's streamId once the picker/switcher UI is rewritten.
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(streamId = PLACEHOLDER_KEY_STREAM_ID, keyCode = character.code, isUnicode = true, isDown = true))
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(streamId = PLACEHOLDER_KEY_STREAM_ID, keyCode = character.code, isUnicode = true, isDown = false))
     }
 
     private fun relayBackspace() {
-        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = 0x08, isUnicode = false, isDown = true))
-        sendKeyEventToPrimary(ControlMessage.KeyEvent(keyCode = 0x08, isUnicode = false, isDown = false))
+        // TODO(v2-phase5): use the focused panel's streamId once the picker/switcher UI is rewritten.
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(streamId = PLACEHOLDER_KEY_STREAM_ID, keyCode = 0x08, isUnicode = false, isDown = true))
+        sendKeyEventToPrimary(ControlMessage.KeyEvent(streamId = PLACEHOLDER_KEY_STREAM_ID, keyCode = 0x08, isUnicode = false, isDown = false))
     }
 
     private fun sendKeyEventToPrimary(message: ControlMessage.KeyEvent) {
@@ -397,7 +409,9 @@ class DemoActivity : Activity() {
     ): ControlMessage.KeyEvent? {
         val unicode: Int = event.unicodeChar
         if (unicode != 0) {
+            // TODO(v2-phase5): use the focused panel's streamId once the picker/switcher UI is rewritten.
             return ControlMessage.KeyEvent(
+                streamId = PLACEHOLDER_KEY_STREAM_ID,
                 keyCode = unicode,
                 isUnicode = true,
                 isDown = isDown
@@ -417,7 +431,9 @@ class DemoActivity : Activity() {
             android.view.KeyEvent.KEYCODE_MOVE_END -> 0x23
             else -> return null
         }
+        // TODO(v2-phase5): use the focused panel's streamId once the picker/switcher UI is rewritten.
         return ControlMessage.KeyEvent(
+            streamId = PLACEHOLDER_KEY_STREAM_ID,
             keyCode = windowsVirtualKey,
             isUnicode = false,
             isDown = isDown
@@ -440,5 +456,13 @@ class DemoActivity : Activity() {
 
     private companion object {
         const val TAG = "WindowStreamDemo"
+
+        // TODO(v2-phase5): replace with the focused panel's streamId once the
+        // picker/switcher UI is rewritten in tasks 5.4-5.6. Until then, we stamp
+        // every relayed key event with this placeholder so the wire shape stays
+        // valid; the v2 server uses streamId to attribute keys to a specific
+        // window so this is wrong but compiles and matches the v1 single-stream
+        // demo's behavior of relaying to the first pipeline.
+        const val PLACEHOLDER_KEY_STREAM_ID: Int = 1
     }
 }

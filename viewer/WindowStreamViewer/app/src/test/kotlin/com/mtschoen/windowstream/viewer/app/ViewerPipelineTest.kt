@@ -1,10 +1,10 @@
 package com.mtschoen.windowstream.viewer.app
 
-import com.mtschoen.windowstream.viewer.control.ActiveStreamDescriptor
 import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
+import com.mtschoen.windowstream.viewer.control.StreamStoppedReason
 import com.mtschoen.windowstream.viewer.decoder.FrameSink
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
@@ -48,13 +48,21 @@ class ViewerPipelineTest {
         protocolMinorRevision = 1
     )
 
-    private val sampleDescriptor = ActiveStreamDescriptor(
-        streamId = 1,
-        udpPort = 52000,
+    // v2 sample stream — replaces ActiveStreamDescriptor. Tests construct
+    // ControlMessage.StreamStarted directly to drive the pipeline into Streaming.
+    private val sampleStreamId: Int = 1
+    private val sampleWindowId: ULong = 11uL
+    private val sampleWidth: Int = 1920
+    private val sampleHeight: Int = 1080
+    private val sampleFramesPerSecond: Int = 60
+
+    private val sampleStreamStarted = ControlMessage.StreamStarted(
+        streamId = sampleStreamId,
+        windowId = sampleWindowId,
         codec = "h264",
-        width = 1920,
-        height = 1080,
-        framesPerSecond = 60
+        width = sampleWidth,
+        height = sampleHeight,
+        framesPerSecond = sampleFramesPerSecond
     )
 
     private val frameSink: FrameSink = mockk(relaxed = true)
@@ -127,28 +135,42 @@ class ViewerPipelineTest {
         coVerify { controlConnection.send(ControlMessage.RequestKeyframe(streamId = 0)) }
     }
 
-    // ─── handleControlMessage — ServerHello with null activeStream ─────────────
+    // ─── handleControlMessage — ServerHello (v2: never starts streaming) ──────
 
     @Test
-    fun `ServerHello with null activeStream does not begin streaming`() = runBlocking {
+    fun `ServerHello with empty windows does not begin streaming`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = null))
+        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 2, udpPort = 0, windows = emptyList()))
         // Allow the collect coroutine to process the message
         kotlinx.coroutines.delay(100)
         assertEquals(ViewerState.Connected(sampleServer), pipeline.stateMachine.currentState)
         verify(exactly = 0) { udpTransportReceiver.start(any()) }
     }
 
-    // ─── handleControlMessage — ServerHello with non-null activeStream ─────────
-
     @Test
-    fun `ServerHello with activeStream begins streaming`() = runBlocking {
+    fun `ServerHello with windows does not begin streaming until StreamStarted`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = sampleDescriptor))
-        awaitState { it is ViewerState.Streaming }
-        val state = pipeline.stateMachine.currentState
-        assertTrue(state is ViewerState.Streaming)
-        assertEquals(sampleDescriptor.streamId, (state as ViewerState.Streaming).streamId)
+        incomingFlow.emit(
+            ControlMessage.ServerHello(
+                serverVersion = 2,
+                udpPort = 51000,
+                windows = listOf(
+                    com.mtschoen.windowstream.viewer.control.WindowDescriptor(
+                        windowId = sampleWindowId,
+                        hwnd = 1L,
+                        processId = 1,
+                        processName = "p",
+                        title = "t",
+                        physicalWidth = sampleWidth,
+                        physicalHeight = sampleHeight
+                    )
+                )
+            )
+        )
+        // v2: ServerHello is a no-op for streaming; we wait for StreamStarted.
+        kotlinx.coroutines.delay(100)
+        assertEquals(ViewerState.Connected(sampleServer), pipeline.stateMachine.currentState)
+        verify(exactly = 0) { udpTransportReceiver.start(any()) }
     }
 
     // ─── handleControlMessage — StreamStarted ─────────────────────────────────
@@ -156,18 +178,11 @@ class ViewerPipelineTest {
     @Test
     fun `StreamStarted message begins streaming`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(
-            ControlMessage.StreamStarted(
-                streamId = sampleDescriptor.streamId,
-                udpPort = sampleDescriptor.udpPort,
-                codec = sampleDescriptor.codec,
-                width = sampleDescriptor.width,
-                height = sampleDescriptor.height,
-                framesPerSecond = sampleDescriptor.framesPerSecond
-            )
-        )
+        incomingFlow.emit(sampleStreamStarted)
         awaitState { it is ViewerState.Streaming }
-        assertTrue(pipeline.stateMachine.currentState is ViewerState.Streaming)
+        val state = pipeline.stateMachine.currentState
+        assertTrue(state is ViewerState.Streaming)
+        assertEquals(sampleStreamId, (state as ViewerState.Streaming).streamId)
     }
 
     // ─── handleControlMessage — StreamStopped ─────────────────────────────────
@@ -175,9 +190,11 @@ class ViewerPipelineTest {
     @Test
     fun `StreamStopped message stops decoder and receiver`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = sampleDescriptor))
+        incomingFlow.emit(sampleStreamStarted)
         awaitState { it is ViewerState.Streaming }
-        incomingFlow.emit(ControlMessage.StreamStopped(streamId = sampleDescriptor.streamId))
+        incomingFlow.emit(
+            ControlMessage.StreamStopped(streamId = sampleStreamId, reason = StreamStoppedReason.ClosedByViewer)
+        )
         awaitState { it is ViewerState.Connected }
         verify { mediaCodecDecoder.stop() }
         verify { udpTransportReceiver.close() }
@@ -212,19 +229,19 @@ class ViewerPipelineTest {
     @Test
     fun `keyframe callback sends RequestKeyframe on active connection`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = sampleDescriptor))
+        incomingFlow.emit(sampleStreamStarted)
         awaitState { it is ViewerState.Streaming }
         withTimeout(3.seconds) {
             while (capturedKeyframeCallback == null) kotlinx.coroutines.delay(10)
         }
         capturedKeyframeCallback!!.invoke()
-        coVerify { controlConnection.send(ControlMessage.RequestKeyframe(streamId = sampleDescriptor.streamId)) }
+        coVerify { controlConnection.send(ControlMessage.RequestKeyframe(streamId = sampleStreamId)) }
     }
 
     @Test
     fun `keyframe callback with no active connection is a no-op`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = sampleDescriptor))
+        incomingFlow.emit(sampleStreamStarted)
         awaitState { it is ViewerState.Streaming }
         withTimeout(3.seconds) {
             while (capturedKeyframeCallback == null) kotlinx.coroutines.delay(10)
@@ -242,7 +259,7 @@ class ViewerPipelineTest {
     @Test
     fun `disconnect with active decoder and receiver stops and clears them`() = runBlocking {
         connectPipeline()
-        incomingFlow.emit(ControlMessage.ServerHello(serverVersion = 1, activeStream = sampleDescriptor))
+        incomingFlow.emit(sampleStreamStarted)
         awaitState { it is ViewerState.Streaming }
         // Wait for beginStreaming to fully complete: the state machine transitions to Streaming
         // before decoder and transportReceiver fields are assigned. We wait until the factory
@@ -331,7 +348,9 @@ class ViewerPipelineTest {
         // transportReceiver?.close() inside handleControlMessage must be exercised.
         connectPipeline()
         // At this point state is Connected, decoder == null, transportReceiver == null
-        incomingFlow.emit(ControlMessage.StreamStopped(streamId = 0))
+        incomingFlow.emit(
+            ControlMessage.StreamStopped(streamId = 0, reason = StreamStoppedReason.ClosedByViewer)
+        )
         // The state machine's StreamStopped from Connected → stays Connected (invalid transition)
         kotlinx.coroutines.delay(100)
         // Neither stop() nor close() should have been called

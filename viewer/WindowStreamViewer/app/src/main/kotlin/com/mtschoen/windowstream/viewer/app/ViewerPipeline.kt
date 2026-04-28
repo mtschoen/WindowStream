@@ -1,6 +1,5 @@
 package com.mtschoen.windowstream.viewer.app
 
-import com.mtschoen.windowstream.viewer.control.ActiveStreamDescriptor
 import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
@@ -69,19 +68,16 @@ class ViewerPipeline(
 
     private suspend fun handleControlMessage(scope: CoroutineScope, host: InetAddress, message: ControlMessage) {
         when (message) {
-            is ControlMessage.ServerHello -> message.activeStream?.let { descriptor ->
-                beginStreaming(scope, host, descriptor)
-            }
+            // TODO(v2-phase5): ServerHello no longer carries an active stream; tasks 5.4-5.6
+            // will redesign the picker flow to OPEN_STREAM the user's selection from
+            // ServerHello.windows. For now the v1 single-stream demo path waits for
+            // StreamStarted to begin streaming, so ServerHello is a no-op here.
+            is ControlMessage.ServerHello -> Unit
             is ControlMessage.StreamStarted -> beginStreaming(
                 scope, host,
-                ActiveStreamDescriptor(
-                    streamId = message.streamId,
-                    udpPort = message.udpPort,
-                    codec = message.codec,
-                    width = message.width,
-                    height = message.height,
-                    framesPerSecond = message.framesPerSecond
-                )
+                streamId = message.streamId,
+                width = message.width,
+                height = message.height
             )
             is ControlMessage.StreamStopped -> {
                 stateMachine.reduce(ViewerEvent.StreamStopped(message.streamId))
@@ -97,21 +93,30 @@ class ViewerPipeline(
         }
     }
 
-    private fun beginStreaming(scope: CoroutineScope, host: InetAddress, descriptor: ActiveStreamDescriptor) {
-        stateMachine.reduce(ViewerEvent.StreamStarted(descriptor.streamId, descriptor.width, descriptor.height))
+    private fun beginStreaming(
+        scope: CoroutineScope,
+        host: InetAddress,
+        streamId: Int,
+        width: Int,
+        height: Int
+    ) {
+        stateMachine.reduce(ViewerEvent.StreamStarted(streamId, width, height))
         val receiver = udpTransportReceiverFactory(InetAddress.getByName("0.0.0.0"), 0)
         val frameFlow = receiver.start(scope)
         transportReceiver = receiver
         // Announce our UDP port so the server can address video packets at us.
+        // TODO(v2-phase5): VIEWER_READY in v2 carries only viewerUdpPort; the streamId
+        // routing is now implicit (the v2 server attributes the registration to the
+        // single open viewer connection).
         scope.launch(Dispatchers.IO) {
             controlConnection?.send(
-                ControlMessage.ViewerReady(streamId = descriptor.streamId, viewerUdpPort = receiver.boundPort)
+                ControlMessage.ViewerReady(viewerUdpPort = receiver.boundPort)
             )
         }
         val newDecoder = mediaCodecDecoderFactory(frameSink) {
-            controlConnection?.send(ControlMessage.RequestKeyframe(descriptor.streamId))
+            controlConnection?.send(ControlMessage.RequestKeyframe(streamId))
         }
-        newDecoder.start(scope, frameFlow, descriptor.width, descriptor.height)
+        newDecoder.start(scope, frameFlow, width, height)
         decoder = newDecoder
     }
 

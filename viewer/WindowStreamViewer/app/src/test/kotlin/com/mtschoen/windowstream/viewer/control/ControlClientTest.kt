@@ -43,7 +43,7 @@ class ControlClientTest {
                 assertTrue(helloJson.contains("HELLO"))
                 val serverHelloPayload: String = ProtocolSerialization.json.encodeToString(
                     ControlMessage.serializer(),
-                    ControlMessage.ServerHello(serverVersion = 1, activeStream = null)
+                    ControlMessage.ServerHello(serverVersion = 2, udpPort = 0, windows = emptyList())
                 )
                 LengthPrefixFraming.writeFrame(output, serverHelloPayload.toByteArray(Charsets.UTF_8))
             }
@@ -77,7 +77,7 @@ class ControlClientTest {
                 // Send SERVER_HELLO back
                 val serverHelloPayload: String = ProtocolSerialization.json.encodeToString(
                     ControlMessage.serializer(),
-                    ControlMessage.ServerHello(serverVersion = 1, activeStream = null)
+                    ControlMessage.ServerHello(serverVersion = 2, udpPort = 0, windows = emptyList())
                 )
                 LengthPrefixFraming.writeFrame(output, serverHelloPayload.toByteArray(Charsets.UTF_8))
                 // Read the next message sent by client
@@ -204,7 +204,7 @@ class ControlClientTest {
                 // Send SERVER_HELLO
                 val serverHelloPayload: String = ProtocolSerialization.json.encodeToString(
                     ControlMessage.serializer(),
-                    ControlMessage.ServerHello(serverVersion = 1, activeStream = null)
+                    ControlMessage.ServerHello(serverVersion = 2, udpPort = 0, windows = emptyList())
                 )
                 LengthPrefixFraming.writeFrame(output, serverHelloPayload.toByteArray(Charsets.UTF_8))
                 // Keep server alive but don't send any more messages (simulate silence)
@@ -258,7 +258,7 @@ class ControlClientTest {
                 // Send SERVER_HELLO
                 val serverHelloPayload: String = ProtocolSerialization.json.encodeToString(
                     ControlMessage.serializer(),
-                    ControlMessage.ServerHello(serverVersion = 1, activeStream = null)
+                    ControlMessage.ServerHello(serverVersion = 2, udpPort = 0, windows = emptyList())
                 )
                 LengthPrefixFraming.writeFrame(output, serverHelloPayload.toByteArray(Charsets.UTF_8))
                 // Read the heartbeat frame the client sends

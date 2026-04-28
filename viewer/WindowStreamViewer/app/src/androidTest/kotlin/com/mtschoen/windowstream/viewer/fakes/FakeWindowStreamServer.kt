@@ -1,10 +1,10 @@
 package com.mtschoen.windowstream.viewer.fakes
 
 import android.util.Log
-import com.mtschoen.windowstream.viewer.control.ActiveStreamDescriptor
 import com.mtschoen.windowstream.viewer.control.ControlMessage
 import com.mtschoen.windowstream.viewer.control.LengthPrefixFraming
 import com.mtschoen.windowstream.viewer.control.ProtocolSerialization
+import com.mtschoen.windowstream.viewer.control.WindowDescriptor
 import com.mtschoen.windowstream.viewer.transport.PacketHeader
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +41,7 @@ import kotlin.time.Duration.Companion.seconds
  * @param viewerUdpPortDeferred Deferred resolved to the viewer's UDP receive port after the
  *                              viewer's [com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver]
  *                              has called [com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver.start].
- * @param streamId              Stream identifier reported in [ActiveStreamDescriptor].
+ * @param streamId              Stream identifier reported in [ControlMessage.StreamStarted].
  * @param width                 Frame width in pixels.
  * @param height                Frame height in pixels.
  * @param framesPerSecond       Nominal frame rate used for presentation timestamps.
@@ -74,27 +74,30 @@ class FakeWindowStreamServer(
             // Read the viewer's HELLO frame.
             LengthPrefixFraming.readFrame(input)
 
-            // Send ServerHello immediately. The udpPort field in ActiveStreamDescriptor is not
-            // used by ViewerPipeline.beginStreaming() — the viewer always creates its own UDP
-            // receive socket at port 0 (OS-assigned). We set it to 0 here as a placeholder.
+            // v2 ServerHello: advertise a single fake window. The udpPort field on
+            // ServerHello is not used by ViewerPipeline.beginStreaming() — the viewer
+            // always creates its own UDP receive socket at port 0 (OS-assigned).
+            val fakeWindow = WindowDescriptor(
+                windowId = 1uL,
+                hwnd = 1L,
+                processId = 0,
+                processName = "fake",
+                title = "fake-window",
+                physicalWidth = width,
+                physicalHeight = height
+            )
             val serverHello: String = ProtocolSerialization.json.encodeToString(
                 ControlMessage.serializer(),
                 ControlMessage.ServerHello(
-                    serverVersion = 1,
-                    activeStream = ActiveStreamDescriptor(
-                        streamId = streamId,
-                        udpPort = 0,
-                        codec = "h264",
-                        width = width,
-                        height = height,
-                        framesPerSecond = framesPerSecond
-                    )
+                    serverVersion = 2,
+                    udpPort = 0,
+                    windows = listOf(fakeWindow)
                 )
             )
             synchronized(writeLock) {
                 LengthPrefixFraming.writeFrame(output, serverHello.toByteArray(Charsets.UTF_8))
             }
-            Log.i("FakeWindowStreamServer", "Sent ServerHello (udpPort placeholder=0)")
+            Log.i("FakeWindowStreamServer", "Sent ServerHello v2 (1 window, udpPort placeholder=0)")
 
             // Send periodic heartbeats so the viewer's 6-second silence-timeout does not close
             // the TCP socket before the test assertion completes.
@@ -112,10 +115,32 @@ class FakeWindowStreamServer(
                 }
             }
 
-            // Drain any incoming control messages (e.g. keyframe requests) without responding.
+            // v2 flow: the viewer (DemoActivity) sends OPEN_STREAM after ServerHello. Reply
+            // to the first inbound frame with STREAM_STARTED so DemoActivity's
+            // withTimeout-on-StreamStarted unblocks. Subsequent frames (heartbeats, keyframe
+            // requests) are drained without response.
             try {
+                var streamStartedSent = false
                 while (isActive) {
                     LengthPrefixFraming.readFrame(input) ?: break
+                    if (!streamStartedSent) {
+                        streamStartedSent = true
+                        val streamStarted: String = ProtocolSerialization.json.encodeToString(
+                            ControlMessage.serializer(),
+                            ControlMessage.StreamStarted(
+                                streamId = streamId,
+                                windowId = fakeWindow.windowId,
+                                codec = "h264",
+                                width = width,
+                                height = height,
+                                framesPerSecond = framesPerSecond
+                            )
+                        )
+                        synchronized(writeLock) {
+                            LengthPrefixFraming.writeFrame(output, streamStarted.toByteArray(Charsets.UTF_8))
+                        }
+                        Log.i("FakeWindowStreamServer", "Sent StreamStarted v2 in response to first viewer frame")
+                    }
                 }
             } catch (ignored: Exception) {
                 // Socket may close when the test calls fakeServer.close().
