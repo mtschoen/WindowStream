@@ -14,14 +14,13 @@ using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Discovery;
 using WindowStream.Core.Encode;
-using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
 using WindowStream.Core.Session;
 using WindowStream.Core.Session.Adapters;
 using WindowStream.Core.Session.Input;
 using WindowStream.Core.Transport;
 
-namespace WindowStream.Cli.Hosting;
+namespace WindowStream.Core.Hosting;
 
 /// <summary>
 /// Production wiring for the v2 coordinator. Composes

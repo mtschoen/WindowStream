@@ -1,6 +1,10 @@
 # ---------- Worktrees ----------
 .worktrees/
 
+# ---------- Claude Code runtime ----------
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
 # ---------- .NET ----------
 bin/
 obj/

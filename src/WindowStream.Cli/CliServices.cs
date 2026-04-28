@@ -4,8 +4,8 @@ using System.IO;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Session;
 #if WINDOWS
-using WindowStream.Cli.Hosting;
 using WindowStream.Core.Capture.Windows;
+using WindowStream.Core.Hosting;
 #endif
 
 namespace WindowStream.Cli;
