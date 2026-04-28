@@ -203,11 +203,19 @@ kover {
                 // as future work. ControlMessage.KeyEvent (the V2 keyboard relay message)
                 // currently has no round-trip serialization test — also tracked in
                 // TEST-REPORT.md; exclude until paired with ViewerReady round-trip tests.
+                //
+                // PanelSwitcherActivity is the picker-launched panel-switcher Activity
+                // introduced in Task 5.5. It hosts SurfaceViews, a WifiLock, and
+                // MultiStreamControlClient — all requiring the Android runtime. Same
+                // exclusion rationale as DemoActivity. KeyEventTranslator is fully covered
+                // by KeyEventTranslatorTest (JVM unit tests) and is NOT excluded.
                 classes(
                     "com.mtschoen.windowstream.viewer.demo.DemoActivity",
                     "com.mtschoen.windowstream.viewer.demo.DemoActivity\$*",
                     "com.mtschoen.windowstream.viewer.demo.DirectSurfaceFrameSink",
-                    "com.mtschoen.windowstream.viewer.control.ControlMessage\$KeyEvent"
+                    "com.mtschoen.windowstream.viewer.control.ControlMessage\$KeyEvent",
+                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity",
+                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity\$*"
                 )
                 // ViewerPipeline.Companion.create() constructs ControlClient,
                 // UdpTransportReceiver, and MediaCodecDecoder — all three require Android

@@ -14,7 +14,7 @@ import com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreen
 import com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
-import com.mtschoen.windowstream.viewer.demo.DemoActivity
+import com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
 import kotlinx.coroutines.channels.BufferOverflow
@@ -109,7 +109,7 @@ class ServerSelectionActivity : ComponentActivity() {
     }
 
     private fun launchStreamingActivity(server: ServerInformation, selectedWindowIds: LongArray) {
-        val intent = Intent(this, DemoActivity::class.java).apply {
+        val intent = Intent(this, PanelSwitcherActivity::class.java).apply {
             putExtra("streamHost", server.host.hostAddress)
             putExtra("streamPort", server.controlPort)
             putExtra("selectedWindowIds", selectedWindowIds)
