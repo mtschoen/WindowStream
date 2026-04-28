@@ -75,6 +75,30 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
         exitSource.TrySetResult(0);
     }
 
+    /// <summary>
+    /// Completes the exit task with exit code 1, causing the supervisor's
+    /// <see cref="WorkerSupervisor.MonitorAsync"/> to translate to
+    /// <see cref="WindowStream.Core.Protocol.StreamStoppedReason.EncoderFailed"/>
+    /// and raise <see cref="WindowStream.Core.Hosting.WorkerSupervisor.StreamEnded"/>.
+    /// </summary>
+    public void SimulateEncoderFailure()
+    {
+        if (disposed) return;
+        exitSource.TrySetResult(1);
+    }
+
+    /// <summary>
+    /// Completes the exit task with exit code 2, causing the supervisor's
+    /// <see cref="WorkerSupervisor.MonitorAsync"/> to translate to
+    /// <see cref="WindowStream.Core.Protocol.StreamStoppedReason.CaptureFailed"/>
+    /// and raise <see cref="WindowStream.Core.Hosting.WorkerSupervisor.StreamEnded"/>.
+    /// </summary>
+    public void SimulateCaptureFailed()
+    {
+        if (disposed) return;
+        exitSource.TrySetResult(2);
+    }
+
     public ValueTask DisposeAsync()
     {
         if (disposed) return ValueTask.CompletedTask;
