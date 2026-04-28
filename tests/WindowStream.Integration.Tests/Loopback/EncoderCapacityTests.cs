@@ -67,48 +67,20 @@ public class EncoderCapacityTests
         harness.InjectWindow(window2, hwnd: 1002, encoderOptions);
 
         // Open the first stream (windowId=1). It should succeed.
-        // Skip any WINDOW_ADDED notifications pushed by InjectWindow before reading the response.
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 1), cancellation.Token);
-        StreamStartedMessage streamStarted = await ReceiveExpectedAsync<StreamStartedMessage>(viewer, cancellation.Token);
+        StreamStartedMessage streamStarted = Assert.IsType<StreamStartedMessage>(
+            await viewer.ReceiveAsync(cancellation.Token));
         int firstStreamId = streamStarted.StreamId;
 
         // Attempt a second stream (windowId=2). The coordinator is at capacity.
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 2), cancellation.Token);
-        ErrorMessage error = await ReceiveExpectedAsync<ErrorMessage>(viewer, cancellation.Token);
+        ErrorMessage error = Assert.IsType<ErrorMessage>(
+            await viewer.ReceiveAsync(cancellation.Token));
         Assert.Equal(ProtocolErrorCode.EncoderCapacity, error.Code);
 
         // The first stream must still be alive.
         Stream? firstStreamPipe = harness.Supervisor.GetPipe(firstStreamId);
         Assert.NotNull(firstStreamPipe);
-    }
-
-    /// <summary>
-    /// Reads messages from the viewer until one of the expected type <typeparamref name="T"/>
-    /// arrives, discarding interleaved server-push notifications (e.g. WINDOW_ADDED).
-    /// Throws <see cref="InvalidOperationException"/> if a message of an unexpected error
-    /// type arrives when we are not expecting one.
-    /// </summary>
-    private static async Task<T> ReceiveExpectedAsync<T>(
-        FakeViewer viewer,
-        CancellationToken cancellationToken)
-        where T : ControlMessage
-    {
-        while (true)
-        {
-            ControlMessage message = await viewer.ReceiveAsync(cancellationToken);
-            if (message is T typed)
-            {
-                return typed;
-            }
-
-            // Allow server-push messages (WINDOW_ADDED, WINDOW_CHANGED, WINDOW_REMOVED,
-            // HEARTBEAT) to pass through silently. Any unexpected error stops the test.
-            if (message is ErrorMessage && typeof(T) != typeof(ErrorMessage))
-            {
-                throw new InvalidOperationException(
-                    $"Received unexpected ErrorMessage while waiting for {typeof(T).Name}: {message}");
-            }
-        }
     }
 }
 #endif

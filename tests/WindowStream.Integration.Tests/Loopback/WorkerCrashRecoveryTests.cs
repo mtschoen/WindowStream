@@ -94,13 +94,6 @@ public sealed class WorkerCrashRecoveryTests
         harness.InjectWindow(windowOne, hwnd: 0x1001, DefaultEncoderOptions());
         harness.InjectWindow(windowTwo, hwnd: 0x1002, DefaultEncoderOptions());
 
-        // Drain the WINDOW_ADDED notifications so they don't interfere with later
-        // ReceiveAsync calls that expect STREAM_STARTED / STREAM_STOPPED.
-        ControlMessage addedOne = await viewer.ReceiveAsync(cancellation.Token);
-        Assert.IsType<WindowAddedMessage>(addedOne);
-        ControlMessage addedTwo = await viewer.ReceiveAsync(cancellation.Token);
-        Assert.IsType<WindowAddedMessage>(addedTwo);
-
         // ── Open both streams ────────────────────────────────────────────────
 
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 101UL), cancellation.Token);

@@ -73,18 +73,9 @@ public sealed class PauseResumeTests
         harness.InjectWindow(windowDescriptor, hwnd: 0x1234L, encoderOptions);
 
         // ── Step 4: open a stream ────────────────────────────────────────────
-        // InjectWindow fires a WINDOW_ADDED notification to the connected viewer.
-        // Drain any such interstitial messages (WindowAddedMessage, etc.) before
-        // looking for STREAM_STARTED.
         await viewer.SendAsync(new OpenStreamMessage(windowId), cancellation.Token);
-
-        StreamStartedMessage? streamStarted = null;
-        for (int attempt = 0; attempt < 10 && streamStarted is null; attempt++)
-        {
-            ControlMessage incoming = await viewer.ReceiveAsync(cancellation.Token);
-            streamStarted = incoming as StreamStartedMessage;
-        }
-        Assert.NotNull(streamStarted);
+        StreamStartedMessage streamStarted = Assert.IsType<StreamStartedMessage>(
+            await viewer.ReceiveAsync(cancellation.Token));
         Assert.Equal(windowId, streamStarted.WindowId);
         int actualStreamId = streamStarted.StreamId;
 

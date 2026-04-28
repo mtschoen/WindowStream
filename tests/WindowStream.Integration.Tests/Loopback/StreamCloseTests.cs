@@ -30,9 +30,7 @@ public class StreamCloseTests
             workerLauncher: fakeWorkerLauncher,
             cancellationToken: cancellationToken);
 
-        // --- Inject two fake windows before connecting the viewer so that
-        //     NotifyWindowAppeared finds no active channel and discards the
-        //     notifications rather than queuing WINDOW_ADDED before STREAM_STARTED. ---
+        // --- Register two fake windows for OPEN_STREAM to resolve. ---
         EncoderOptions encoderOptions = new EncoderOptions(
             widthPixels: 320,
             heightPixels: 240,
@@ -62,7 +60,7 @@ public class StreamCloseTests
         harness.InjectWindow(windowOne, hwnd: 1001, encoderOptions);
         harness.InjectWindow(windowTwo, hwnd: 1002, encoderOptions);
 
-        // --- Connect viewer and complete handshake now that windows are pre-registered ---
+        // --- Connect viewer and complete handshake ---
         await using FakeViewer viewer = await harness.ConnectViewerAsync(cancellationToken);
 
         await viewer.SendAsync(

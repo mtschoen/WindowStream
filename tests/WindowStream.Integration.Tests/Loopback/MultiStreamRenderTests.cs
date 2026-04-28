@@ -107,31 +107,7 @@ public class MultiStreamRenderTests
         harness.InjectWindow(windowTwo, hwnd: 0x200, encoderOptions);
 
         // ------------------------------------------------------------------
-        // Step 3: Drain the two WINDOW_ADDED messages the coordinator sends
-        // upon injection.
-        // ------------------------------------------------------------------
-        ulong receivedWindowIdOne = 0;
-        ulong receivedWindowIdTwo = 0;
-
-        for (int i = 0; i < 2; i++)
-        {
-            ControlMessage windowMessage = await viewer.ReceiveAsync(cancellationToken);
-            WindowAddedMessage windowAdded = Assert.IsType<WindowAddedMessage>(windowMessage);
-            if (windowAdded.Window.WindowId == 1)
-            {
-                receivedWindowIdOne = windowAdded.Window.WindowId;
-            }
-            else if (windowAdded.Window.WindowId == 2)
-            {
-                receivedWindowIdTwo = windowAdded.Window.WindowId;
-            }
-        }
-
-        Assert.Equal(1UL, receivedWindowIdOne);
-        Assert.Equal(2UL, receivedWindowIdTwo);
-
-        // ------------------------------------------------------------------
-        // Step 4: Open both streams and verify STREAM_STARTED responses.
+        // Step 3: Open both streams and verify STREAM_STARTED responses.
         // ------------------------------------------------------------------
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 1), cancellationToken);
         ControlMessage streamStartedResponseOne = await viewer.ReceiveAsync(cancellationToken);

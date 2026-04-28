@@ -206,16 +206,18 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
     }
 
     /// <summary>
-    /// Registers a fake window with the coordinator so OPEN_STREAM can resolve it
-    /// and a WINDOW_ADDED notification reaches the active viewer. Use this when
-    /// the test does not need real WGC enumeration to provide capture targets.
+    /// Registers a fake window with the coordinator so OPEN_STREAM can resolve it.
+    /// Does NOT push WINDOW_ADDED to the active viewer — call
+    /// <c>harness.Server.NotifyWindowAppeared(descriptor)</c> explicitly when the
+    /// test needs to exercise the push path. Keeping the registration silent here
+    /// prevents WINDOW_ADDED notifications from racing ahead of expected
+    /// STREAM_STARTED / ERROR responses in the viewer's TCP receive queue.
     /// </summary>
     public void InjectWindow(WindowDescriptor descriptor, long hwnd, EncoderOptions encoderOptions)
     {
         windowIdToHwnd[descriptor.WindowId] = hwnd;
         windowIdToDescriptor[descriptor.WindowId] = descriptor;
         windowIdToEncoderOptions[descriptor.WindowId] = encoderOptions;
-        controlServer.NotifyWindowAppeared(descriptor);
     }
 
     public Task<FakeViewer> ConnectViewerAsync(CancellationToken cancellationToken)
