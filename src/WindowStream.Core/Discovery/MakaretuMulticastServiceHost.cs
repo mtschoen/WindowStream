@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Makaretu.Dns;
@@ -54,10 +56,18 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
             normalizedType = normalizedType[..^".local.".Length];
         }
 
+        // Pass the LAN IPv4 addresses explicitly so the A records advertised
+        // for the service hostname only point at interfaces remote viewers can
+        // route to. Without this Makaretu auto-generates A records from every
+        // local IPv4 (including Hyper-V / WSL bridges) and the picker resolves
+        // to an unreachable IP.
+        IReadOnlyList<IPAddress> physicalAddresses = ResolvePhysicalLanAddresses();
+
         ServiceProfile profile = new ServiceProfile(
             instanceName: serviceInstance,
             serviceName: normalizedType,
-            port: (ushort)port);
+            port: (ushort)port,
+            addresses: physicalAddresses.Count > 0 ? physicalAddresses : null);
 
         foreach (string record in textRecords)
         {
@@ -112,6 +122,17 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         // happened to match a virtual-fragment), fall back to the unfiltered
         // candidates rather than break discovery entirely.
         return physical.Count > 0 ? physical : snapshot;
+    }
+
+    private static IReadOnlyList<IPAddress> ResolvePhysicalLanAddresses()
+    {
+        IEnumerable<NetworkInterface> filtered = FilterPhysicalLanInterfaces(
+            NetworkInterface.GetAllNetworkInterfaces());
+        return filtered
+            .SelectMany(intf => intf.GetIPProperties().UnicastAddresses)
+            .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+            .Select(a => a.Address)
+            .ToList();
     }
 
     private static bool IsPhysicalLanInterface(NetworkInterface intf)
