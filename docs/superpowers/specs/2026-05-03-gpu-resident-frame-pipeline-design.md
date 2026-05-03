@@ -186,8 +186,20 @@ pool and is reference-counted by FFmpeg via `AVFrame` ownership.
 ## Migration milestones
 
 Each milestone is a single PR / commit-set that compiles, passes
-`dotnet test`, and leaves the system functional end-to-end. Manual smoke
-testing on real Unity → GXR hardware happens at M3, M4, M5.
+`dotnet test`, and provides clear evidence the new code in that milestone
+works in isolation (the "proof of life" criterion). End-to-end demo
+functionality is **not** required at every milestone — M3 deliberately
+leaves the system unable to demo end-to-end so we can validate the GPU
+converter on its own before integrating it with the encoder. M4 restores
+end-to-end functionality.
+
+The bound on this relaxation: at most one milestone (M3) may have a broken
+end-to-end demo, and the immediately following milestone (M4) must restore
+it. We never accumulate brokenness across multiple milestones.
+
+Manual smoke testing on real Unity → GXR hardware happens at M4 (where
+end-to-end is restored and latency wins should appear) and M5 (cleanup
+regression check).
 
 ### M1 — Shared D3D11 device
 
@@ -216,21 +228,27 @@ testing on real Unity → GXR hardware happens at M3, M4, M5.
   cleanup, integration test for BGRA → NV12 round-trip correctness
   (decode the NV12 result with a CPU helper, compare to source within a
   tolerance for the colour-space conversion).
-- Modify `WgcFrameConverter` to produce NV12 texture frames. Allocate a
-  small ring of NV12 textures inside `WgcCapture` for this milestone (the
-  hw_frames_ctx pool from M4 will replace this).
-- Add a temporary bridge in `FFmpegNvencEncoder`: when given a texture
-  frame, read it back to bytes via a staging texture and feed the existing
-  sws_scale → NVENC path. **This milestone produces the texture but does
-  not yet consume it via hwaccel** — so the system stays functional and
-  the change is bounded to the capture side.
+- Modify `WgcFrameConverter` to produce NV12 texture frames via the new
+  converter. Allocate a small ring of NV12 textures inside `WgcCapture`
+  for this milestone (the FFmpeg-managed hw_frames_ctx pool from M4 will
+  replace it).
 - Add `[FRAMECOUNT] stage=convert` log site at the end of
   `D3D11VideoProcessorColorConverter.Convert`. ptsUs is threaded through.
-- **Manual smoke checkpoint.** Capture before/after [FRAMECOUNT] data and
-  record in this design doc.
-- Expected diff size: medium. ~400 LOC including tests.
+- **No encoder changes.** `FFmpegNvencEncoder` still expects byte-bearing
+  `CapturedFrame`s and will fail when handed texture-only frames. The
+  end-to-end CLI demo is therefore broken between this milestone and M4.
+  This is the deliberate cost of validating the converter in isolation
+  rather than via a throwaway readback bridge in the encoder.
+- **Proof of life:** the converter integration test must pass — same
+  D3D11 device, real `VideoProcessorBlt` invocation, NV12 output
+  byte-for-byte (within colour-space tolerance) compared to a reference
+  CPU conversion of the same source. If this passes, M3 has done its
+  job; M4 then only needs to wire the existing-validated converter into
+  the encoder.
+- **No manual smoke at M3.** End-to-end is broken by design here.
+- Expected diff size: medium. ~350 LOC including tests.
 
-### M4 — NVENC hwaccel ingestion
+### M4 — NVENC hwaccel ingestion (end-to-end restored)
 
 - Configure `AVHWDeviceContext` (D3D11VA) and `AVHWFramesContext`
   (sw_format=NV12) in `FFmpegNvencEncoder.OpenCodecAndAssignOptions`.
@@ -238,15 +256,18 @@ testing on real Unity → GXR hardware happens at M3, M4, M5.
   hw_frames_ctx pool; update `WgcFrameConverter` to acquire textures from
   that pool.
 - Replace `EncodeOnThread`'s `sws_scale` block with construction of a
-  D3D11 AVFrame referencing the texture. Remove the M3 readback bridge.
-  Remove `softwareScaleContextPointer` and the `sws_getContext` call.
+  D3D11 AVFrame referencing the texture. Remove
+  `softwareScaleContextPointer` and the `sws_getContext` call.
 - Integration test for end-to-end hwaccel encode → CPU reference decode of
   the resulting H.264 stream, verifying correctness at multiple resolutions
   (the existing DPI matrix: 100% / 125% / 150% / 175% scaling).
+- **End-to-end CLI demo restored.**
 - **Manual smoke checkpoint — latency win should appear here.** Capture
-  [FRAMECOUNT] data and record in this design doc.
+  [FRAMECOUNT] data and record in this design doc. This is also the first
+  point at which we re-validate that the M1 → M3 work didn't regress
+  anything visible in the demo.
 - **Regression rule:** if this milestone shows latency *worse* than the
-  M1 baseline, stop and diagnose before proceeding to M5.
+  pre-M1 baseline, stop and diagnose before proceeding to M5.
 - Expected diff size: medium-large. ~500 LOC including tests, with the
   bulk being the FFmpeg hwaccel boilerplate in `OpenCodecAndAssignOptions`.
 
@@ -265,7 +286,7 @@ testing on real Unity → GXR hardware happens at M3, M4, M5.
 - Restore coverage thresholds in `Directory.Build.props` to 100% line /
   100% branch. Add or adjust tests to satisfy the gate.
 - Update this design doc with the final measured before/after [FRAMECOUNT]
-  numbers across all of M3, M4, M5.
+  numbers from M4 and M5 manual smokes.
 - Update `CLAUDE.md` to describe the new pipeline shape and the
   `Direct3D11DeviceManager` composition root.
 - Final manual smoke confirming no regression vs M4.
@@ -300,7 +321,11 @@ integration test coverage — same model as `FFmpegNvencEncoder` today.
   tests including the existing DPI matrix and the new round-trip
   correctness tests added in M3 / M4.
 
-### Manual smoke at M3, M4, M5
+### Manual smoke at M4 and M5
+M3 is exempt from manual smoke — the end-to-end demo is broken by design
+between M3 and M4 (see migration milestones). M3's proof-of-life is the
+converter integration test, not a hardware demo.
+
 - Setup: Unity 4K window on PC, Galaxy XR HMD on-head with
   DemoActivity launched via adb intent (per `CLAUDE.md`).
 - Procedure: ≥60 seconds of active Unity content with measurable motion.
