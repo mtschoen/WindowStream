@@ -2,6 +2,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Silk.NET.Direct3D11;
+using WindowStream.Core.Capture;
+using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Encode;
 using WindowStream.Integration.Tests.Infrastructure;
 using WindowStream.Integration.Tests.Support;
@@ -11,8 +14,8 @@ namespace WindowStream.Integration.Tests.Encode;
 
 /// <summary>
 /// Verifies that <see cref="FFmpegNvencEncoder"/> can initialise the NVENC codec, accept a
-/// single synthetic frame, and emit at least one <see cref="EncodedChunk"/> containing
-/// non-empty payload bytes.
+/// single synthetic NV12 D3D11 texture frame, and emit at least one <see cref="EncodedChunk"/>
+/// containing non-empty payload bytes.
 ///
 /// Expected: PASS on a machine with an NVIDIA GPU and driver that exposes h264_nvenc.
 /// The <see cref="NvidiaDriverFactAttribute"/> skip-gate keeps the run green on machines
@@ -22,9 +25,9 @@ public sealed class NvencInitSmokeTests
 {
     [NvidiaDriverFact]
     [Trait("Category", "Integration")]
-    public async Task Configures_And_Encodes_A_Single_Solid_Color_Frame()
+    public async Task Configures_And_Encodes_A_Single_Synthetic_Texture_Frame()
     {
-        // Arrange — configure the encoder with realistic 640×360 @ 30 fps settings.
+        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
         await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
         EncoderOptions options = new EncoderOptions(
             widthPixels: 640,
@@ -33,33 +36,57 @@ public sealed class NvencInitSmokeTests
             bitrateBitsPerSecond: 4_000_000,
             groupOfPicturesLength: 30,
             safetyKeyframeIntervalSeconds: 2);
-        encoder.Configure(options);
+        encoder.Configure(options, deviceManager);
 
-        // Create a synthetic BGRA frame filled with a solid mid-green colour.
-        var frame = SolidColorFrameFactory.CreateSolidColorBgra(640, 360, red: 32, green: 128, blue: 64);
-
-        // Request an IDR frame so the encoder is forced to emit output on the first frame.
-        encoder.RequestKeyframe();
-
-        // Act — push multiple frames. NVENC look-ahead may buffer several frames before
-        // producing output, even with low-latency settings.  Five frames is enough to
-        // prime the GPU pipeline on any NVIDIA card.
-        for (int frameIndex = 0; frameIndex < 5; frameIndex++)
+        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+            deviceManager, options.widthPixels, options.heightPixels);
+        try
         {
-            await encoder.EncodeAsync(frame, CancellationToken.None).ConfigureAwait(false);
-        }
+            encoder.RequestKeyframe();
+            for (int frameIndex = 0; frameIndex < 5; frameIndex++)
+            {
+                encoder.AcquireFrameTexture(out nint poolTexturePointer, out int poolSubresourceIndex);
+                unsafe
+                {
+                    ID3D11DeviceContext* context = (ID3D11DeviceContext*)deviceManager.NativeContextPointer;
+                    context->CopySubresourceRegion(
+                        (ID3D11Resource*)poolTexturePointer,
+                        (uint)poolSubresourceIndex,
+                        0u, 0u, 0u,
+                        (ID3D11Resource*)patternTexturePointer,
+                        0u,
+                        (Box*)null);
+                }
+                CapturedFrame textureFrame = CapturedFrame.FromTexture(
+                    widthPixels: options.widthPixels,
+                    heightPixels: options.heightPixels,
+                    rowStrideBytes: options.widthPixels,
+                    pixelFormat: PixelFormat.Nv12,
+                    presentationTimestampMicroseconds: frameIndex * 33_333,
+                    nativeTexturePointer: poolTexturePointer,
+                    textureArrayIndex: poolSubresourceIndex);
+                await encoder.EncodeAsync(textureFrame, CancellationToken.None).ConfigureAwait(false);
+            }
 
-        EncodedChunk? firstChunk = null;
-        using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await foreach (EncodedChunk chunk in encoder.EncodedChunks.WithCancellation(timeout.Token).ConfigureAwait(false))
+            EncodedChunk? firstChunk = null;
+            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await foreach (EncodedChunk chunk in encoder.EncodedChunks.WithCancellation(timeout.Token).ConfigureAwait(false))
+            {
+                firstChunk = chunk;
+                break;
+            }
+
+            Assert.NotNull(firstChunk);
+            Assert.True(firstChunk!.payload.Length > 0, "encoded chunk payload must be non-empty");
+        }
+        finally
         {
-            firstChunk = chunk;
-            break;
+            unsafe
+            {
+                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                patternTexture->Release();
+            }
         }
-
-        // Assert — at least one non-empty chunk was produced.
-        Assert.NotNull(firstChunk);
-        Assert.True(firstChunk!.payload.Length > 0, "encoded chunk payload must be non-empty");
     }
 }
 #endif
