@@ -30,22 +30,25 @@ public sealed class WgcCapture : IWindowCapture
     public CaptureOptions options { get; }
     public IAsyncEnumerable<CapturedFrame> Frames { get; }
 
+    private readonly Direct3D11DeviceManager deviceManager;
+
     public WgcCapture(
         WindowHandle handle,
         CaptureOptions options,
         GraphicsCaptureItem item,
-        IDirect3DDevice device,
+        Direct3D11DeviceManager deviceManager,
         CancellationToken cancellationToken)
     {
         this.handle = handle;
         this.options = options;
         this.item = item;
+        this.deviceManager = deviceManager ?? throw new ArgumentNullException(nameof(deviceManager));
         this.cancellationToken = cancellationToken;
 
         item.Closed += OnItemClosed;
         // Use CreateFreeThreaded so FrameArrived fires on any thread without a DispatcherQueue
         framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            device,
+            deviceManager.WinRtDevice,
             DirectXPixelFormat.B8G8R8A8UIntNormalized,
             numberOfBuffers: 2,
             size: item.Size);
@@ -109,6 +112,7 @@ public sealed class WgcCapture : IWindowCapture
         disposed = true;
         try { session.Dispose(); } catch { }
         try { framePool.Dispose(); } catch { }
+        try { deviceManager.Dispose(); } catch { }
         frameChannel.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }

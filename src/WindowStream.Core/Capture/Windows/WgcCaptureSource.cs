@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Windows.Graphics.Capture;
 using WinRT;
-using WinRtDirect3DDevice = Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice;
 
 namespace WindowStream.Core.Capture.Windows;
 
@@ -62,8 +61,16 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
         }
 
         GraphicsCaptureItem item = CreateItemForWindow(new IntPtr(handle.value), handle);
-        WinRtDirect3DDevice device = Direct3D11Helper.CreateDevice();
-        return new WgcCapture(handle, options, item, device, cancellationToken);
+        Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
+        try
+        {
+            return new WgcCapture(handle, options, item, deviceManager, cancellationToken);
+        }
+        catch
+        {
+            deviceManager.Dispose();
+            throw;
+        }
     }
 
     private static readonly Guid iidIUnknown = new Guid("00000000-0000-0000-C000-000000000046");
