@@ -31,6 +31,7 @@ public sealed class WgcCapture : IWindowCapture
     public IAsyncEnumerable<CapturedFrame> Frames { get; }
 
     private readonly Direct3D11DeviceManager deviceManager;
+    private readonly WgcFrameConverter frameConverter = new WgcFrameConverter();
 
     public WgcCapture(
         WindowHandle handle,
@@ -73,7 +74,7 @@ public sealed class WgcCapture : IWindowCapture
             {
                 return;
             }
-            CapturedFrame converted = WgcFrameConverter.Convert(frame, startTicks);
+            CapturedFrame converted = frameConverter.Convert(frame, startTicks);
             frameChannel.Writer.TryWrite(converted);
         }
         catch (Exception exception)

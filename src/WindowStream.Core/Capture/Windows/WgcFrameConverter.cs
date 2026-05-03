@@ -10,7 +10,7 @@ using WinRT;
 
 namespace WindowStream.Core.Capture.Windows;
 
-internal static class WgcFrameConverter
+internal sealed class WgcFrameConverter
 {
     [ComImport, Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -22,7 +22,7 @@ internal static class WgcFrameConverter
     private static readonly Guid iidId3D11Texture2D =
         new Guid("6F15AAF2-D208-4E89-9AB4-489535D34F9C");
 
-    public static CapturedFrame Convert(Direct3D11CaptureFrame frame, long startTicks)
+    public CapturedFrame Convert(Direct3D11CaptureFrame frame, long startTicks)
     {
         IDirect3DDxgiInterfaceAccess access =
             frame.Surface.As<IDirect3DDxgiInterfaceAccess>();
