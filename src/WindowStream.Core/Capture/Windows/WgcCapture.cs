@@ -10,6 +10,7 @@ using SilkDxgi = Silk.NET.DXGI;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
+using WindowStream.Core.Encode;
 
 namespace WindowStream.Core.Capture.Windows;
 
@@ -34,6 +35,8 @@ public sealed class WgcCapture : IWindowCapture
 
     private readonly Direct3D11DeviceManager deviceManager;
     private readonly WgcFrameConverter frameConverter;
+    private readonly bool ownsDeviceManager;
+    private readonly IFrameTexturePool? sharedFrameTexturePool;
 
     // NV12 ring — 3 individual NV12 textures allocated lazily and recreated on resize.
     private const int RingSize = 3;
@@ -48,12 +51,16 @@ public sealed class WgcCapture : IWindowCapture
         CaptureOptions options,
         GraphicsCaptureItem item,
         Direct3D11DeviceManager deviceManager,
+        bool ownsDeviceManager,
+        IFrameTexturePool? sharedFrameTexturePool,
         CancellationToken cancellationToken)
     {
         this.handle = handle;
         this.options = options;
         this.item = item;
         this.deviceManager = deviceManager ?? throw new ArgumentNullException(nameof(deviceManager));
+        this.ownsDeviceManager = ownsDeviceManager;
+        this.sharedFrameTexturePool = sharedFrameTexturePool;
         this.cancellationToken = cancellationToken;
 
         frameConverter = new WgcFrameConverter(AcquireNv12Slot);
@@ -198,13 +205,42 @@ public sealed class WgcCapture : IWindowCapture
     }
 
     /// <summary>
-    /// Acquires the next NV12 ring slot after ensuring the ring and converter are initialised
-    /// for the given dimensions. Returns the texture pointer, array index (always 0 for the
-    /// M3 hand-rolled ring), and the active colour converter.
+    /// Lazily initialises (or re-initialises on dimension change) only the
+    /// <see cref="D3D11VideoProcessorColorConverter"/>, without allocating the NV12 ring.
+    /// Used when an external <see cref="IFrameTexturePool"/> supplies the destination textures.
+    /// </summary>
+    private void EnsureColorConverter(int width, int height)
+    {
+        if (colorConverter is not null && ringWidth == width && ringHeight == height)
+        {
+            return;
+        }
+
+        try { colorConverter?.Dispose(); } catch { }
+        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, width, height);
+        ringWidth = width;
+        ringHeight = height;
+    }
+
+    /// <summary>
+    /// Acquires the next NV12 destination texture and the active colour converter.
+    /// When an external <see cref="IFrameTexturePool"/> was supplied (M4 path), the
+    /// texture comes from the encoder's <c>hw_frames_ctx</c> pool; otherwise the
+    /// M3 hand-rolled ring is used.
+    /// Returns the texture pointer, array index, and converter.
     /// </summary>
     private (nint texturePointer, int arrayIndex, D3D11VideoProcessorColorConverter converter) AcquireNv12Slot(
         int width, int height)
     {
+        if (sharedFrameTexturePool is not null)
+        {
+            // M4 path: NV12 textures come from the encoder's hw_frames_ctx pool.
+            EnsureColorConverter(width, height);
+            sharedFrameTexturePool.AcquireFrameTexture(out nint poolTexturePointer, out int poolSubresourceIndex);
+            return (poolTexturePointer, poolSubresourceIndex, colorConverter!);
+        }
+
+        // M3 fallback path: hand-rolled NV12 ring inside this capture.
         EnsureNv12RingAndConverter(width, height);
         int slot = nextRingSlot;
         nextRingSlot = (nextRingSlot + 1) % RingSize;
@@ -221,7 +257,10 @@ public sealed class WgcCapture : IWindowCapture
         try { session.Dispose(); } catch { }
         try { framePool.Dispose(); } catch { }
         DisposeNv12RingAndConverter();
-        try { deviceManager.Dispose(); } catch { }
+        if (ownsDeviceManager)
+        {
+            try { deviceManager.Dispose(); } catch { }
+        }
         frameChannel.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }

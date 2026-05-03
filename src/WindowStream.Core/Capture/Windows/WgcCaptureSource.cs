@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Windows.Graphics.Capture;
+using WindowStream.Core.Encode;
 using WinRT;
 
 namespace WindowStream.Core.Capture.Windows;
@@ -53,7 +54,15 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
 
     public IEnumerable<WindowInformation> ListWindows() => enumerator.EnumerateWindows();
 
-    public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken)
+    public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken) =>
+        Start(handle, options, sharedDeviceManager: null, sharedFrameTexturePool: null, cancellationToken);
+
+    public IWindowCapture Start(
+        WindowHandle handle,
+        CaptureOptions options,
+        Direct3D11DeviceManager? sharedDeviceManager,
+        IFrameTexturePool? sharedFrameTexturePool,
+        CancellationToken cancellationToken)
     {
         if (!GraphicsCaptureSession.IsSupported())
         {
@@ -61,14 +70,15 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
         }
 
         GraphicsCaptureItem item = CreateItemForWindow(new IntPtr(handle.value), handle);
-        Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
+        Direct3D11DeviceManager deviceManager = sharedDeviceManager ?? new Direct3D11DeviceManager();
+        bool ownsDeviceManager = sharedDeviceManager is null;
         try
         {
-            return new WgcCapture(handle, options, item, deviceManager, cancellationToken);
+            return new WgcCapture(handle, options, item, deviceManager, ownsDeviceManager, sharedFrameTexturePool, cancellationToken);
         }
         catch
         {
-            deviceManager.Dispose();
+            if (ownsDeviceManager) deviceManager.Dispose();
             throw;
         }
     }
