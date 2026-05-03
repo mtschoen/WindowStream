@@ -23,7 +23,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
     }
 
     [Fact]
-    public void Dispose_Is_Idempotent_And_Convert_After_Dispose_Throws()
+    public void Dispose_IsIdempotent()
     {
         using Direct3D11DeviceManager manager = new Direct3D11DeviceManager();
         D3D11VideoProcessorColorConverter converter =
@@ -31,6 +31,16 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
 
         converter.Dispose();
         converter.Dispose(); // must not throw
+    }
+
+    [Fact]
+    public void Convert_AfterDispose_ThrowsObjectDisposedException()
+    {
+        using Direct3D11DeviceManager manager = new Direct3D11DeviceManager();
+        D3D11VideoProcessorColorConverter converter =
+            new D3D11VideoProcessorColorConverter(manager, TextureWidth, TextureHeight);
+
+        converter.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() =>
             converter.Convert((nint)1, (nint)2, 0));
@@ -60,14 +70,14 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
 
             converter.Convert((nint)bgraTexture, (nint)nv12Texture, arrayIndex: 0);
 
-            stagingTexture = CreateNv12StagingTexture(device, TextureWidth, TextureHeight);
+            stagingTexture = CreateNv12CpuReadbackTexture(device, TextureWidth, TextureHeight);
             context->CopyResource((ID3D11Resource*)stagingTexture, (ID3D11Resource*)nv12Texture);
 
             byte[] nv12Bytes = ReadNv12TextureAsBytes(context, stagingTexture, TextureWidth, TextureHeight);
             byte[] roundTripped = DecodeNv12ToBgra(nv12Bytes, TextureWidth, TextureHeight);
 
-            // Bumped from 8 to 12 because the GPU VideoProcessor uses BT.709 by default for NV12 output
-            // while the CPU reference uses BT.601 — small per-channel drift is expected.
+            // Tolerance of 12 per channel: GPU VideoProcessor uses BT.709 for NV12 output;
+            // the CPU reference uses BT.601 — small per-channel drift is expected.
             AssertBgraWithinTolerance(bgraSource, roundTripped, TextureWidth, TextureHeight, tolerance: 12);
         }
         finally
@@ -181,7 +191,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
         return texture;
     }
 
-    private static ID3D11Texture2D* CreateNv12StagingTexture(ID3D11Device* device, int width, int height)
+    private static ID3D11Texture2D* CreateNv12CpuReadbackTexture(ID3D11Device* device, int width, int height)
     {
         Texture2DDesc description = new Texture2DDesc
         {
@@ -280,7 +290,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
             {
                 int yValue = nv12[y * width + x];
                 int uvRow = y / 2;
-                int uvBase = yPlaneSize + uvRow * width + (x & ~1);
+                int uvBase = yPlaneSize + uvRow * width + (x & ~1); // align to even column for chroma subsampling
                 int uValue = nv12[uvBase];
                 int vValue = nv12[uvBase + 1];
 
@@ -290,7 +300,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
                 double vScaled = vValue - 128.0;
 
                 int red   = Clamp((int)(1.164 * yScaled                + 1.596 * vScaled));
-                int green = Clamp((int)(1.164 * yScaled - 0.391 * uScaled - 0.813 * vScaled));
+                int green = Clamp((int)(1.164 * yScaled - 0.392 * uScaled - 0.813 * vScaled));
                 int blue  = Clamp((int)(1.164 * yScaled + 2.018 * uScaled));
 
                 int offset = (y * width + x) * 4;
