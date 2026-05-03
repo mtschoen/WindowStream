@@ -31,9 +31,9 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
     private static readonly Guid iidId3D11VideoDevice =
         new Guid("10EC4D5B-975A-4689-B9E4-D0AAC30FE333");
 
-    // IID for ID3D11VideoContext: {C7262BC3-91BA-4D11-81F7-6A37AB8B3AB1}
+    // IID for ID3D11VideoContext: {61F21C45-3C0E-4A74-9CEA-67100D9AD5E4}
     private static readonly Guid iidId3D11VideoContext =
-        new Guid("C7262BC3-91BA-4D11-81F7-6A37AB8B3AB1");
+        new Guid("61F21C45-3C0E-4A74-9CEA-67100D9AD5E4");
 
     private bool disposed;
 
