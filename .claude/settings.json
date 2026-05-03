@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__unity-mcp__Unity_ReadConsole",
+      "mcp__unity-mcp__Unity_SerializePrefab",
+      "mcp__unity-mcp__Unity_SerializeHierarchy",
+      "mcp__unity-mcp__Unity_SerializeSceneOverrides"
+    ]
+  }
+}
