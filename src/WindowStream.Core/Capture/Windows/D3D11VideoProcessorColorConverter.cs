@@ -332,7 +332,6 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
                     + ((uint)bltResult).ToString("X8", CultureInfo.InvariantCulture));
             }
 
-            Console.Error.WriteLine($"[FRAMECOUNT] stage=convert");
         }
         finally
         {
