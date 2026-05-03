@@ -28,8 +28,9 @@ public sealed class WorkerCommandHandler
             object pauseLock = new object();
             bool paused = false;
 
+            using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
             await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
-            encoder.Configure(arguments.EncoderOptions);
+            encoder.Configure(arguments.EncoderOptions, deviceManager);
 
             WgcCaptureSource captureSource = new WgcCaptureSource();
 
@@ -81,6 +82,8 @@ public sealed class WorkerCommandHandler
             await using IWindowCapture capture = captureSource.Start(
                 arguments.Hwnd,
                 new CaptureOptions(targetFramesPerSecond: arguments.EncoderOptions.framesPerSecond, includeCursor: false),
+                sharedDeviceManager: deviceManager,
+                sharedFrameTexturePool: encoder,
                 lifecycle.Token);
 
             try
