@@ -7,7 +7,8 @@
     <RootNamespace>WindowStream.Core.Tests</RootNamespace>
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
-    <Threshold>100</Threshold>
+    <!-- TEMPORARY: M5 of the GPU-resident pipeline transition restores 100/100. See spec section "Coverage gate strategy during transition". -->
+    <Threshold>90,85</Threshold>
     <ThresholdType>line,branch</ThresholdType>
     <ThresholdStat>total</ThresholdStat>
     <ExcludeByFile>**/Program.cs</ExcludeByFile>

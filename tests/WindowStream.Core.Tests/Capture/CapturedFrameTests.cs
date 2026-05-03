@@ -67,4 +67,96 @@ public sealed class CapturedFrameTests
             new WindowStream.Core.Capture.CapturedFrame(
                 1, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, -1, new byte[4]));
     }
+
+    [Fact]
+    public void Constructor_BytesPath_SetsRepresentationToBytes()
+    {
+        WindowStream.Core.Capture.CapturedFrame frame = new WindowStream.Core.Capture.CapturedFrame(
+            1, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, new byte[4]);
+        Assert.Equal(WindowStream.Core.Capture.FrameRepresentation.Bytes, frame.representation);
+        Assert.Equal((nint)0, frame.nativeTexturePointer);
+        Assert.Equal(0, frame.textureArrayIndex);
+    }
+
+    [Fact]
+    public void FromBytes_IsEquivalentToConstructor()
+    {
+        byte[] buffer = new byte[8];
+        WindowStream.Core.Capture.CapturedFrame frame = WindowStream.Core.Capture.CapturedFrame.FromBytes(
+            widthPixels: 2,
+            heightPixels: 1,
+            rowStrideBytes: 8,
+            pixelFormat: WindowStream.Core.Capture.PixelFormat.Bgra32,
+            presentationTimestampMicroseconds: 42,
+            pixelBuffer: buffer);
+        Assert.Equal(WindowStream.Core.Capture.FrameRepresentation.Bytes, frame.representation);
+        Assert.Equal(buffer.Length, frame.pixelBuffer.Length);
+        Assert.Equal(42L, frame.presentationTimestampMicroseconds);
+    }
+
+    [Fact]
+    public void FromTexture_PopulatesAllProperties()
+    {
+        WindowStream.Core.Capture.CapturedFrame frame = WindowStream.Core.Capture.CapturedFrame.FromTexture(
+            widthPixels: 1920,
+            heightPixels: 1080,
+            rowStrideBytes: 1920,
+            pixelFormat: WindowStream.Core.Capture.PixelFormat.Nv12,
+            presentationTimestampMicroseconds: 1_000_000,
+            nativeTexturePointer: (nint)0x12345678,
+            textureArrayIndex: 3);
+
+        Assert.Equal(WindowStream.Core.Capture.FrameRepresentation.Texture, frame.representation);
+        Assert.Equal(1920, frame.widthPixels);
+        Assert.Equal(1080, frame.heightPixels);
+        Assert.Equal(1920, frame.rowStrideBytes);
+        Assert.Equal(WindowStream.Core.Capture.PixelFormat.Nv12, frame.pixelFormat);
+        Assert.Equal(1_000_000L, frame.presentationTimestampMicroseconds);
+        Assert.Equal((nint)0x12345678, frame.nativeTexturePointer);
+        Assert.Equal(3, frame.textureArrayIndex);
+        Assert.Equal(0, frame.pixelBuffer.Length);
+    }
+
+    [Fact]
+    public void FromTexture_RejectsZeroPointer()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                1, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, (nint)0, 0));
+    }
+
+    [Fact]
+    public void FromTexture_RejectsNegativeArrayIndex()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                1, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, (nint)1, -1));
+    }
+
+    [Fact]
+    public void FromTexture_RejectsNonPositiveDimensions()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                0, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, (nint)1, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                1, 0, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, (nint)1, 0));
+    }
+
+    [Fact]
+    public void FromTexture_RejectsStrideSmallerThanRow()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                10, 2, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, 0, (nint)1, 0));
+    }
+
+    [Fact]
+    public void FromTexture_RejectsNegativeTimestamp()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            WindowStream.Core.Capture.CapturedFrame.FromTexture(
+                1, 1, 4, WindowStream.Core.Capture.PixelFormat.Bgra32, -1, (nint)1, 0));
+    }
 }

@@ -101,4 +101,31 @@ public sealed class FakeVideoEncoderTests
         await encoder.DisposeAsync();
         await encoder.DisposeAsync();
     }
+
+    [Fact]
+    public async Task EncodeAsync_AcceptsTextureRepresentationFrame()
+    {
+        await using FakeVideoEncoder encoder = new FakeVideoEncoder();
+        encoder.Configure(new EncoderOptions(2, 2, 30, 1_000_000, 30, 2));
+
+        CapturedFrame textureFrame = CapturedFrame.FromTexture(
+            widthPixels: 2,
+            heightPixels: 2,
+            rowStrideBytes: 2,
+            pixelFormat: PixelFormat.Nv12,
+            presentationTimestampMicroseconds: 12_345,
+            nativeTexturePointer: (nint)0x12345678,
+            textureArrayIndex: 0);
+
+        await encoder.EncodeAsync(textureFrame, CancellationToken.None);
+        encoder.CompleteEncoding();
+
+        List<EncodedChunk> chunks = new List<EncodedChunk>();
+        await foreach (EncodedChunk chunk in encoder.EncodedChunks)
+        {
+            chunks.Add(chunk);
+        }
+        Assert.Single(chunks);
+        Assert.Equal(12_345L, chunks[0].presentationTimestampMicroseconds);
+    }
 }
