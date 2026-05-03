@@ -174,6 +174,14 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         framesContext->height = options.heightPixels;
         framesContext->initial_pool_size = 4;
 
+        // For NVENC encoding the pool textures must carry D3D11_BIND_RENDER_TARGET (0x20).
+        // The default D3D11VA BindFlags (D3D11_BIND_DECODER | D3D11_BIND_SHADER_RESOURCE)
+        // cause E_INVALIDARG on av_hwframe_ctx_init because NVENC's driver rejects decode-only
+        // bind flags for encode surfaces. D3D11_BIND_SHADER_RESOURCE is included so the same
+        // texture can also be used as an input view in the video-processor path if needed.
+        AVD3D11VAFramesContext* d3d11FramesContext = (AVD3D11VAFramesContext*)framesContext->hwctx;
+        d3d11FramesContext->BindFlags = (uint)(Silk.NET.Direct3D11.BindFlag.RenderTarget | Silk.NET.Direct3D11.BindFlag.ShaderResource);
+
         int hwFramesInitResult = ffmpeg.av_hwframe_ctx_init(framesContextReference);
         if (hwFramesInitResult < 0)
         {
