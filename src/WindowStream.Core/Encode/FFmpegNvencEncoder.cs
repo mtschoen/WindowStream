@@ -1,4 +1,6 @@
+#if WINDOWS
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -9,10 +11,11 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using FFmpeg.AutoGen;
 using WindowStream.Core.Capture;
+using WindowStream.Core.Capture.Windows;
 
 namespace WindowStream.Core.Encode;
 
-public sealed class FFmpegNvencEncoder : IVideoEncoder
+public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
 {
     private readonly IFFmpegNativeLoader nativeLoader;
     private readonly Channel<EncodedChunk> chunkChannel =
@@ -26,7 +29,11 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
     private nint codecContextPointer;
     private nint stagingFramePointer;
     private nint reusablePacketPointer;
-    private nint softwareScaleContextPointer;
+    private nint hardwareDeviceContextReference;     // AVBufferRef* for the AVHWDeviceContext (D3D11VA)
+    private nint hardwareFramesContextReference;     // AVBufferRef* for the AVHWFramesContext (NV12 pool)
+    private Direct3D11DeviceManager? sharedDeviceManager;
+    private bool ownsSharedDeviceManager;
+    private readonly ConcurrentQueue<nint> pendingPoolFramePointers = new ConcurrentQueue<nint>();
 
     public IAsyncEnumerable<EncodedChunk> EncodedChunks { get; }
 
@@ -44,6 +51,25 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
     public void Configure(EncoderOptions options)
     {
         ValidatePreConfigureState(options);
+        sharedDeviceManager = new Direct3D11DeviceManager();
+        ownsSharedDeviceManager = true;
+        OpenCodecAndAssignOptions(options);
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Delegates to ValidatePreConfigureState (tested) and OpenCodecAndAssignOptions (native, Phase 12).")]
+    public void Configure(EncoderOptions options, Direct3D11DeviceManager? deviceManager)
+    {
+        ValidatePreConfigureState(options);
+        if (deviceManager is null)
+        {
+            sharedDeviceManager = new Direct3D11DeviceManager();
+            ownsSharedDeviceManager = true;
+        }
+        else
+        {
+            sharedDeviceManager = deviceManager;
+            ownsSharedDeviceManager = false;
+        }
         OpenCodecAndAssignOptions(options);
     }
 
@@ -82,7 +108,8 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         context->height = options.heightPixels;
         context->time_base = new AVRational { num = 1, den = options.framesPerSecond };
         context->framerate = new AVRational { num = options.framesPerSecond, den = 1 };
-        context->pix_fmt = AVPixelFormat.AV_PIX_FMT_NV12;
+        context->pix_fmt = AVPixelFormat.AV_PIX_FMT_D3D11;
+        context->sw_pix_fmt = AVPixelFormat.AV_PIX_FMT_NV12;
         context->bit_rate = options.bitrateBitsPerSecond;
         context->gop_size = options.groupOfPicturesLength;
         context->max_b_frames = 0;
@@ -107,41 +134,123 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
         // "4-5 keypresses behind" symptom.
         ffmpeg.av_opt_set(context->priv_data, "surfaces", "1", 0);
 
+        // Build AVHWDeviceContext (D3D11VA) wrapping the shared D3D11 device.
+        AVBufferRef* deviceContextReference = ffmpeg.av_hwdevice_ctx_alloc(AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA);
+        if (deviceContextReference == null)
+        {
+            ffmpeg.avcodec_free_context(&context);
+            throw new EncoderException("av_hwdevice_ctx_alloc(D3D11VA) returned null.");
+        }
+        AVHWDeviceContext* deviceContext = (AVHWDeviceContext*)deviceContextReference->data;
+        AVD3D11VADeviceContext* d3d11DeviceContext = (AVD3D11VADeviceContext*)deviceContext->hwctx;
+        d3d11DeviceContext->device = (ID3D11Device*)(void*)sharedDeviceManager!.NativeDevicePointer;
+        d3d11DeviceContext->device_context = (ID3D11DeviceContext*)(void*)sharedDeviceManager!.NativeContextPointer;
+        // Increment refcount on the device + context so FFmpeg's eventual release doesn't underflow our ownership.
+        // FFmpeg calls Release() on these in av_hwdevice_ctx_free; we want our Direct3D11DeviceManager to retain the
+        // canonical reference, so we AddRef here.
+        ((Silk.NET.Core.Native.IUnknown*)(void*)d3d11DeviceContext->device)->AddRef();
+        ((Silk.NET.Core.Native.IUnknown*)(void*)d3d11DeviceContext->device_context)->AddRef();
+
+        int hwDeviceInitResult = ffmpeg.av_hwdevice_ctx_init(deviceContextReference);
+        if (hwDeviceInitResult < 0)
+        {
+            ffmpeg.av_buffer_unref(&deviceContextReference);
+            ffmpeg.avcodec_free_context(&context);
+            throw new EncoderException("av_hwdevice_ctx_init failed.", hwDeviceInitResult);
+        }
+
+        // Build AVHWFramesContext for NV12 textures.
+        AVBufferRef* framesContextReference = ffmpeg.av_hwframe_ctx_alloc(deviceContextReference);
+        if (framesContextReference == null)
+        {
+            ffmpeg.av_buffer_unref(&deviceContextReference);
+            ffmpeg.avcodec_free_context(&context);
+            throw new EncoderException("av_hwframe_ctx_alloc returned null.");
+        }
+        AVHWFramesContext* framesContext = (AVHWFramesContext*)framesContextReference->data;
+        framesContext->format = AVPixelFormat.AV_PIX_FMT_D3D11;
+        framesContext->sw_format = AVPixelFormat.AV_PIX_FMT_NV12;
+        framesContext->width = options.widthPixels;
+        framesContext->height = options.heightPixels;
+        framesContext->initial_pool_size = 4;
+
+        int hwFramesInitResult = ffmpeg.av_hwframe_ctx_init(framesContextReference);
+        if (hwFramesInitResult < 0)
+        {
+            ffmpeg.av_buffer_unref(&framesContextReference);
+            ffmpeg.av_buffer_unref(&deviceContextReference);
+            ffmpeg.avcodec_free_context(&context);
+            throw new EncoderException("av_hwframe_ctx_init failed.", hwFramesInitResult);
+        }
+
+        context->hw_frames_ctx = ffmpeg.av_buffer_ref(framesContextReference);
+        if (context->hw_frames_ctx == null)
+        {
+            ffmpeg.av_buffer_unref(&framesContextReference);
+            ffmpeg.av_buffer_unref(&deviceContextReference);
+            ffmpeg.avcodec_free_context(&context);
+            throw new EncoderException("av_buffer_ref(hw_frames_ctx) returned null.");
+        }
+
         int openResult = ffmpeg.avcodec_open2(context, codec, null);
         if (openResult < 0)
         {
+            ffmpeg.av_buffer_unref(&framesContextReference);
+            ffmpeg.av_buffer_unref(&deviceContextReference);
             ffmpeg.avcodec_free_context(&context);
             throw new EncoderException("avcodec_open2 failed.", openResult);
-        }
-
-        AVFrame* frame = ffmpeg.av_frame_alloc();
-        frame->format = (int)AVPixelFormat.AV_PIX_FMT_NV12;
-        frame->width = options.widthPixels;
-        frame->height = options.heightPixels;
-        int allocateResult = ffmpeg.av_frame_get_buffer(frame, 32);
-        if (allocateResult < 0)
-        {
-            ffmpeg.av_frame_free(&frame);
-            ffmpeg.avcodec_free_context(&context);
-            throw new EncoderException("av_frame_get_buffer failed.", allocateResult);
         }
 
         AVPacket* packet = ffmpeg.av_packet_alloc();
         if (packet == null)
         {
-            ffmpeg.av_frame_free(&frame);
+            ffmpeg.av_buffer_unref(&framesContextReference);
+            ffmpeg.av_buffer_unref(&deviceContextReference);
             ffmpeg.avcodec_free_context(&context);
             throw new EncoderException("av_packet_alloc returned null.");
         }
 
         codecContextPointer = (nint)context;
-        stagingFramePointer = (nint)frame;
+        hardwareDeviceContextReference = (nint)deviceContextReference;
+        hardwareFramesContextReference = (nint)framesContextReference;
         reusablePacketPointer = (nint)packet;
-        softwareScaleContextPointer = (nint)ffmpeg.sws_getContext(
-            options.widthPixels, options.heightPixels, AVPixelFormat.AV_PIX_FMT_BGRA,
-            options.widthPixels, options.heightPixels, AVPixelFormat.AV_PIX_FMT_NV12,
-            ffmpeg.SWS_BILINEAR, null, null, null);
+        // stagingFramePointer (the pre-allocated AVFrame for sws_scale) is gone — frames come from the pool now.
+        stagingFramePointer = 0;
         this.options = options;
+    }
+
+    [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
+    public unsafe void AcquireFrameTexture(out nint texturePointer, out int textureSubresourceIndex)
+    {
+        if (options is null)
+        {
+            throw new InvalidOperationException("Configure must be called before AcquireFrameTexture.");
+        }
+        if (hardwareFramesContextReference == 0)
+        {
+            throw new InvalidOperationException("Hardware frames context is not initialized.");
+        }
+
+        AVFrame* frame = ffmpeg.av_frame_alloc();
+        if (frame == null)
+        {
+            throw new EncoderException("av_frame_alloc returned null.");
+        }
+
+        AVBufferRef* framesReference = (AVBufferRef*)hardwareFramesContextReference;
+        int allocateResult = ffmpeg.av_hwframe_get_buffer(framesReference, frame, 0);
+        if (allocateResult < 0)
+        {
+            ffmpeg.av_frame_free(&frame);
+            throw new EncoderException("av_hwframe_get_buffer failed.", allocateResult);
+        }
+
+        // For D3D11 hwaccel, frame->data[0] is the ID3D11Texture2D* and
+        // frame->data[1] is the subresource index (cast through intptr).
+        texturePointer = (nint)frame->data[0];
+        textureSubresourceIndex = (int)(long)frame->data[1];
+
+        pendingPoolFramePointers.Enqueue((nint)frame);
     }
 
     public void RequestKeyframe()
@@ -166,51 +275,57 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
     [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
     private unsafe void EncodeOnThread(CapturedFrame frame)
     {
+        if (frame.representation != FrameRepresentation.Texture)
+        {
+            throw new EncoderException(
+                "FFmpegNvencEncoder requires texture-bearing CapturedFrames after M4. "
+                + "Bytes-bearing frames are no longer supported.");
+        }
+
+        if (!pendingPoolFramePointers.TryDequeue(out nint pendingFramePointer))
+        {
+            throw new EncoderException(
+                "EncodeAsync called without a matching AcquireFrameTexture — pool queue is empty.");
+        }
+
+        AVFrame* poolFrame = (AVFrame*)pendingFramePointer;
+        if ((nint)poolFrame->data[0] != frame.nativeTexturePointer
+            || (int)(long)poolFrame->data[1] != frame.textureArrayIndex)
+        {
+            ffmpeg.av_frame_free(&poolFrame);
+            throw new EncoderException(
+                "EncodeAsync received a CapturedFrame whose texture pointer + array index "
+                + "do not match the next queued pool frame. Pool / encode ordering is broken.");
+        }
+
         AVCodecContext* context = (AVCodecContext*)codecContextPointer;
-        AVFrame* stagingFrame = (AVFrame*)stagingFramePointer;
         AVPacket* packet = (AVPacket*)reusablePacketPointer;
-        SwsContext* scaleContext = (SwsContext*)softwareScaleContextPointer;
 
-        int scaleResult;
-        // sws_scale's srcSliceH must be <= the source height passed to
-        // sws_getContext, otherwise it crashes with "Slice parameters 0, N
-        // are invalid". The CLI rounds probe dims down to even before
-        // configuring the encoder, so a frame whose actual height is odd
-        // (probe 1182x891 -> encoder configured at 1182x890) used to fault
-        // on the very first frame. Clamp to the configured height; matches
-        // the spec's "round down -- we lose at most one row".
-        int sourceSliceHeight = Math.Min(frame.heightPixels, options!.heightPixels);
-        fixed (byte* sourcePointer = frame.pixelBuffer.Span)
-        {
-            byte*[] sourceData = new byte*[4] { sourcePointer, null, null, null };
-            int[] sourceStride = new int[4] { frame.rowStrideBytes, 0, 0, 0 };
-            scaleResult = ffmpeg.sws_scale(
-                scaleContext,
-                sourceData, sourceStride, 0, sourceSliceHeight,
-                stagingFrame->data, stagingFrame->linesize);
-        }
-        if (scaleResult < 0)
-        {
-            throw new EncoderException("sws_scale failed.", scaleResult);
-        }
-
-        stagingFrame->pts = frameIndex++;
+        poolFrame->pts = frameIndex++;
         if (forceNextKeyframe)
         {
-            stagingFrame->pict_type = AVPictureType.AV_PICTURE_TYPE_I;
-            stagingFrame->flags |= ffmpeg.AV_FRAME_FLAG_KEY;
+            poolFrame->pict_type = AVPictureType.AV_PICTURE_TYPE_I;
+            poolFrame->flags |= ffmpeg.AV_FRAME_FLAG_KEY;
             forceNextKeyframe = false;
         }
         else
         {
-            stagingFrame->pict_type = AVPictureType.AV_PICTURE_TYPE_NONE;
-            stagingFrame->flags &= ~ffmpeg.AV_FRAME_FLAG_KEY;
+            poolFrame->pict_type = AVPictureType.AV_PICTURE_TYPE_NONE;
+            poolFrame->flags &= ~ffmpeg.AV_FRAME_FLAG_KEY;
         }
 
-        int sendResult = ffmpeg.avcodec_send_frame(context, stagingFrame);
-        if (sendResult < 0)
+        try
         {
-            throw new EncoderException("avcodec_send_frame failed.", sendResult);
+            int sendResult = ffmpeg.avcodec_send_frame(context, poolFrame);
+            if (sendResult < 0)
+            {
+                throw new EncoderException("avcodec_send_frame failed.", sendResult);
+            }
+        }
+        finally
+        {
+            // Release the pool's buffers; FFmpeg internally recycles the texture for the next acquire.
+            ffmpeg.av_frame_free(&poolFrame);
         }
 
         while (true)
@@ -263,6 +378,13 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
     [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
     private unsafe void FreeNativeResources()
     {
+        // Drain any unconsumed pool frames first.
+        while (pendingPoolFramePointers.TryDequeue(out nint pendingFramePointer))
+        {
+            AVFrame* pendingFrame = (AVFrame*)pendingFramePointer;
+            ffmpeg.av_frame_free(&pendingFrame);
+        }
+
         if (reusablePacketPointer != 0)
         {
             AVPacket* packet = (AVPacket*)reusablePacketPointer;
@@ -281,10 +403,24 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder
             ffmpeg.avcodec_free_context(&context);
             codecContextPointer = 0;
         }
-        if (softwareScaleContextPointer != 0)
+        if (hardwareFramesContextReference != 0)
         {
-            ffmpeg.sws_freeContext((SwsContext*)softwareScaleContextPointer);
-            softwareScaleContextPointer = 0;
+            AVBufferRef* reference = (AVBufferRef*)hardwareFramesContextReference;
+            ffmpeg.av_buffer_unref(&reference);
+            hardwareFramesContextReference = 0;
+        }
+        if (hardwareDeviceContextReference != 0)
+        {
+            AVBufferRef* reference = (AVBufferRef*)hardwareDeviceContextReference;
+            ffmpeg.av_buffer_unref(&reference);
+            hardwareDeviceContextReference = 0;
+        }
+        if (ownsSharedDeviceManager && sharedDeviceManager is not null)
+        {
+            sharedDeviceManager.Dispose();
+            sharedDeviceManager = null;
+            ownsSharedDeviceManager = false;
         }
     }
 }
+#endif
