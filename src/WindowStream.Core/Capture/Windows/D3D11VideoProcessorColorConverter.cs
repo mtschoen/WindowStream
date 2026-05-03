@@ -37,9 +37,6 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 
     private bool disposed;
 
-    private readonly int sourceWidth;
-    private readonly int sourceHeight;
-
     // Acquired in constructor; released in Dispose in reverse-acquisition order.
     private ID3D11VideoDevice* videoDevice;
     private ID3D11VideoContext* videoContext;
@@ -84,9 +81,6 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
             throw new ArgumentOutOfRangeException(nameof(height), height,
                 "Height must be at least 1.");
         }
-
-        sourceWidth = width;
-        sourceHeight = height;
 
         // QueryInterface ID3D11Device → ID3D11VideoDevice
         {
@@ -305,7 +299,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
             // Configure the stream: progressive, single frame, no past/future frames
             VideoProcessorStream stream = new VideoProcessorStream
             {
-                Enable = new Silk.NET.Core.Bool32(true),
+                Enable = new Bool32(true),
                 OutputIndex = 0,
                 InputFrameOrField = 0,
                 PastFrames = 0,
