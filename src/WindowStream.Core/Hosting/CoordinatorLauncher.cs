@@ -187,13 +187,18 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         {
             probed = ProbeCaptureSizeAsync(handle, cancellationToken).GetAwaiter().GetResult();
         }
-        catch (Exception)
+        catch (Exception probeException)
         {
+            Console.Error.WriteLine(
+                $"ProbeCaptureSizeAsync threw for windowId={windowId} hwnd={hwnd.Value}: " +
+                $"{probeException.GetType().Name}: {probeException.Message}");
             return null;
         }
 
         if (probed is null)
         {
+            Console.Error.WriteLine(
+                $"ProbeCaptureSizeAsync returned null for windowId={windowId} hwnd={hwnd.Value}");
             return null;
         }
 
