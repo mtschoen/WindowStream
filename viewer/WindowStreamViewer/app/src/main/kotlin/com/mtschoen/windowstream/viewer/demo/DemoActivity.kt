@@ -30,8 +30,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -206,9 +208,12 @@ class DemoActivity : Activity() {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 // Pass the long-lived SurfaceHolder, NOT holder.surface. The
                 // Surface object can be invalidated by the OS during the
-                // ~200ms TCP handshake before MediaCodec.configure runs;
-                // capturing the holder lets runPipeline re-read a fresh
-                // Surface at the last moment.
+                // ~1 s TCP handshake on Galaxy XR (the spatial-panel layer
+                // composition reconfigures shortly after surfaceCreated and
+                // recreates the underlying Surface); capturing the holder
+                // lets runPipeline re-read a fresh Surface at the latest
+                // moment, and awaitValidSurface polls until one arrives.
+                logSurfaceCallback(streamIndex, "surfaceCreated", holder)
                 demoScope.launch {
                     pipelineLock.withLock {
                         tearDownPipelineLocked(streamIndex)
@@ -220,9 +225,11 @@ class DemoActivity : Activity() {
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 // Size-only changes don't require a pipeline rebind — MediaCodec
                 // outputs to the same Surface; the compositor handles scaling.
+                logSurfaceCallback(streamIndex, "surfaceChanged ${width}x${height} format=$format", holder)
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                logSurfaceCallback(streamIndex, "surfaceDestroyed", holder)
                 demoScope.launch {
                     pipelineLock.withLock {
                         tearDownPipelineLocked(streamIndex)
@@ -231,17 +238,37 @@ class DemoActivity : Activity() {
             }
         }
 
-    private suspend fun startPipelineLocked(streamIndex: Int, holder: SurfaceHolder) {
+    private fun logSurfaceCallback(streamIndex: Int, event: String, holder: SurfaceHolder) {
+        val surface: Surface = holder.surface
+        Log.i(
+            TAG,
+            "[$streamIndex] $event holder=${idHex(holder)} surface=${idHex(surface)} valid=${surface.isValid}"
+        )
+    }
+
+    private fun startPipelineLocked(streamIndex: Int, holder: SurfaceHolder) {
+        // Launch the handshake INTO the new per-stream scope rather than
+        // awaiting it from the caller's pipelineLock-held context. This
+        // releases pipelineLock essentially immediately so a subsequent
+        // surfaceDestroyed/surfaceCreated burst that happens mid-handshake
+        // is not queue-blocked behind us. On failure we schedule cleanup
+        // on demoScope (NOT scope), because tearDownPipelineLocked calls
+        // cancelAndJoin on scope's job and self-cancellation would deadlock.
         val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         streamStates[streamIndex].scope = scope
-        runCatching {
-            runPipeline(streamIndex, scope, holder)
-        }.onFailure { throwable ->
-            Log.e(TAG, "pipeline $streamIndex failed to start", throwable)
-            // Clean up partial state (control connection, receiver) so the
-            // server doesn't keep a half-dead viewer registered. The next
-            // surfaceCreated callback will retry from scratch.
-            runCatching { tearDownPipelineLocked(streamIndex) }
+        Log.i(TAG, "[$streamIndex] startPipelineLocked launching handshake into new scope (scope=${idHex(scope)})")
+        scope.launch {
+            try {
+                runPipeline(streamIndex, scope, holder)
+            } catch (cancellation: CancellationException) {
+                Log.i(TAG, "[$streamIndex] pipeline cancelled during startup")
+                throw cancellation
+            } catch (throwable: Throwable) {
+                Log.e(TAG, "[$streamIndex] pipeline failed to start", throwable)
+                demoScope.launch {
+                    pipelineLock.withLock { tearDownPipelineLocked(streamIndex) }
+                }
+            }
         }
     }
 
@@ -303,13 +330,12 @@ class DemoActivity : Activity() {
         connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
 
         // Re-read the Surface from the holder at the LAST moment, after the
-        // TCP handshake has settled. If the OS recycled it during the gap,
-        // bail with a tagged error; the SurfaceView's next surfaceCreated
-        // callback will trigger a fresh attempt with the new Surface.
-        val freshSurface: Surface = holder.surface
-        if (!freshSurface.isValid) {
-            error("Surface for pipeline $streamIndex was released during pipeline startup; will retry on next surfaceCreated")
-        }
+        // TCP handshake has settled. If the OS invalidated it during the
+        // gap (Galaxy XR's spatial-panel layer composition can recreate the
+        // underlying Surface ~500 ms in), poll for a recovered one — the
+        // SurfaceHolder framework updates holder.surface to the new Surface
+        // before our surfaceCreated callback necessarily fires.
+        val freshSurface: Surface = awaitValidSurface(streamIndex, holder)
         val frameSink = DirectSurfaceFrameSink(freshSurface)
 
         val decoder = MediaCodecDecoder(
@@ -320,6 +346,51 @@ class DemoActivity : Activity() {
         )
         streamStates[streamIndex].decoder = decoder
         decoder.start(scope, frames, stream.width, stream.height)
+    }
+
+    private suspend fun awaitValidSurface(streamIndex: Int, holder: SurfaceHolder): Surface {
+        val initial: Surface = holder.surface
+        if (initial.isValid) {
+            Log.i(
+                TAG,
+                "[$streamIndex] surface valid on first read after handshake (surface=${idHex(initial)})"
+            )
+            return initial
+        }
+        Log.w(
+            TAG,
+            "[$streamIndex] surface INVALID after handshake (surface=${idHex(initial)}); polling up to ${SURFACE_POLL_TIMEOUT_MILLISECONDS}ms"
+        )
+        val pollStartMilliseconds: Long = System.currentTimeMillis()
+        var pollAttempts: Int = 0
+        while (true) {
+            delay(SURFACE_POLL_INTERVAL_MILLISECONDS)
+            pollAttempts++
+            val elapsedMilliseconds: Long = System.currentTimeMillis() - pollStartMilliseconds
+            val candidate: Surface = holder.surface
+            if (candidate.isValid) {
+                Log.i(
+                    TAG,
+                    "[$streamIndex] surface became valid after $pollAttempts polls " +
+                        "(${elapsedMilliseconds}ms; surface=${idHex(candidate)})"
+                )
+                return candidate
+            }
+            if (elapsedMilliseconds >= SURFACE_POLL_TIMEOUT_MILLISECONDS) {
+                error(
+                    "Surface for pipeline $streamIndex never became valid within " +
+                        "${SURFACE_POLL_TIMEOUT_MILLISECONDS}ms (attempts=$pollAttempts, " +
+                        "holder=${idHex(holder)}); will retry on next surfaceCreated"
+                )
+            }
+            if (pollAttempts == 1 || pollAttempts % 20 == 0) {
+                Log.w(
+                    TAG,
+                    "[$streamIndex] surface still invalid after $pollAttempts polls " +
+                        "(${elapsedMilliseconds}ms; surface=${idHex(candidate)})"
+                )
+            }
+        }
     }
 
     private suspend fun tearDownPipelineLocked(streamIndex: Int) {
@@ -470,6 +541,8 @@ class DemoActivity : Activity() {
         super.onDestroy()
     }
 
+    private fun idHex(value: Any): String = System.identityHashCode(value).toString(16)
+
     private companion object {
         const val TAG = "WindowStreamDemo"
 
@@ -480,5 +553,11 @@ class DemoActivity : Activity() {
         // window so this is wrong but compiles and matches the v1 single-stream
         // demo's behavior of relaying to the first pipeline.
         const val PLACEHOLDER_KEY_STREAM_ID: Int = 1
+
+        // Surface-recovery polling cadence after a TCP handshake completes
+        // with an invalidated SurfaceHolder.surface (Galaxy XR spatial-panel
+        // layer composition recreates the Surface ~500 ms after surfaceCreated).
+        const val SURFACE_POLL_INTERVAL_MILLISECONDS: Long = 50
+        const val SURFACE_POLL_TIMEOUT_MILLISECONDS: Long = 10_000
     }
 }
