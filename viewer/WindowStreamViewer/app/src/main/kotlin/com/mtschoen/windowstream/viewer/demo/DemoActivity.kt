@@ -294,13 +294,25 @@ class DemoActivity : Activity() {
             connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
         }
 
-        // Determine which window this pipeline should open.
-        // selectedWindowIds from the intent: if present, pick the windowId at position
-        // [streamIndex] in the array; fall back to the first advertised window so
-        // the legacy adb-direct launch path (no selectedWindowIds extra) still works.
+        // Determine which window this pipeline should open. Three precedence levels:
+        //   1. selectedWindowHwnds — adb-direct testing convenience: pass raw HWNDs
+        //      and let the viewer resolve them to v2 windowIds via serverHello.windows.
+        //      Useful when you know an HWND from `windowstream list` but not the
+        //      server-assigned windowId (which the picker normally provides).
+        //   2. selectedWindowIds — picker path: real v2 windowIds the picker harvested
+        //      from a ServerHello earlier in the flow.
+        //   3. Fallback: first advertised window (legacy adb-direct one-shot launch).
+        val selectedWindowHwnds: LongArray = intent.getLongArrayExtra("selectedWindowHwnds")
+            ?: LongArray(0)
         val selectedWindowIds: LongArray = intent.getLongArrayExtra("selectedWindowIds")
             ?: LongArray(0)
         val windowId: ULong = when {
+            streamIndex < selectedWindowHwnds.size -> {
+                val targetHwnd: Long = selectedWindowHwnds[streamIndex]
+                serverHello.windows.firstOrNull { descriptor -> descriptor.hwnd == targetHwnd }
+                    ?.windowId
+                    ?: error("no window in ServerHello with hwnd=$targetHwnd; available hwnds=${serverHello.windows.map { it.hwnd }}")
+            }
             streamIndex < selectedWindowIds.size ->
                 selectedWindowIds[streamIndex].toULong()
             else ->

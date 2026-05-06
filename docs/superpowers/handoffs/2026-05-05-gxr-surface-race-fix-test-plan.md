@@ -1,7 +1,26 @@
 # Galaxy XR Surface-race fix — test plan for next session
 
 **Branch:** `fix/gxr-surface-race-during-handshake` (off `feature/m4-hwaccel-ingestion`)
-**Status:** Implemented + smoke-tested on Fold 3, awaiting first GXR run.
+**Status:** **Validated end-to-end on Galaxy XR 2026-05-06.** Fix works; M4 ready to merge. See "Measured results" section below.
+
+## Measured results (2026-05-06)
+
+End-to-end Unity 4K @ 60fps streaming on Galaxy XR (`R3GYB04E2WB`) ran for ~4.5 minutes before a viewer-side WiFi reception lockup (separate issue, server kept pumping):
+
+```
+                            n      p50    p95    p99    max
+reasm  -> dec             5460     12     18     21      63 ms
+dec    -> present         5460     11     17     20      24 ms
+reasm  -> present         5460     23     31     35      70 ms
+```
+
+Pre-M1 baseline was reasm→present p50/p95 = 21/32 ms — viewer-side latency is essentially unchanged (M4 was a server-side refactor; viewer pipeline is the same).
+
+End-to-end (server `convert` → viewer `present`) join failed: 0 matches across 10,064 server-convert events and 5,460 viewer-present events. Root cause: server FRAMECOUNT stages use mismatched clock bases (`stage=convert` emits Unix-epoch `wallMs` and a wallclock-derived `ptsUs`; `stage=enc` emits a monotonic `wallMs` and the encoder-assigned PTS). Viewer side uses Unix-epoch `wallMs` and the encoded-frame PTS. Cannot join until server unifies stages on (Unix-epoch `wallMs`, encoded-frame `ptsUs`). Filed in memory `project_v2_server_silent_failure_modes`.
+
+UDP reception rate during the streaming window was ~54% (5,460 received / 10,064 server-convert events). Eventually the stream hard-locked — server kept pumping, viewer stopped receiving entirely. Filed in memory `project_gxr_wifi_sustained_4k_lockup`.
+
+The fix's polling-and-await path (`awaitValidSurface`) **never had to retry** — every launch logged "surface valid on first read after handshake" because the spatial-panel layer didn't actually invalidate the Surface in our handshake window in this OS build. The lock-decoupling and polling architecture still hold for the documented failure modes; tonight just didn't hit them.
 
 ## What the fix does
 
