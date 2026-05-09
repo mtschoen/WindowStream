@@ -109,7 +109,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                     continue;
                 }
 
-                _ = ServeViewerAsync(channel, cancellationToken);
+                _ = ServeViewerAsync(channel, cancellationToken).ContinueWith(faulted =>
+                {
+                    if (faulted.Exception is not null)
+                    {
+                        Console.Error.WriteLine($"[serve] ServeViewerAsync faulted: {faulted.Exception}");
+                    }
+                }, TaskContinuationOptions.OnlyOnFaulted);
             }
         }
         catch (OperationCanceledException)
@@ -245,9 +251,11 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         OpenStreamMessage openStream,
         CancellationToken cancellationToken)
     {
+        Console.Error.WriteLine($"[openstream] handling windowId={openStream.WindowId}");
         long? hwnd = resolveWindowIdToHwnd(openStream.WindowId);
         if (hwnd is null)
         {
+            Console.Error.WriteLine($"[openstream] hwnd resolution returned null for windowId={openStream.WindowId}");
             await channel.SendAsync(
                 new ErrorMessage(
                     ProtocolErrorCode.WindowNotFound,
@@ -256,9 +264,11 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             return;
         }
 
+        Console.Error.WriteLine($"[openstream] resolved windowId={openStream.WindowId} -> hwnd={hwnd.Value}; resolving encoder options");
         EncoderOptions? encoderOptions = resolveWindowIdToEncoderOptions(openStream.WindowId);
         if (encoderOptions is null)
         {
+            Console.Error.WriteLine($"[openstream] encoder options NULL for windowId={openStream.WindowId} hwnd={hwnd.Value}");
             await channel.SendAsync(
                 new ErrorMessage(
                     ProtocolErrorCode.WindowNotFound,
@@ -267,6 +277,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             return;
         }
 
+        Console.Error.WriteLine($"[openstream] encoder options resolved; calling supervisor.StartStreamAsync (hwnd={hwnd.Value})");
         StreamHandle handle;
         try
         {
@@ -275,11 +286,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
         catch (EncoderCapacityException exception)
         {
+            Console.Error.WriteLine($"[openstream] encoder capacity exception: {exception.Message}");
             await channel.SendAsync(
                 new ErrorMessage(ProtocolErrorCode.EncoderCapacity, exception.Message),
                 cancellationToken).ConfigureAwait(false);
             return;
         }
+        Console.Error.WriteLine($"[openstream] supervisor returned handle; sending StreamStarted (streamId={handle.StreamId})");
 
         lock (stateLock)
         {
