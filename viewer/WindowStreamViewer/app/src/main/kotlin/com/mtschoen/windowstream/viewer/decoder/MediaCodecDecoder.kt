@@ -43,6 +43,7 @@ class MediaCodecDecoder(
         val surface = if (outputToSurface) frameSink.acquireSurface(expectedWidth, expectedHeight) else null
 
         val mediaFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, expectedWidth, expectedHeight)
+        mediaFormat.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
         val newCodec = if (codecName != null) {
             MediaCodec.createByCodecName(codecName)
         } else {
