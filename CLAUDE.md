@@ -51,7 +51,9 @@ build below 100% line or branch coverage on `WindowStream.Core`.
    ```bash
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
    # pick an HWND with actively-updating content AND even width/height
-   #   (odd-height windows crash the sws_scale pump — see Gotchas)
+   #   (NV12 chroma subsampling needs even dimensions; the original
+   #    sws_scale crash path is gone post-M3/M4 but odd-dim behavior
+   #    hasn't been re-verified — pick even for safety)
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve --hwnd <handle>
    ```
    Server advertises itself via mDNS as `<MachineName>-<TcpPort>._windowstream._tcp` so the viewer's picker finds it automatically. Run the command N times with N different HWNDs for multi-window.

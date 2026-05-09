@@ -1,6 +1,6 @@
 # M4 Manual Smoke Handoff — GPU-Resident NVENC Pipeline
 
-**Status:** M4 implementation complete on `feature/m4-hwaccel-ingestion`, branch is **NOT merged to main**. Merge depends on this manual smoke check passing per the spec's regression rule.
+**Status:** ✅ **MERGED to main at `a4795ca`** (2026-05-08). The manual smoke check passed; the GXR surface-race blocker that delayed E2E latency measurement was fixed separately (`64a2a74`). Worktree at `.worktrees/m4-hwaccel` was removed during merge cleanup. Document retained for the diagnostic detail in case M5 surfaces regressions.
 
 ## What's done
 

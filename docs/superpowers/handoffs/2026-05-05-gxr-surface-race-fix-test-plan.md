@@ -1,7 +1,6 @@
 # Galaxy XR Surface-race fix — test plan for next session
 
-**Branch:** `fix/gxr-surface-race-during-handshake` (off `feature/m4-hwaccel-ingestion`)
-**Status:** **Validated end-to-end on Galaxy XR 2026-05-06.** Fix works; M4 ready to merge. See "Measured results" section below.
+**Status:** ✅ **MERGED to main at `64a2a74`** (2026-05-08). Validated end-to-end on Galaxy XR 2026-05-06 — fix works. Both this fix and M4 (`a4795ca`) landed on main together. See "Measured results" below for the validation run.
 
 ## Measured results (2026-05-06)
 

@@ -1,6 +1,6 @@
 # M4 Smoke Results + GXR Viewer Follow-up
 
-**Status:** M4 server-side pipeline verified working (Fold E2E + GXR worker frames) on 2026-05-04. Branch `feature/m4-hwaccel-ingestion` is **still NOT merged to main** because the GXR end-to-end latency comparison vs the pre-M1 baseline could not be completed — viewer-side surface lifecycle race blocked frame reception on GXR. Server-side has no evidence of regression.
+**Status:** ✅ **MERGED to main at `a4795ca`** (2026-05-08). Server-side pipeline verified 2026-05-04 (Fold E2E p50 44 ms; GXR worker producing frames continuously). The GXR viewer-side surface-race blocker was fixed on a separate branch (`fix/gxr-surface-race-during-handshake`, merged `64a2a74`) and end-to-end validation succeeded 2026-05-06 — see `2026-05-05-gxr-surface-race-fix-test-plan.md` for the full measurement table. Document retained for diagnostic detail.
 
 ## What was measured this session
 

@@ -1,5 +1,7 @@
 # Handoff — Execute M1 of the GPU-resident frame pipeline refactor
 
+> ✅ **M1 (and M2-M4) merged to main** (HEAD `64a2a74`, 2026-05-08). Historical handoff retained for context. Only M5 (cleanup, restore 100/100 coverage, record before/after numbers) remains.
+
 **Date prepared:** 2026-05-03
 **Prepared by:** prior session (running out of context budget after spec + plan)
 **Your job:** Execute M1 of a five-milestone server-side refactor.

@@ -1,7 +1,7 @@
 # Frame-counter instrumentation + pipeline-depth lag fix
 
 **Date:** 2026-04-25
-**Status:** Draft (awaiting user review)
+**Status:** ✅ Implemented and merged
 
 ## Background
 
