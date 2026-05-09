@@ -47,16 +47,17 @@ build below 100% line or branch coverage on `WindowStream.Core`.
    New-NetFirewallRule -DisplayName WindowStream-Session-UDP-<port> -Direction Inbound -LocalPort <udpPort> -Protocol UDP -Action Allow -Profile Any
    ```
    (OS assigns ports per session; a broader binary-based rule covering `windowstream.exe` is cleaner. `/wrap` removes `WindowStream-Session-*` rules at session end.)
-4. Start the server:
+4. Start the server (v2 coordinator — `serve` takes no `--hwnd` arg; the viewer picks the window remotely via OPEN_STREAM):
+   ```bash
+   dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve
+   ```
+   The coordinator advertises via mDNS as `<MachineName>._windowstream._tcp` and lists capturable windows in `ServerHello`; the viewer drives selection (multi-server, multi-window). Pre-fetch HWNDs from the host with `list` if you want to bypass the picker via the `selectedWindowHwnds` adb intent extra below:
    ```bash
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
-   # pick an HWND with actively-updating content AND even width/height
-   #   (NV12 chroma subsampling needs even dimensions; the original
-   #    sws_scale crash path is gone post-M3/M4 but odd-dim behavior
-   #    hasn't been re-verified — pick even for safety)
-   dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve --hwnd <handle>
+   # pick HWNDs with active content and even width/height (NV12 needs even dims;
+   # the original sws_scale crash path is gone post-M3/M4 but odd-dim hasn't been
+   # re-verified — pick even for safety)
    ```
-   Server advertises itself via mDNS as `<MachineName>-<TcpPort>._windowstream._tcp` so the viewer's picker finds it automatically. Run the command N times with N different HWNDs for multi-window.
 5. Note the IP (your LAN address) and the TCP port in the server banner.
 
 ### Viewer side — two Gradle flavors
@@ -71,6 +72,11 @@ adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/ap
 # Or bypass the picker (adb-only) with explicit IP:
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
+# Bypass picker AND target a specific HWND (skips the launcher window-picker step):
+adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
+    --es streamHost <pc-lan-ip> --ei streamPort <tcpPort> \
+    --ela selectedWindowHwnds <hwnd>
+# DemoActivity resolves the HWND to v2 windowId via ServerHello.windows.
 # Multi-server via adb:
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --esa streamHosts "<ip1>,<ip2>" --eia streamPorts "<port1>,<port2>"
