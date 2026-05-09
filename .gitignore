@@ -94,3 +94,6 @@ coverage.json
 coverage.cobertura.xml
 *.lcov
 TestResults/
+
+# ---------- Smoke-test logs (transient FRAMECOUNT captures) ----------
+m4-smoke-*.log

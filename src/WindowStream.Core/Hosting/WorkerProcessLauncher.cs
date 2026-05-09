@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipes;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,6 +44,18 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
         };
         Process process = Process.Start(processStartInfo)
             ?? throw new InvalidOperationException("worker spawn failed");
+        // Mirror worker stderr to parent stderr so worker-side crashes are visible
+        // instead of silently discarded by the redirect.
+        StringBuilder stderrBuffer = new StringBuilder();
+        process.ErrorDataReceived += (_, eventArguments) =>
+        {
+            if (eventArguments.Data is not null)
+            {
+                stderrBuffer.AppendLine(eventArguments.Data);
+                Console.Error.WriteLine($"[worker:{process.Id}] {eventArguments.Data}");
+            }
+        };
+        process.BeginErrorReadLine();
         try
         {
             using CancellationTokenSource connectTimeout =
@@ -50,11 +63,13 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             connectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
             await pipe.WaitForConnectionAsync(connectTimeout.Token).ConfigureAwait(false);
         }
-        catch
+        catch (Exception originalException)
         {
+            bool exited = process.HasExited;
+            int? exitCode = exited ? process.ExitCode : null;
             try
             {
-                if (!process.HasExited)
+                if (!exited)
                 {
                     process.Kill(entireProcessTree: true);
                 }
@@ -63,7 +78,10 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             {
             }
             await pipe.DisposeAsync().ConfigureAwait(false);
-            throw;
+            throw new InvalidOperationException(
+                $"worker pipe handshake failed (exited={exited}, exitCode={exitCode?.ToString() ?? "n/a"}); " +
+                $"worker stderr:{System.Environment.NewLine}{stderrBuffer}",
+                originalException);
         }
         return new WorkerHandle(process, pipe);
     }

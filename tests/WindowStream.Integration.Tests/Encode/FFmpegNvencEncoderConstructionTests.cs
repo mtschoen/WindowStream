@@ -1,3 +1,4 @@
+#if WINDOWS
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -6,7 +7,7 @@ using WindowStream.Core.Capture;
 using WindowStream.Core.Encode;
 using Xunit;
 
-namespace WindowStream.Core.Tests.Encode;
+namespace WindowStream.Integration.Tests.Encode;
 
 public sealed class FFmpegNvencEncoderConstructionTests
 {
@@ -157,3 +158,4 @@ public sealed class FFmpegNvencEncoderConstructionTests
         public void EnsureLoaded() => throw new EncoderException("FFmpeg natives missing.");
     }
 }
+#endif
