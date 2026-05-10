@@ -50,7 +50,11 @@ round-trips at 640×360, 800×450, 960×540, 1120×630 — all PASS) and
 `WorkerProcessIntegrationTests.WorkerEmitsChunksThroughPipe`. The M5 #3
 encoder PTS + wallMs alignment did not regress any integration test.
 
-The M5 manual-smoke checkpoint (live demo, Unity 4K → Galaxy XR, capture
-[FRAMECOUNT] data, record cap → present p50/p95 in the design spec's
-Measured results section) is the remaining deliverable; it does not
-affect the test report.
+M5 manual-smoke checkpoint **complete (2026-05-09)**: live demo from
+Unity 6.0 4K → Galaxy XR over Wi-Fi, 3,814 frames joined across all five
+FRAMECOUNT stages over a 150 s window. End-to-end convert → present
+**p50 34 ms / p95 51 ms** (clock-skew-corrected); convert → enc
+**p50 8 ms / p95 13 ms**, down from 252 ms in the 2026-04-26 baseline.
+NVENC queue depth median 1, max 2. Numbers folded into
+`docs/superpowers/specs/2026-04-25-frame-counter-and-pipeline-lag-fix-design.md`
+under "Result (measured 2026-05-09, post-M5 GPU-resident pipeline)".

@@ -223,3 +223,55 @@ verification on a live Claude session is the remaining validation step.
 
 The Phase 2 plan also called for fixing the `sws_scale` odd-height crash
 that was blocking measurement; that fix landed as commit `d5a7f1c`.
+
+## Result (measured 2026-05-09, post-M5 GPU-resident pipeline)
+
+End-to-end run on current `main` (commit `c51b88a`, M5 GPU pipeline cleanup
++ FRAMECOUNT clock fix). Source: Unity 6.0 4K window on chonkers
+(`192.168.50.75`). Sink: Galaxy XR (`R3GYB04E2WB`) over Wi-Fi via TLS adb,
+portable-flavor `DemoActivity` intent. Capture window 150 s, 3,814 frames
+joined across all five stages. Tool: `tools/framecount-analyze.py`,
+estimating server↔viewer clock skew from the floor of `enc → reasm` and
+backing it out from cross-source deltas.
+
+| Stage delta                            | n     | p50 (ms) | p95 (ms) | min | max |
+|----------------------------------------|------:|---------:|---------:|----:|----:|
+| convert → enc (server, GPU→NVENC)      | 3,814 |        8 |       13 |   4 |  90 |
+| enc → reasm (network + reassembly)     | 3,814 |        4 |        9 |   0 |  53 |
+| reasm → dec (viewer decode)            | 3,814 |       11 |       15 |   6 |  55 |
+| dec → present (viewer render)          | 3,814 |       11 |       17 |   1 |  24 |
+| **convert → present (END-TO-END)**     | 3,814 |   **34** |   **51** |  17 | 114 |
+
+NVENC queue depth (`convert → enc`, in-flight frames): median 1, p95 1,
+max 2. Confirms `surfaces=1` from the original Phase 2 fix is still
+holding through the GPU-resident texture-pool path.
+
+Comparison vs the 2026-04-26 measurement (synthetic 250 ms typing source,
+pre-GPU-resident pipeline):
+
+| Metric                              | 2026-04-26 | 2026-05-09 |
+|-------------------------------------|-----------:|-----------:|
+| Median NVENC queue depth            |    1 frame |    1 frame |
+| Median capture → encoder lag        |     252 ms | **8 ms** (convert → enc) |
+| Median enc → frag lag               |       0 ms | (frag stage retired in M5) |
+
+The capture → encoder collapse from 252 ms → 8 ms reflects the M3+M4+M5
+work: GPU-resident colour conversion via `ID3D11VideoProcessor` replaces
+`sws_scale` CPU readback, FFmpeg's `hw_frames_ctx` gives NVENC its input
+texture by reference rather than via host upload, and the clock-alignment
+fix in M5 #3 forwards the WGC capture PTS through to encoder packets so
+all five stages share one ptsUs axis.
+
+Subjective end-to-end verification on the live demo: motion in Unity
+appears at perceptual parity with native rendering on the headset; user
+reports the source window was responsive enough to play the game in
+play-mode and edit in the Editor while wearing the HMD.
+
+**Run conditions caveat.** Throughout this 150 s capture, chonkers was
+also running Unity batch-mode play-mode tests in a separate session,
+contending for the same GPU and CPU. The post-skew-corrected numbers
+above are therefore an upper bound on contended-host latency, not a
+clean-host best case — a quiet-host re-run is expected to come in
+tighter. The pipeline holding at p50 34 ms / p95 51 ms despite that
+contention suggests meaningful steady-state headroom for multi-window
+expansion before host-side resources become the binding constraint.
