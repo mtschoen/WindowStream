@@ -71,7 +71,16 @@
     const sweep = document.getElementById('sweep');
     const ticksContainer = document.getElementById('ticks');
 
-    // Tick marks at every 10 ms (minor) and 100 ms (major).
+    // Optional ?cap=N query param: rate-limit DOM updates to ~N fps using a
+    // time-quantized RAF (RAF runs every vsync, repaint only when interval
+    // elapsed; remainder carries forward to prevent drift). Default = native
+    // monitor refresh.
+    const capFps = parseInt(new URLSearchParams(location.search).get('cap'), 10);
+    const targetInterval = capFps > 0 ? (1000 / capFps) : 0;
+    if (capFps > 0) {
+      document.title = `WindowStream latency clock (${capFps}fps cap)`;
+    }
+
     for (let i = 0; i <= 100; i++) {
       const tick = document.createElement('div');
       tick.style.left = i + '%';
@@ -88,18 +97,24 @@
 
     const pad = (n, w) => String(n).padStart(w, '0');
 
-    function update() {
-      const d = new Date();
-      const ms = d.getMilliseconds();
-      clock.textContent =
-        pad(d.getHours(), 2) + ':' +
-        pad(d.getMinutes(), 2) + ':' +
-        pad(d.getSeconds(), 2) + '.' +
-        pad(ms, 3);
-      marker.style.transform = `translateX(${(ms / 1000) * travelPx}px)`;
+    let lastDraw = 0;
+    function update(now) {
+      if (targetInterval === 0 || now - lastDraw >= targetInterval) {
+        const d = new Date();
+        const ms = d.getMilliseconds();
+        clock.textContent =
+          pad(d.getHours(), 2) + ':' +
+          pad(d.getMinutes(), 2) + ':' +
+          pad(d.getSeconds(), 2) + '.' +
+          pad(ms, 3);
+        marker.style.transform = `translateX(${(ms / 1000) * travelPx}px)`;
+        lastDraw = targetInterval === 0
+          ? now
+          : (lastDraw === 0 ? now : lastDraw + targetInterval);
+      }
       requestAnimationFrame(update);
     }
-    update();
+    requestAnimationFrame(update);
   </script>
 </body>
 </html>

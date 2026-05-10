@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RAF-rate probe</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; background: #000; color: #fff;
+    font-family: 'Cascadia Mono', 'Consolas', monospace;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4vh;
+  }
+  #fps { font-size: 18vh; font-variant-numeric: tabular-nums; line-height: 1; }
+  #avg { font-size: 6vh; color: #aaa; }
+  #note { font-size: 2vh; color: #777; letter-spacing: 0.18em; max-width: 80vw; text-align: center; }
+</style>
+</head>
+<body>
+  <div id="fps">--- fps</div>
+  <div id="avg">avg --- fps over --- s</div>
+  <div id="note">REQUEST_ANIMATION_FRAME RATE &middot; ~165 = monitor refresh, ~60 = Chrome throttled</div>
+  <script>
+    const fpsEl = document.getElementById('fps');
+    const avgEl = document.getElementById('avg');
+    let frames = 0, totalFrames = 0;
+    let bucketStart = performance.now(), runStart = bucketStart;
+    function tick(now) {
+      frames++; totalFrames++;
+      if (now - bucketStart >= 1000) {
+        const fps = (frames * 1000) / (now - bucketStart);
+        const avgFps = (totalFrames * 1000) / (now - runStart);
+        const elapsedSeconds = ((now - runStart) / 1000).toFixed(0);
+        fpsEl.textContent = fps.toFixed(1) + ' fps';
+        avgEl.textContent = `avg ${avgFps.toFixed(1)} fps over ${elapsedSeconds} s`;
+        frames = 0; bucketStart = now;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

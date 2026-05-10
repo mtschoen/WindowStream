@@ -4,7 +4,9 @@ setlocal
 REM === Edit these if anything moves ===
 set DEV=192.168.50.111:40393
 set HOST_IP=192.168.50.75
-set TCP_PORT=61613
+REM Server picks an ephemeral TCP port each launch -- override via:
+REM   set TCP_PORT=<actual>   (cmd)    or   $env:TCP_PORT='<actual>'  (PowerShell)
+if "%TCP_PORT%"=="" set TCP_PORT=61613
 set DURATION=15
 set REMOTE=/sdcard/feasibility-recording.mp4
 
