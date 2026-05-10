@@ -275,3 +275,33 @@ clean-host best case — a quiet-host re-run is expected to come in
 tighter. The pipeline holding at p50 34 ms / p95 51 ms despite that
 contention suggests meaningful steady-state headroom for multi-window
 expansion before host-side resources become the binding constraint.
+
+### Latency timeline
+
+Four authoritative measurements across the latency-reduction arc, each
+recorded at the time it was taken. Stages and sources differ between
+rows and are noted in-line; rows 3 and 4 are the only directly
+comparable pair (same Unity 4K source, same WGC capture path, same
+chonkers→GXR Wi-Fi sink, FRAMECOUNT methodology unchanged).
+
+| Date | Build | Source | Stage measured | p50 | p95 | What this row captures |
+|---|---|---|---|---:|---:|---|
+| 2026-04-26 | pre-`09515ff` | typing (~4 events/s) | cap → enc | **751 ms** | — | Pre-perf-fix baseline. NVENC input-surface queue depth = 3, structurally bounding worst-case low-rate latency. The "swimmy" era. |
+| 2026-04-26 | post-`09515ff` (`surfaces=1`) | typing (~4 events/s) | cap → enc | **252 ms** | — | After capping NVENC's input queue. Knocked the structural low-rate floor down to one in-flight frame. |
+| 2026-05-?? | `b9fc7f6` (post the full perf series, pre-M3 GPU pipeline) | Unity 4K @ 60 fps | cap → present | **51 ms** | 66 ms | Steady-state Unity baseline after the full 2026-04-26 perf-fix series (`surfaces=1`, `tune=ull`, GOP 30, 60 fps default, viewer Wi-Fi-low-latency lock). At 60 fps NVENC's queue cycles fast enough that the typing-rate floor is not load-bearing — this is what end-to-end Unity 4K looked like just before M3 began. (Recorded in the `b9fc7f6` commit message, not re-measured.) |
+| 2026-05-09 | `c51b88a` main (M3+M4+M5 GPU-resident pipeline) | Unity 4K @ 60 fps | cap → present | **34 ms** | 51 ms | Today's measurement. Includes M3 D3D11 video processor, M4 NVENC hwaccel ingestion via `hw_frames_ctx`, and M5 cleanup + clock-alignment fix. |
+
+Reading the arc: rows 1 → 2 was the **2026-04-26 NVENC pipeline-depth
+fix** (~3× cap→enc reduction at low input rates). Row 2 → row 3 is not a
+direct comparison (different source, different stage); row 3 is the
+cleanest snapshot of "system tuned, but encoder still does CPU readback +
+sws_scale before NVENC." Row 3 → row 4 is the **GPU-resident pipeline's
+specific contribution** at 4K@60: **−17 ms p50 / −15 ms p95
+cap → present** (~33% reduction off an already-tight baseline).
+
+The subjective "swimmy and borderline → snappy and responsive"
+transition spans the whole arc, not any single hop: the 2026-04-26 NVENC
+fix took the worst-case structural lag from "felt unmistakably as 4-5
+keypresses behind" down to "near steady-state at typing pace," and the
+M3+M4+M5 GPU-resident pipeline turned that into "responsive enough to
+play and edit live in the source window while wearing the HMD" at 4K.
