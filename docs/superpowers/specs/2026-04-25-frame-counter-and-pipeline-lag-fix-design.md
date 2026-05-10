@@ -286,22 +286,55 @@ chonkers→GXR Wi-Fi sink, FRAMECOUNT methodology unchanged).
 
 | Date | Build | Source | Stage measured | p50 | p95 | What this row captures |
 |---|---|---|---|---:|---:|---|
-| 2026-04-26 | pre-`09515ff` | typing (~4 events/s) | cap → enc | **751 ms** | — | Pre-perf-fix baseline. NVENC input-surface queue depth = 3, structurally bounding worst-case low-rate latency. The "swimmy" era. |
+| 2026-04-26 | pre-`09515ff` | typing (~4 events/s) | cap → enc | **751 ms** | — | Pre-perf-fix baseline. NVENC input-surface queue depth = 3, structurally bounding worst-case low-rate latency. The "swimmy" era as felt under typing-cadence load. |
+| 2026-05-09 (re-measured) | pre-`09515ff` (`83384b6`, queue=3, no `tune=ull`) | Unity 4K active @ ~50 fps | cap → dec | **17 ms** | **35 ms** | Same swimmy-era stack as row 1, but Unity-4K-at-rate source instead of typing. The 751 ms typing-source floor is not present here — sustained 4K capture exercises NVENC fast enough that depth-3 vs depth-1 surface queueing is invisible (median in-flight depth = 1, max = 1). The swimmy era's pipeline-depth bug was load-pattern-specific to sparse-but-bursty input. |
 | 2026-04-26 | post-`09515ff` (`surfaces=1`) | typing (~4 events/s) | cap → enc | **252 ms** | — | After capping NVENC's input queue. Knocked the structural low-rate floor down to one in-flight frame. |
 | 2026-05-?? | `b9fc7f6` (post the full perf series, pre-M3 GPU pipeline) | Unity 4K @ 60 fps | cap → present | **51 ms** | 66 ms | Steady-state Unity baseline after the full 2026-04-26 perf-fix series (`surfaces=1`, `tune=ull`, GOP 30, 60 fps default, viewer Wi-Fi-low-latency lock). At 60 fps NVENC's queue cycles fast enough that the typing-rate floor is not load-bearing — this is what end-to-end Unity 4K looked like just before M3 began. (Recorded in the `b9fc7f6` commit message, not re-measured.) |
 | 2026-05-09 | `c51b88a` main (M3+M4+M5 GPU-resident pipeline) | Unity 4K @ 60 fps | cap → present | **34 ms** | 51 ms | Today's measurement. Includes M3 D3D11 video processor, M4 NVENC hwaccel ingestion via `hw_frames_ctx`, and M5 cleanup + clock-alignment fix. |
 
-Reading the arc: rows 1 → 2 was the **2026-04-26 NVENC pipeline-depth
-fix** (~3× cap→enc reduction at low input rates). Row 2 → row 3 is not a
-direct comparison (different source, different stage); row 3 is the
-cleanest snapshot of "system tuned, but encoder still does CPU readback +
-sws_scale before NVENC." Row 3 → row 4 is the **GPU-resident pipeline's
-specific contribution** at 4K@60: **−17 ms p50 / −15 ms p95
-cap → present** (~33% reduction off an already-tight baseline).
+Reading the arc: rows 1 → 3 was the **2026-04-26 NVENC pipeline-depth
+fix** (~3× cap→enc reduction at typing-rate input). Row 2 (the new Unity
+re-measurement at the same swimmy vintage) shows the depth-3 issue did
+not manifest under sustained Unity 4K — the bug was input-pattern
+specific. Row 3 → row 4 is not a direct comparison (different source,
+different stage); row 4 is the cleanest snapshot of "system tuned, but
+encoder still does CPU readback + sws_scale before NVENC." Row 4 → row
+5 is the **GPU-resident pipeline's specific contribution** at 4K@60:
+**−17 ms p50 / −15 ms p95 cap → present** (~33% reduction off an
+already-tight baseline).
+
+**Latency vs jitter — what the per-frame numbers don't show.** Row 2's
+17 ms p50 cap → dec is similar to row 5's 23 ms p50 cap → dec
+(synthesized from row 5's per-stage breakdown). But the 2026-05-09
+re-measurement also exposed a ~6× difference in encoder-stage
+**inter-arrival variance**: swimmy-era stdev was 16.3 ms with 15 gaps
+≥100 ms over 150 s of active Unity, vs M5 era stdev 2.6 ms with 0 gaps
+≥100 ms in comparable conditions. The CPU sws_scale readback path could
+not sustain steady WGC delivery at 4K — bursts and stalls produced the
+subjective "swimmy" feel even when individual frames were fast through
+the wire. The GPU-resident pipeline's actual gift is **variance
+reduction**, not headline p50 latency. Per-frame transit was nearly
+this fast at swimmy vintage too on a best-case frame; what changed is
+that *every* frame is now best-case.
 
 The subjective "swimmy and borderline → snappy and responsive"
-transition spans the whole arc, not any single hop: the 2026-04-26 NVENC
-fix took the worst-case structural lag from "felt unmistakably as 4-5
-keypresses behind" down to "near steady-state at typing pace," and the
-M3+M4+M5 GPU-resident pipeline turned that into "responsive enough to
-play and edit live in the source window while wearing the HMD" at 4K.
+transition therefore spans two distinct mechanisms: the 2026-04-26
+NVENC fix removed the typing-cadence structural lag ("4-5 keypresses
+behind"), and the M3+M4+M5 GPU-resident pipeline removed the 4K
+WGC-stall-induced jitter that made motion feel uneven even when the
+mean latency looked fine.
+
+### Future work — end-to-end measurement
+
+The `cap → present` chain measures from WGC frame arrival through
+decoder render. It does not capture **input → WGC**: how long after a
+user action (mouse move, keystroke, animation frame submit) the
+changed pixels actually reach `OnFrameArrived`. Subjectively this can
+be the dominant component, but it is not visible to FRAMECOUNT today.
+
+A future measurement could embed a known-cadence event into the source
+window (e.g., a millisecond clock rendered into the captured Unity
+view, or a marker frame triggered by a known-time input) and measure
+the gap between the in-source timestamp and the viewer-side present
+wallMs. That would close the input → present loop. Out of scope for
+the current spec; tracked for a future session.
