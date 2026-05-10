@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -12,6 +13,7 @@ namespace WindowStream.Core.Session.Adapters;
 /// Serialises each <see cref="FragmentedPacket"/> into a wire-format UDP datagram
 /// (24-byte header + payload) and sends it to the destination endpoint.
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "Native UDP socket wrapper; FakeUdpVideoSender + PacketHeader covers framing in isolation.")]
 public sealed class UdpVideoSenderAdapter : IUdpVideoSender
 {
     private UdpClient? udpClient;

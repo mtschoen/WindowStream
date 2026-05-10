@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -14,6 +15,7 @@ namespace WindowStream.Core.Session.Adapters;
 /// Wraps a <see cref="TcpClient"/> stream and implements <see cref="IControlChannel"/>
 /// using length-prefix framing and <see cref="ControlMessageSerialization"/>.
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "Native TCP stream wrapper; framing + serialization are covered in isolation, and FakeControlChannel covers behaviour.")]
 public sealed class TcpControlChannelAdapter : IControlChannel
 {
     private readonly TcpClient tcpClient;

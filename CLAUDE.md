@@ -8,6 +8,93 @@
 - `tests/WindowStream.Core.Tests/` — unit tests (xUnit, Coverlet).
 - `tests/WindowStream.Integration.Tests/` — capture/encode smoke tests, Windows-only.
 
+## Architecture (server-side pipeline)
+
+After the GPU-resident refactor, captured frames stay on the GPU all the
+way through the encoder. Only the encoded H.264 bitstream is read back to
+managed memory for the socket:
+
+```
+[ WGC ] -> D3D11 BGRA texture
+              |
+              v   D3D11VideoProcessorColorConverter (VideoProcessorBlt)
+[ NV12 D3D11 texture ] (from FFmpeg hw_frames_ctx pool)
+              |
+              v   FFmpeg D3D11VA hwaccel (h264_nvenc)
+[ NVENC ] -> H.264 AVPacket bytes
+              |
+              v
+[ NalFragmenter ] -> UDP socket
+```
+
+Composition root: `WorkerCommandHandler` constructs a single
+`Direct3D11DeviceManager` per worker process and shares it with both
+`WgcCaptureSource` and `FFmpegNvencEncoder`. The shared device must be
+created with `D3D11_CREATE_DEVICE_VIDEO_SUPPORT` (the manager handles this).
+There is no `sws_scale` and no per-frame CPU staging readback on the encode
+path — both are deliberately gone post-M4.
+
+`[FRAMECOUNT]` instrumentation: the server emits `stage=convert` (in
+`WgcFrameConverter`) and `stage=enc` (in `FFmpegNvencEncoder`); the viewer
+emits `stage=reasm` and `stage=dec`. All four share the same `ptsUs` axis
+(microseconds since capture start, threaded through `CapturedFrame`,
+encoder pts, and the H.264 frame PTS) and `wallMs` axis (Unix-epoch ms),
+so end-to-end cap → present joins are exact per-frame.
+
+### FFmpeg / OBS dependency
+
+The encoder uses FFmpeg's D3D11VA hwaccel for `h264_nvenc`. This requires
+**FFmpeg 5.x or newer** (`AV_HWDEVICE_TYPE_D3D11VA` and `AV_PIX_FMT_D3D11`
+must be exported). OBS Studio ships FFmpeg 6.x in `bin/64bit/`, which is
+fine. If you replace the OBS-bundled DLLs with a custom build, verify those
+two symbols are exported.
+
+### Design notes (folklore worth preserving)
+
+- **WGC frame surface lifetime.** `Direct3D11CaptureFrame` reuses textures
+  within the framepool, so the converter must complete `VideoProcessorBlt`
+  before returning from `OnFrameArrived`. `WgcFrameConverter.Convert` runs
+  synchronously in the callback by construction, which preserves the
+  invariant — keep it that way.
+- **D3D11 device sharing.** The shared `ID3D11Device` satisfies three
+  consumers (WGC via the WinRT `IDirect3DDevice` wrapper, the D3D11 video
+  processor, and FFmpeg's `AVHWDeviceContext` of type D3D11VA). Feature
+  levels must align across all three. `Direct3D11DeviceManager`'s
+  device-creation flags exist for this reason — don't strip
+  `D3D11_CREATE_DEVICE_VIDEO_SUPPORT`.
+- **FFmpeg hwaccel error messages are silent.** `hw_frames_ctx`
+  misconfiguration surfaces as `AVERROR(EINVAL)` with no contextual
+  message, and the failure typically appears at the first
+  `avcodec_send_frame` rather than at `avcodec_open2` — i.e. "encoder
+  opened fine, then died on frame 1". When debugging a fresh hwaccel
+  setup, reach for the canonical FFmpeg sample (`doc/examples/hw_decode.c`
+  plus the NVENC patterns in `libavcodec/nvenc.c`) before assuming the
+  WindowStream wiring is wrong.
+- **NV12 pool BindFlags.** For NVENC encoding, the pool textures must
+  carry `D3D11_BIND_RENDER_TARGET` (and `D3D11_BIND_SHADER_RESOURCE` so
+  the same texture also serves as the video-processor input view).
+  `FFmpegNvencEncoder.OpenCodecAndAssignOptions` sets this explicitly —
+  the default D3D11VA `BindFlags` (decoder + shader resource) cause
+  `E_INVALIDARG` on `av_hwframe_ctx_init` because NVENC rejects
+  decode-only bind flags.
+
+### Open future work
+
+- **CUDA filter chain.** When on-GPU scaling becomes a need (e.g. a
+  resolution-adaptive ladder), the next addition is a `scale_cuda` filter
+  inserted between the converter and NVENC. This requires adding a CUDA
+  hwaccel device alongside the D3D11VA one and using `hwmap` / `hwupload`
+  to bridge them.
+- **AMD AMF encoder.** `Direct3D11DeviceManager` is intentionally
+  encoder-agnostic. An `AmfVideoEncoder` would consume the same
+  manager-owned device and accept the same texture-bearing
+  `CapturedFrame`, with AMF's analogue of `hw_frames_ctx` for its surface
+  pool.
+- **Cross-process texture sharing.** The v2 coordinator/worker split
+  currently exchanges encoded bitstream chunks between processes. If we
+  ever want to share captured textures across processes, that requires
+  `KeyedMutex` + shared handles — significantly more work, not done.
+
 ## Build
 
 ```bash
@@ -21,8 +108,11 @@ dotnet build
 dotnet test
 ```
 
-Coverage thresholds are enforced via `Directory.Build.props` and will fail the
-build below 100% line or branch coverage on `WindowStream.Core`.
+Coverage thresholds are enforced via Coverlet in
+`tests/WindowStream.Core.Tests/WindowStream.Core.Tests.csproj` and will fail
+the build below 100% line or branch coverage. Native I/O wrappers (D3D11
+COM, FFmpeg, raw sockets) are excluded via `[ExcludeFromCodeCoverage]` with
+inline rationale; integration tests cover those paths.
 
 ## Conventions
 
@@ -54,9 +144,9 @@ build below 100% line or branch coverage on `WindowStream.Core`.
    The coordinator advertises via mDNS as `<MachineName>._windowstream._tcp` and lists capturable windows in `ServerHello`; the viewer drives selection (multi-server, multi-window). Pre-fetch HWNDs from the host with `list` if you want to bypass the picker via the `selectedWindowHwnds` adb intent extra below:
    ```bash
    dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
-   # pick HWNDs with active content and even width/height (NV12 needs even dims;
-   # the original sws_scale crash path is gone post-M3/M4 but odd-dim hasn't been
-   # re-verified — pick even for safety)
+   # pick HWNDs with active content and even width/height (NV12 needs even
+   # dims; sws_scale is gone post-M4, but odd-dim hasn't been re-verified
+   # against the GPU video processor + NVENC path — pick even for safety).
    ```
 5. Note the IP (your LAN address) and the TCP port in the server banner.
 

@@ -125,6 +125,31 @@ public class WorkerSupervisorTests
     }
 
     [Fact]
+    public async Task GetPipe_KnownStreamId_ReturnsPipe()
+    {
+        FakeLauncher launcher = new FakeLauncher();
+        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        StreamHandle handle = await supervisor.StartStreamAsync(
+            1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
+
+        Stream? pipe = supervisor.GetPipe(handle.StreamId);
+
+        Assert.NotNull(pipe);
+        Assert.Same(launcher.Launched[0].Pipe, pipe);
+    }
+
+    [Fact]
+    public void GetPipe_UnknownStreamId_ReturnsNull()
+    {
+        FakeLauncher launcher = new FakeLauncher();
+        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+
+        Stream? pipe = supervisor.GetPipe(streamId: 9999);
+
+        Assert.Null(pipe);
+    }
+
+    [Fact]
     public async Task StartStream_FiresStreamStartedEvent()
     {
         FakeLauncher launcher = new FakeLauncher();

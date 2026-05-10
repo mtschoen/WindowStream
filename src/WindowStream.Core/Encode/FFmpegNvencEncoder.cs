@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -21,7 +20,6 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
     private readonly Channel<EncodedChunk> chunkChannel =
         Channel.CreateUnbounded<EncodedChunk>(new UnboundedChannelOptions { SingleReader = true });
     private EncoderOptions? options;
-    private long frameIndex;
     private bool forceNextKeyframe;
     private bool disposed;
 
@@ -106,7 +104,10 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
 
         context->width = options.widthPixels;
         context->height = options.heightPixels;
-        context->time_base = new AVRational { num = 1, den = options.framesPerSecond };
+        // Microsecond-granularity time_base lets us pass the capture's wall-relative ptsUs
+        // straight through as packet->pts, so the [FRAMECOUNT] join key is identical at
+        // stage=convert (server), stage=enc (server), and stage=dec/present (viewer).
+        context->time_base = new AVRational { num = 1, den = 1_000_000 };
         context->framerate = new AVRational { num = options.framesPerSecond, den = 1 };
         context->pix_fmt = AVPixelFormat.AV_PIX_FMT_D3D11;
         context->sw_pix_fmt = AVPixelFormat.AV_PIX_FMT_NV12;
@@ -309,7 +310,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         AVCodecContext* context = (AVCodecContext*)codecContextPointer;
         AVPacket* packet = (AVPacket*)reusablePacketPointer;
 
-        poolFrame->pts = frameIndex++;
+        poolFrame->pts = frame.presentationTimestampMicroseconds;
         if (forceNextKeyframe)
         {
             poolFrame->pict_type = AVPictureType.AV_PICTURE_TYPE_I;
@@ -351,9 +352,9 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
             byte[] managed = new byte[packet->size];
             Marshal.Copy((IntPtr)packet->data, managed, 0, packet->size);
             bool isKeyframe = (packet->flags & ffmpeg.AV_PKT_FLAG_KEY) != 0;
-            long timestampMicroseconds = 1_000_000L * packet->pts
-                * context->time_base.num / context->time_base.den;
-            long wallClockMilliseconds = Stopwatch.GetTimestamp() * 1000L / Stopwatch.Frequency;
+            // time_base is {1, 1_000_000}, so packet->pts already is microseconds.
+            long timestampMicroseconds = packet->pts;
+            long wallClockMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             System.Console.Error.WriteLine(
                 $"[FRAMECOUNT] stage=enc ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
             chunkChannel.Writer.TryWrite(new EncodedChunk(managed, isKeyframe, timestampMicroseconds));

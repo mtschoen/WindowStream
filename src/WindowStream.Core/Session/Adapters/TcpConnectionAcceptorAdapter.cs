@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -11,6 +12,7 @@ namespace WindowStream.Core.Session.Adapters;
 /// Binds to all interfaces so an Android viewer on the LAN can connect.
 /// Pass <c>0</c> for the port to let the OS assign one.
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "Native socket I/O thin wrapper; FakeTcpConnectionAcceptor + integration tests cover behaviour.")]
 public sealed class TcpConnectionAcceptorAdapter : ITcpConnectionAcceptor
 {
     private readonly TimeProvider timeProvider;

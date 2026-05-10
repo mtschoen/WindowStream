@@ -22,11 +22,12 @@ public sealed class CapturedFrame
 
     /// <summary>
     /// Construct a managed-byte (CPU-resident) <see cref="CapturedFrame"/>.
-    /// During the GPU-resident pipeline transition this is the only path
-    /// production code uses; M5 scopes this constructor to internal once
-    /// production code constructs texture frames exclusively.
+    /// Test-only entry point post-M4 — production code (capture, encode,
+    /// hosting) only constructs texture-bearing frames. Visible to
+    /// <c>WindowStream.Core.Tests</c> and <c>WindowStream.Integration.Tests</c>
+    /// via <c>InternalsVisibleTo</c>.
     /// </summary>
-    public CapturedFrame(
+    internal CapturedFrame(
         int widthPixels,
         int heightPixels,
         int rowStrideBytes,
@@ -90,11 +91,9 @@ public sealed class CapturedFrame
 
     /// <summary>
     /// Construct a managed-byte (CPU-resident) <see cref="CapturedFrame"/>.
-    /// Equivalent to the public constructor; provided as the documented
-    /// factory entry point for the GPU-resident pipeline transition (paired
-    /// with <see cref="FromTexture"/>).
+    /// Test-only — same visibility as the bytes constructor.
     /// </summary>
-    public static CapturedFrame FromBytes(
+    internal static CapturedFrame FromBytes(
         int widthPixels,
         int heightPixels,
         int rowStrideBytes,

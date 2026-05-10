@@ -103,6 +103,15 @@ public sealed class FakeVideoEncoderTests
     }
 
     [Fact]
+    public async Task Stopped_ReflectsDisposeState()
+    {
+        FakeVideoEncoder encoder = new FakeVideoEncoder();
+        Assert.False(encoder.Stopped);
+        await encoder.DisposeAsync();
+        Assert.True(encoder.Stopped);
+    }
+
+    [Fact]
     public async Task EncodeAsync_AcceptsTextureRepresentationFrame()
     {
         await using FakeVideoEncoder encoder = new FakeVideoEncoder();

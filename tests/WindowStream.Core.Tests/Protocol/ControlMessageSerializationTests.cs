@@ -7,6 +7,16 @@ namespace WindowStream.Core.Tests.Protocol;
 public sealed class ControlMessageSerializationTests
 {
     [Fact]
+    public void StreamStopped_NullReason_DeserializesAsMalformed()
+    {
+        // StreamStoppedReasonConverter throws JsonException on a null wire value,
+        // which Deserialize wraps as MalformedMessageException.
+        string payload = "{\"type\":\"STREAM_STOPPED\",\"streamId\":1,\"reason\":null}";
+        Assert.Throws<MalformedMessageException>(
+            () => ControlMessageSerialization.Deserialize(payload));
+    }
+
+    [Fact]
     public void HelloRoundTrips()
     {
         ControlMessage original = new HelloMessage(
