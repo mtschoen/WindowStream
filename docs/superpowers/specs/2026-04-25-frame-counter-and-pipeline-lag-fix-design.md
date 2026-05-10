@@ -278,11 +278,13 @@ expansion before host-side resources become the binding constraint.
 
 ### Latency timeline
 
-Four authoritative measurements across the latency-reduction arc, each
+Authoritative measurements across the latency-reduction arc, each
 recorded at the time it was taken. Stages and sources differ between
 rows and are noted in-line; rows 3 and 4 are the only directly
-comparable pair (same Unity 4K source, same WGC capture path, same
-chonkers→GXR Wi-Fi sink, FRAMECOUNT methodology unchanged).
+comparable FRAMECOUNT pair (same Unity 4K source, same WGC capture
+path, same chonkers→GXR Wi-Fi sink). The 2026-05-10 HMD-camera rows are
+a separate, complementary methodology — see "Methodology comparison"
+below.
 
 | Date | Build | Source | Stage measured | p50 | p95 | What this row captures |
 |---|---|---|---|---:|---:|---|
@@ -290,7 +292,10 @@ chonkers→GXR Wi-Fi sink, FRAMECOUNT methodology unchanged).
 | 2026-05-09 (re-measured) | pre-`09515ff` (`83384b6`, queue=3, no `tune=ull`) | Unity 4K active @ ~50 fps | cap → dec | **17 ms** | **35 ms** | Same swimmy-era stack as row 1, but Unity-4K-at-rate source instead of typing. The 751 ms typing-source floor is not present here — sustained 4K capture exercises NVENC fast enough that depth-3 vs depth-1 surface queueing is invisible (median in-flight depth = 1, max = 1). The swimmy era's pipeline-depth bug was load-pattern-specific to sparse-but-bursty input. |
 | 2026-04-26 | post-`09515ff` (`surfaces=1`) | typing (~4 events/s) | cap → enc | **252 ms** | — | After capping NVENC's input queue. Knocked the structural low-rate floor down to one in-flight frame. |
 | 2026-05-?? | `b9fc7f6` (post the full perf series, pre-M3 GPU pipeline) | Unity 4K @ 60 fps | cap → present | **51 ms** | 66 ms | Steady-state Unity baseline after the full 2026-04-26 perf-fix series (`surfaces=1`, `tune=ull`, GOP 30, 60 fps default, viewer Wi-Fi-low-latency lock). At 60 fps NVENC's queue cycles fast enough that the typing-rate floor is not load-bearing — this is what end-to-end Unity 4K looked like just before M3 began. (Recorded in the `b9fc7f6` commit message, not re-measured.) |
-| 2026-05-09 | `c51b88a` main (M3+M4+M5 GPU-resident pipeline) | Unity 4K @ 60 fps | cap → present | **34 ms** | 51 ms | Today's measurement. Includes M3 D3D11 video processor, M4 NVENC hwaccel ingestion via `hw_frames_ctx`, and M5 cleanup + clock-alignment fix. |
+| 2026-05-09 | `c51b88a` main (M3+M4+M5 GPU-resident pipeline) | Unity 4K @ 60 fps | cap → present | **34 ms** | 51 ms | Includes M3 D3D11 video processor, M4 NVENC hwaccel ingestion via `hw_frames_ctx`, and M5 cleanup + clock-alignment fix. |
+| 2026-05-10 | current main (post-M5 + viewer `KEY_LOW_LATENCY`) | 165 Hz Chrome kiosk `latency-clock.html` | cap → present (FRAMECOUNT) | **30 ms** | 40 ms | 1067 paired frames. Per-stage: convert→enc 8/11, enc→reasm 2/7, reasm→dec 12/17, dec→present 11/17. NVENC queue depth median 1, max 2. Source-rate-insensitive (165→30 fps cap moves number <2 ms). |
+| 2026-05-10 | current main (same build as above) | 165 Hz Chrome kiosk `latency-clock.html` | **input → present** (HMD camera) | **~48 ms** | (σ ≈ 0) | End-to-end via HMD passthrough camera + GXR-rendered virtual panel in the same frame. ~18 ms above the FRAMECOUNT cap→present number — that gap is WGC frame-arrival + HMD passthrough chain (out of WindowStream's control). 4 reads at 3 s spacing. |
+| 2026-05-10 | swimmy vintage `83384b6` | 165 Hz Chrome kiosk `latency-clock.html` | **input → present** (HMD camera) | **~248 ms** | (σ ≈ 9 ms) | Same HMD-camera methodology against vintage. **~5× current-main on the same source and viewer link**, despite per-frame transit (cap→dec) being statistically the same as M5 per row 2. The win is pipeline-depth collapse, not per-frame work. 4 reads: 248/230/248/249 ms. |
 
 Reading the arc: rows 1 → 3 was the **2026-04-26 NVENC pipeline-depth
 fix** (~3× cap→enc reduction at typing-rate input). Row 2 (the new Unity
@@ -324,17 +329,47 @@ behind"), and the M3+M4+M5 GPU-resident pipeline removed the 4K
 WGC-stall-induced jitter that made motion feel uneven even when the
 mean latency looked fine.
 
-### Future work — end-to-end measurement
+**Methodology comparison — FRAMECOUNT vs HMD camera.** The two
+methodologies measure different segments of the pipeline and disagree
+in informative ways:
 
-The `cap → present` chain measures from WGC frame arrival through
-decoder render. It does not capture **input → WGC**: how long after a
-user action (mouse move, keystroke, animation frame submit) the
-changed pixels actually reach `OnFrameArrived`. Subjectively this can
-be the dominant component, but it is not visible to FRAMECOUNT today.
+- **FRAMECOUNT cap→present** (rows 2 and 6) instruments the
+  WindowStream pipeline from WGC `OnFrameArrived` through MediaCodec
+  output buffer render. It does **not** include the source-paint →
+  WGC-arrival gap, nor anything between MediaCodec output and the HMD
+  panel.
+- **HMD camera input→present** (rows 7 and 8) measures the gap between
+  a clock rendered in the source window and the same clock as it
+  appears on the HMD panel, both visible to the passthrough camera in
+  the same recorded frame. This sees the full chain: source paint →
+  WGC arrival → entire WindowStream pipeline → HMD panel composite.
 
-A future measurement could embed a known-cadence event into the source
-window (e.g., a millisecond clock rendered into the captured Unity
-view, or a marker frame triggered by a known-time input) and measure
-the gap between the in-source timestamp and the viewer-side present
-wallMs. That would close the input → present loop. Out of scope for
-the current spec; tracked for a future session.
+For current main, the two methods agree where they should: HMD camera
+~48 ms minus FRAMECOUNT 30 ms ≈ 18 ms of out-of-pipeline contribution
+(WGC frame-arrival latency + HMD passthrough chain). That gap is
+constant-ish and not attackable from the WindowStream side.
+
+For swimmy vintage, however, FRAMECOUNT cap→dec p50 was 17 ms (row 2,
+Unity 4K @ ~50 fps) while HMD-camera input→present p50 was ~248 ms
+(row 8, Chrome kiosk @ 165 Hz). The same out-of-pipeline ~18 ms
+contribution can't account for a 230 ms gap. The remainder is
+**pipeline depth** — frames sitting in queues between WGC arrival and
+encode entry — that FRAMECOUNT cap→dec can't see because it tracks an
+individual frame's transit, not the depth of the queue it had to wait
+in. Sources at this scale (165 Hz vs 50 fps Unity) can't fully account
+for it either; source-rate insensitivity on current main (row 7) shows
+the pipeline floor is what dominates.
+
+The 2026-04-26 NVENC fix and the M3+M4+M5 GPU-resident pipeline
+together collapsed that pipeline-depth tail. Per-frame transit was
+already fast at swimmy vintage on the rare best-case frame (row 2);
+end-to-end input→present was not, because most frames weren't
+best-case. **Headline:** swimmy-era → current-main is a **~5×
+input→present reduction** (~248 → ~48 ms), even though FRAMECOUNT
+per-frame transit looked nearly flat across the same arc.
+
+The earlier "Future work — end-to-end measurement" gap is now closed:
+HMD-camera input→present has been measured on both ends of the arc.
+Methodology, source artifact (`tools/latency-clock.html`), and recording
+script (`.claude/scripts/record-latency-clock.bat` + vintage variant)
+are durable and re-runnable.
