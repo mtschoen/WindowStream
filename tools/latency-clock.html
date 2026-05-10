@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WindowStream latency clock</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: 'Cascadia Mono', 'Consolas', 'Menlo', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    gap: 6vh;
+  }
+  #clock {
+    font-size: 20vh;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  #sweep {
+    position: relative;
+    width: 90vw;
+    height: 7vh;
+    background: #111;
+    border: 1px solid #444;
+  }
+  #ticks div {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: #555;
+  }
+  #ticks div.major {
+    background: #aaa;
+    width: 2px;
+  }
+  #marker {
+    position: absolute;
+    top: -8%;
+    height: 116%;
+    width: 0.5vw;
+    min-width: 4px;
+    background: #fff;
+    box-shadow: 0 0 6px #fff;
+    will-change: transform;
+  }
+  #legend {
+    color: #999;
+    font-size: 1.6vh;
+    letter-spacing: 0.18em;
+  }
+</style>
+</head>
+<body>
+  <div id="clock">--:--:--.---</div>
+  <div id="sweep">
+    <div id="ticks"></div>
+    <div id="marker"></div>
+  </div>
+  <div id="legend">SWEEP WRAPS EVERY 1000 ms &middot; MAJOR TICK = 100 ms</div>
+  <script>
+    const clock = document.getElementById('clock');
+    const marker = document.getElementById('marker');
+    const sweep = document.getElementById('sweep');
+    const ticksContainer = document.getElementById('ticks');
+
+    // Tick marks at every 10 ms (minor) and 100 ms (major).
+    for (let i = 0; i <= 100; i++) {
+      const tick = document.createElement('div');
+      tick.style.left = i + '%';
+      if (i % 10 === 0) tick.className = 'major';
+      ticksContainer.appendChild(tick);
+    }
+
+    let travelPx = 0;
+    const recomputeTravel = () => {
+      travelPx = sweep.clientWidth - marker.clientWidth;
+    };
+    recomputeTravel();
+    window.addEventListener('resize', recomputeTravel);
+
+    const pad = (n, w) => String(n).padStart(w, '0');
+
+    function update() {
+      const d = new Date();
+      const ms = d.getMilliseconds();
+      clock.textContent =
+        pad(d.getHours(), 2) + ':' +
+        pad(d.getMinutes(), 2) + ':' +
+        pad(d.getSeconds(), 2) + '.' +
+        pad(ms, 3);
+      marker.style.transform = `translateX(${(ms / 1000) * travelPx}px)`;
+      requestAnimationFrame(update);
+    }
+    update();
+  </script>
+</body>
+</html>
