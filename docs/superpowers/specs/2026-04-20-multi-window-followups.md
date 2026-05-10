@@ -118,3 +118,35 @@ target; visible highlight on the focused panel (colored border or tint).
   rules. Replace with a single binary-based allow rule on the published
   `windowstream.exe` (and a dev rule on `dotnet.exe` if running
   unpublished).
+
+## Server-side reliability
+
+Captured here on 2026-05-10 from the (since-deleted) M4-smoke-results
+handoff so the open items don't disappear with the doc. After today's
+`f56ab6b` ErrorMessage-handshake fix, the viewer now surfaces both of
+these as actionable protocol codes within ~16 ms instead of timing out
+blank for 10 s. The underlying server-side issues remain.
+
+- **`activeChannel` state leak when a viewer's TCP closes uncleanly.**
+  When the previous viewer is force-stopped from the host (e.g.
+  `adb shell am force-stop`), `ServeViewerAsync` does not promptly clear
+  `activeChannel`. The next connecting viewer hits the `if (busy)` branch
+  in `RunAcceptLoopAsync` and gets a `ViewerBusy` error. Post-`f56ab6b`
+  the viewer logs that code immediately rather than timing out, but the
+  user-visible symptom of "can't reconnect for ~10 s after force-stop"
+  is still wrong. Fix path: detect the dropped socket faster in the
+  control receive loop, OR make the busy-rejection path advisory rather
+  than blocking. Originally surfaced 2026-05-04 between a Fold
+  disconnect and a GXR retry.
+- **`ResolveEncoderOptions` silent fallback on un-capturable windows.**
+  The viewer's auto-window-pick path (`serverHello.windows.firstOrNull()`)
+  can land on an un-capturable window. Repro: a "Smoke test"
+  agent-tracker window threw `WindowCaptureException: WGC frame
+  conversion failed` inside `ProbeCaptureSizeAsync`. Server returned
+  `WindowNotFound`; viewer post-`f56ab6b` now surfaces that error
+  instantly instead of a 10-s blank timeout. The deeper fix is to
+  prevent the bad pick at the source: either (a) filter advertised
+  windows by probe-time capturability at server side, or (b) have the
+  viewer retry with the next advertised window when `StreamStarted`
+  doesn't arrive within a budget. Partial fix in `62965ac` already
+  logs the swallowed exception so we can see which window failed.
