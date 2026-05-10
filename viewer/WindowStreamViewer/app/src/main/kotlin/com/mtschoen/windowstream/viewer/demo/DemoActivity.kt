@@ -23,6 +23,7 @@ import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
+import com.mtschoen.windowstream.viewer.control.awaitOrError
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
@@ -35,8 +36,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -291,7 +290,7 @@ class DemoActivity : Activity() {
         streamStates[streamIndex].connection = connection
 
         val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
-            connection.incoming.filterIsInstance<ControlMessage.ServerHello>().first()
+            connection.incoming.awaitOrError(ControlMessage.ServerHello::class)
         }
 
         // Determine which window this pipeline should open. Three precedence levels:
@@ -324,7 +323,7 @@ class DemoActivity : Activity() {
         connection.send(ControlMessage.OpenStream(windowId = windowId))
 
         val stream: ControlMessage.StreamStarted = withTimeout(10_000) {
-            connection.incoming.filterIsInstance<ControlMessage.StreamStarted>().first()
+            connection.incoming.awaitOrError(ControlMessage.StreamStarted::class)
         }
 
         Log.i(TAG, "stream $streamIndex ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, windowId=${stream.windowId}")

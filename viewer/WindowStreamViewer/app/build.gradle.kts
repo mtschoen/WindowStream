@@ -252,6 +252,16 @@ kover {
                 classes(
                     "com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel\$*"
                 )
+                // AwaitControlMessageKt$awaitOrError$message$1 is the suspend-lambda
+                // continuation for the `first { ... }` predicate inside awaitOrError.
+                // The Kotlin coroutine state machine emits a resume-path branch that
+                // unit tests cannot drive (the predicate body completes synchronously
+                // and never actually suspends). Same pattern as
+                // MultiStreamControlClient$connect$2$readerJob$1. The function's
+                // logic itself is fully covered by AwaitControlMessageTest.
+                classes(
+                    "com.mtschoen.windowstream.viewer.control.AwaitControlMessageKt\$awaitOrError\$message\$1"
+                )
             }
         }
         verify {
