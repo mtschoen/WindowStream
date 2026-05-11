@@ -178,14 +178,19 @@ if ($Hwnd) {
         if (-not $edgePath) {
             Fail "msedge.exe not found on PATH or in C:\Program Files (x86)\Microsoft\Edge\Application\. Install Edge or open latency-clock.html manually and re-run."
         }
-        # --start-fullscreen leaves F11 working; --kiosk is forbidden
-        # (project_chrome_kiosk_wgc_conversion_fail.md,
-        #  project_edge_kiosk_wgc_session_bust.md).
+        # NO fullscreen flags. WGC's frame converter fails on browser
+        # windows in any kind of borderless/fullscreen state — same
+        # failure mode as Chrome --kiosk
+        # (project_chrome_kiosk_wgc_conversion_fail.md) and Edge --kiosk
+        # (project_edge_kiosk_wgc_session_bust.md). Prior measurements
+        # (project_input_present_2026_05_11_measurement.md) used
+        # Edge non-kiosk; the ~30px of window chrome is harmless for the
+        # HMD-camera measurement.
         # --new-window forces a fresh window if Edge is already running
         # (cold-start scenario assumes it isn't).
         $ClockUrl = 'file:///' + ($ClockHtml -replace '\\', '/')
-        Info "  No latency-clock window found; launching Edge fullscreen..."
-        Start-Process -FilePath $edgePath -ArgumentList '--new-window', '--start-fullscreen', $ClockUrl | Out-Null
+        Info "  No latency-clock window found; launching Edge..."
+        Start-Process -FilePath $edgePath -ArgumentList '--new-window', $ClockUrl | Out-Null
         $deadline = (Get-Date).AddSeconds(8)
         while ((Get-Date) -lt $deadline) {
             Start-Sleep -Milliseconds 500
@@ -198,8 +203,6 @@ if ($Hwnd) {
 No window matching 'latency clock' in ``windowstream list`` output, even
 after auto-launching Edge. Possible causes:
   - Edge launched but didn't open the file URL (check the Edge window).
-  - Edge already running and the new --new-window came up non-fullscreen;
-    bring it to the foreground and re-run, or close Edge and retry.
   - The latency-clock.html <title> changed and no longer contains
     'latency clock'.
 
