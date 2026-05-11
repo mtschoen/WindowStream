@@ -147,18 +147,57 @@ if (-not $DeviceId) {
 # === Step 3: source-window HWND ==============================================
 Info "[3/8] Find latency-clock HWND"
 
+function Find-LatencyClockMatch {
+    $listOutput = & $CliExe list 2>&1
+    return ($listOutput | Where-Object { $_ -match '(?i)latency clock' } | Select-Object -First 1)
+}
+
+function Resolve-EdgePath {
+    $found = Get-Command msedge.exe -ErrorAction SilentlyContinue
+    if ($found) { return $found.Source }
+    $default = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+    if (Test-Path $default) { return $default }
+    return $null
+}
+
 if ($Hwnd) {
     Ok "Using HWND override: $Hwnd"
     $TargetHwnd = $Hwnd
 } else {
-    $listOutput = & $CliExe list 2>&1
-    $match = $listOutput | Where-Object { $_ -match '(?i)latency clock' } | Select-Object -First 1
+    $match = Find-LatencyClockMatch
+    if (-not $match) {
+        $ClockHtml = Join-Path $PSScriptRoot 'latency-clock.html'
+        if (-not (Test-Path $ClockHtml)) {
+            Fail "latency-clock.html not found at $ClockHtml"
+        }
+        $edgePath = Resolve-EdgePath
+        if (-not $edgePath) {
+            Fail "msedge.exe not found on PATH or in C:\Program Files (x86)\Microsoft\Edge\Application\. Install Edge or open latency-clock.html manually and re-run."
+        }
+        # --start-fullscreen leaves F11 working; --kiosk is forbidden
+        # (project_chrome_kiosk_wgc_conversion_fail.md,
+        #  project_edge_kiosk_wgc_session_bust.md).
+        # --new-window forces a fresh window if Edge is already running
+        # (cold-start scenario assumes it isn't).
+        $ClockUrl = 'file:///' + ($ClockHtml -replace '\\', '/')
+        Info "  No latency-clock window found; launching Edge fullscreen..."
+        Start-Process -FilePath $edgePath -ArgumentList '--new-window', '--start-fullscreen', $ClockUrl | Out-Null
+        $deadline = (Get-Date).AddSeconds(8)
+        while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 500
+            $match = Find-LatencyClockMatch
+            if ($match) { break }
+        }
+    }
     if (-not $match) {
         Fail @"
-No window matching 'latency clock' in ``windowstream list`` output.
-Open tools/latency-clock.html in a browser (Edge or Chrome, fullscreen
-ideal; AVOID Chrome --kiosk — known WGC frame-conversion bug, see
-project_chrome_kiosk_wgc_conversion_fail.md). Then re-run this script.
+No window matching 'latency clock' in ``windowstream list`` output, even
+after auto-launching Edge. Possible causes:
+  - Edge launched but didn't open the file URL (check the Edge window).
+  - Edge already running and the new --new-window came up non-fullscreen;
+    bring it to the foreground and re-run, or close Edge and retry.
+  - The latency-clock.html <title> changed and no longer contains
+    'latency clock'.
 
 Pass -Hwnd <int> to override and target a different window.
 "@
