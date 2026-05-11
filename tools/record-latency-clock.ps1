@@ -235,7 +235,16 @@ function Wait-LatencyClockHwnd($timeoutSeconds = 8) {
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         $m = Find-LatencyClockMatch
-        if ($m) { return $m }
+        if ($m) {
+            # Settle after detection. The Chrome --kiosk transition (size,
+            # fullscreen, DWM compositing) is still in flight when the title
+            # first appears, and a WGC attach during that window busts the
+            # frame-conversion path -- the bug that drove the kill+relaunch
+            # retry. ~2s gives Chrome time to finish the transition before
+            # the caller starts the probe.
+            Start-Sleep -Seconds 2
+            return $m
+        }
     }
     return $null
 }
@@ -299,7 +308,7 @@ $ServerProcess = Start-Process -FilePath $CliExe `
     -ArgumentList 'serve' `
     -RedirectStandardOutput $ServerStdoutLog `
     -RedirectStandardError  $ServerStderrLog `
-    -WindowStyle Normal `
+    -WindowStyle Hidden `
     -PassThru
 
 # Banner is written to stdout (confirmed via CoordinatorLauncher.cs:154):
@@ -430,6 +439,26 @@ Write-Host ""
 Write-Host "  Put the HMD on, position the host monitor in your gaze," -ForegroundColor Yellow
 Write-Host "  then press ENTER to record ${Duration}s." -ForegroundColor Yellow
 Read-Host | Out-Null
+
+# Refocus the kiosk browser. Read-Host left focus on the PS console; without
+# this the user has to alt-tab back to the latency clock. Plain
+# SetForegroundWindow works without the AttachThreadInput hack because the
+# PS console IS the foreground process at this instant (user just pressed
+# Enter), which is the one condition under which SetForegroundWindow can
+# grant foreground to another HWND.
+if (-not ([System.Management.Automation.PSTypeName]'WindowStream.Focus').Type) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace WindowStream {
+    public static class Focus {
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+}
+"@
+}
+[void][WindowStream.Focus]::SetForegroundWindow([IntPtr]$TargetHwnd)
 
 # === Step 7: real record =====================================================
 Info "[7/8] Recording ${Duration}s"
