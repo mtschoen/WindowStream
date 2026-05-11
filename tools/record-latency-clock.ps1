@@ -213,3 +213,65 @@ Investigate, then kill PID and try again.
 }
 Ok "serve PID $($ServerProcess.Id), TCP $TcpPort, UDP $UdpPort"
 Ok "stderr log: $ServerStderrLog"
+
+# === Step 5: frame-flow probe =================================================
+Info "[5/8] Frame-flow probe ($ProbeDuration s, HMD off-head OK)"
+
+& adb -s $DeviceId shell am force-stop $ViewerPkg 2>&1 | Out-Null
+& adb -s $DeviceId logcat -c 2>&1 | Out-Null
+
+& adb -s $DeviceId shell am start -n $DemoActivity `
+    --es streamHost $HostIp `
+    --ei streamPort $TcpPort `
+    --ela selectedWindowHwnds $TargetHwnd 2>&1 | Out-Null
+
+Start-Sleep -Seconds $ProbeDuration
+
+$logcatDump = & adb -s $DeviceId logcat -d 2>&1
+$decCount = ($logcatDump | Select-String 'FRAMECOUNT.*stage=dec').Count
+
+# Server stderr emits [FRAMECOUNT] stage=enc lines (per CLAUDE.md).
+$encCount = 0
+if (Test-Path $ServerStderrLog) {
+    $encCount = (Get-Content $ServerStderrLog | Select-String 'stage=enc').Count
+}
+
+Info "  probe results: dec=$decCount, enc=$encCount (in ${ProbeDuration}s)"
+
+# Always force-stop the viewer after the probe — we'll restart it for the real record.
+& adb -s $DeviceId shell am force-stop $ViewerPkg 2>&1 | Out-Null
+
+if ($decCount -ge $DecThreshold) {
+    Ok "Frames flowing healthy ($decCount >= $DecThreshold)"
+} elseif ($decCount -eq 0 -and $encCount -eq 0) {
+    Fail @"
+Server isn't producing frames. Most likely the WGC capture pump can't
+attach to the source window. Try:
+  - A different source window (Windows Terminal with a spinner; a Unity
+    Editor scene; non-kiosk Edge with the clock).
+  - Memory: project_chrome_kiosk_wgc_conversion_fail.md,
+            project_edge_kiosk_wgc_session_bust.md,
+            project_firefox_wgc_silent_fail.md,
+            project_orphan_worker_wgc_lock.md
+Server stderr: $ServerStderrLog (leave running for inspection;
+PID $($ServerProcess.Id))
+"@
+} elseif ($decCount -eq 0 -and $encCount -gt 0) {
+    Fail @"
+Server is encoding ($encCount enc lines) but viewer received nothing.
+Check:
+  - Windows Firewall allowed ports $TcpPort/TCP and $TcpPort/UDP
+    (UAC may have been denied on serve launch).
+  - HMD on the same Wi-Fi subnet as PC ($HostIp).
+  - HMD is awake (off-head with proximity card sometimes wedges
+    the radio; put HMD on briefly to test).
+adb logcat -d ran against device: $DeviceId
+"@
+} else {
+    Fail @"
+Low frame rate (dec=$decCount, threshold=$DecThreshold).
+The latency-clock.html page is self-animating, so a low rate usually
+means the browser tab is unfocused or minimised. Bring it to the
+foreground and re-run.
+"@
+}
