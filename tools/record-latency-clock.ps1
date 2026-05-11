@@ -352,10 +352,11 @@ function Invoke-FrameFlowProbe {
         $encCount = (Get-Content $ServerStderrLog | Select-String 'stage=enc').Count
     }
 
-    # Always force-stop the viewer after the probe -- we'll restart it for
-    # the real record or for the next retry attempt.
-    & adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
-
+    # No force-stop here on purpose. The probe-start force-stop above
+    # handles the retry case cleanly; leaving the viewer ALIVE after a
+    # successful probe lets the stream survive across the on-head gate
+    # without a disconnect/reconnect cycle that re-triggers the WGC bust
+    # on the same source HWND.
     return @{ Dec = $decCount; Enc = $encCount }
 }
 
@@ -438,14 +439,13 @@ $RecordingMp4   = Join-Path $OutputDir "feasibility-recording-$stamp.mp4"
 $RecordingFrame = Join-Path $OutputDir "feasibility-recording-$stamp-frame.jpg"
 $RemoteMp4 = '/sdcard/feasibility-recording.mp4'
 
+# The viewer + server stream are already live from the successful probe.
+# We deliberately do NOT relaunch the viewer here -- a disconnect/reconnect
+# cycle re-attaches WGC to the same source HWND, which has historically
+# tripped the bust state and produced a black recording. Clear logcat for
+# clean post-record inspection and let any in-flight frames settle.
 & adb -s $DeviceId logcat -c *> $null
-& adb -s $DeviceId shell am start -n $DemoActivity `
-    --es streamHost $HostIp `
-    --ei streamPort $TcpPort `
-    --ela selectedWindowHwnds $TargetHwnd *> $null
-
-# Handshake settle
-Start-Sleep -Seconds 3
+Start-Sleep -Milliseconds 800
 
 Info "  recording NOW -- position both clocks in your gaze"
 & adb -s $DeviceId shell screenrecord --time-limit $Duration --bit-rate 20M $RemoteMp4
