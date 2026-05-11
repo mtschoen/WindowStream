@@ -171,3 +171,45 @@ Pass -Hwnd <int> to override and target a different window.
     }
     Ok "Source HWND: $TargetHwnd ('$match')"
 }
+
+# === Step 4: start serve, parse banner ========================================
+Info "[4/8] Start serve and parse TCP port"
+
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$ServerStdoutLog = Join-Path $env:TEMP "windowstream-serve-$stamp.out.log"
+$ServerStderrLog = Join-Path $env:TEMP "windowstream-serve-$stamp.err.log"
+
+$ServerProcess = Start-Process -FilePath $CliExe `
+    -ArgumentList 'serve' `
+    -RedirectStandardOutput $ServerStdoutLog `
+    -RedirectStandardError  $ServerStderrLog `
+    -WindowStyle Normal `
+    -PassThru
+
+# Banner is written to stdout (confirmed via CoordinatorLauncher.cs:154):
+#   windowstream: serving on TCP <port>, UDP <port>
+# Poll up to 10 seconds.
+$TcpPort = $null
+$deadline = (Get-Date).AddSeconds(10)
+while ((Get-Date) -lt $deadline) {
+    if (Test-Path $ServerStdoutLog) {
+        $content = Get-Content $ServerStdoutLog -Raw -ErrorAction SilentlyContinue
+        if ($content -match 'windowstream: serving on TCP (\d+), UDP (\d+)') {
+            $TcpPort = [int]$matches[1]
+            $UdpPort = [int]$matches[2]
+            break
+        }
+    }
+    Start-Sleep -Milliseconds 100
+}
+if (-not $TcpPort) {
+    Fail @"
+serve banner did not appear within 10s.
+Server process PID: $($ServerProcess.Id)
+stdout log: $ServerStdoutLog
+stderr log: $ServerStderrLog
+Investigate, then kill PID and try again.
+"@
+}
+Ok "serve PID $($ServerProcess.Id), TCP $TcpPort, UDP $UdpPort"
+Ok "stderr log: $ServerStderrLog"
