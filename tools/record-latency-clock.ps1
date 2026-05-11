@@ -450,6 +450,10 @@ Start-Sleep -Milliseconds 800
 Info "  recording NOW -- position both clocks in your gaze"
 & adb -s $DeviceId shell screenrecord --time-limit $Duration --bit-rate 20M $RemoteMp4
 
+# Recording is locked in on /sdcard. Force-stop the viewer to give the
+# on-head user a black-screen "done" signal while we pull and process.
+& adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
+
 & adb -s $DeviceId pull $RemoteMp4 $RecordingMp4 *> $null
 if (-not (Test-Path $RecordingMp4)) {
     Fail "adb pull failed; recording left at $RemoteMp4 on device $DeviceId for manual recovery."
@@ -475,7 +479,8 @@ if ($tearDown -match '^[Yy]') {
     Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
     Get-NetFirewallRule -DisplayName 'WindowStream-Session-*' -ErrorAction SilentlyContinue |
         Remove-NetFirewallRule -ErrorAction SilentlyContinue
-    Ok "Server stopped, firewall rules removed."
+    $reaped = Stop-LatencyClockBrowsers
+    Ok "Server stopped, firewall rules removed, $reaped browser process(es) closed."
 } else {
     Write-Host ""
     Write-Host "  Server PID: $($ServerProcess.Id) left running." -ForegroundColor Yellow
