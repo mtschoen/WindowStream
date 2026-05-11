@@ -30,13 +30,25 @@
 
 .PARAMETER DecThreshold
     Minimum FRAMECOUNT stage=dec lines required in probe to PASS. Default 20.
+
+.PARAMETER Cap
+    requestAnimationFrame cap in fps passed as ?cap=N to latency-clock.html.
+    Matches the 2026-05-11 baseline. Set to 0 to omit and let RAF run native.
+    Default 165.
+
+.PARAMETER ProbeMaxAttempts
+    Max attempts at the WGC probe before giving up. The Chrome --kiosk WGC
+    bug (project_chrome_kiosk_wgc_conversion_fail.md) often clears after one
+    kill + relaunch, so the default of 3 is usually enough. Default 3.
 #>
 [CmdletBinding()]
 param(
     [int]$Hwnd,
     [int]$Duration = 15,
     [int]$ProbeDuration = 4,
-    [int]$DecThreshold = 20
+    [int]$DecThreshold = 20,
+    [int]$Cap = 165,
+    [int]$ProbeMaxAttempts = 3
 )
 
 # Continue (not Stop): PS 5.1 wraps native-exe stderr as NativeCommandError
@@ -156,65 +168,123 @@ function Find-LatencyClockMatch {
     return ($listOutput | Where-Object { $_ -match '(?i)latency clock' } | Select-Object -First 1)
 }
 
+function Resolve-ChromePath {
+    foreach ($p in @(
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    )) {
+        if (Test-Path $p) { return $p }
+    }
+    $found = Get-Command chrome.exe -ErrorAction SilentlyContinue
+    if ($found) { return $found.Source }
+    return $null
+}
+
 function Resolve-EdgePath {
     $found = Get-Command msedge.exe -ErrorAction SilentlyContinue
     if ($found) { return $found.Source }
-    $default = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-    if (Test-Path $default) { return $default }
+    foreach ($p in @(
+        'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        'C:\Program Files\Microsoft\Edge\Application\msedge.exe'
+    )) {
+        if (Test-Path $p) { return $p }
+    }
     return $null
 }
+
+function Stop-LatencyClockBrowsers {
+    # Kill any chrome.exe / msedge.exe whose CommandLine references
+    # latency-clock.html. Filtered by CommandLine, NEVER by title
+    # (memory: feedback_never_kill_by_window_title). The user's other
+    # browser tabs (latency-clock not in their CommandLine) are untouched.
+    $procs = Get-CimInstance Win32_Process |
+        Where-Object {
+            ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe') -and
+            $_.CommandLine -and $_.CommandLine -match 'latency-clock\.html'
+        }
+    foreach ($p in $procs) {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($procs) { Start-Sleep -Milliseconds 800 }
+    return ($procs | Measure-Object).Count
+}
+
+function Start-LatencyClockBrowser($ClockUrl) {
+    # Chrome --kiosk first (matches the 2026-05-11 baseline measurement command);
+    # Edge --app= fallback (chromeless without Fullscreen Optimizations).
+    # Both keep the page foregrounded with no browser chrome --
+    # "fullscreen-but-not-fullscreen" from the prior session.
+    $chromePath = Resolve-ChromePath
+    if ($chromePath) {
+        Info "  Launching Chrome --kiosk..."
+        Start-Process -FilePath $chromePath -ArgumentList '--kiosk', $ClockUrl | Out-Null
+        return
+    }
+    $edgePath = Resolve-EdgePath
+    if ($edgePath) {
+        Info "  Chrome not found; launching Edge --app..."
+        Start-Process -FilePath $edgePath -ArgumentList "--app=$ClockUrl" | Out-Null
+        return
+    }
+    Fail "Neither Chrome nor Edge found on this machine. Install one or open tools/latency-clock.html manually and re-run with -Hwnd."
+}
+
+function Wait-LatencyClockHwnd($timeoutSeconds = 8) {
+    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 500
+        $m = Find-LatencyClockMatch
+        if ($m) { return $m }
+    }
+    return $null
+}
+
+function Get-LatencyClockHwndFromMatch($match) {
+    # `windowstream list` format: "HANDLE       PROCESS              TITLE"
+    $h = ($match -split '\s+', 4)[0]
+    if (-not ($h -match '^\d+$')) {
+        Fail "Could not parse HWND from list output line: '$match'"
+    }
+    return [int]$h
+}
+
+# Build the URL with ?cap=N param (matches 2026-05-11 baseline at 165).
+$ClockHtml = Join-Path $PSScriptRoot 'latency-clock.html'
+if (-not (Test-Path $ClockHtml)) {
+    Fail "latency-clock.html not found at $ClockHtml"
+}
+$ClockUrl = 'file:///' + ($ClockHtml -replace '\\', '/')
+if ($Cap -gt 0) { $ClockUrl += "?cap=$Cap" }
 
 if ($Hwnd) {
     Ok "Using HWND override: $Hwnd"
     $TargetHwnd = $Hwnd
 } else {
+    # Reap stale latency-clock browsers from prior failed runs first --
+    # the Edge / Chrome WGC bust state (project_chrome_kiosk_wgc_conversion_fail,
+    # project_edge_kiosk_wgc_session_bust) persists in the existing process
+    # group, so a fresh launch in the same session needs the old ones gone.
+    $reaped = Stop-LatencyClockBrowsers
+    if ($reaped) { Info "  Reaped $reaped stale browser process(es) hosting latency-clock" }
+
     $match = Find-LatencyClockMatch
     if (-not $match) {
-        $ClockHtml = Join-Path $PSScriptRoot 'latency-clock.html'
-        if (-not (Test-Path $ClockHtml)) {
-            Fail "latency-clock.html not found at $ClockHtml"
-        }
-        $edgePath = Resolve-EdgePath
-        if (-not $edgePath) {
-            Fail "msedge.exe not found on PATH or in C:\Program Files (x86)\Microsoft\Edge\Application\. Install Edge or open latency-clock.html manually and re-run."
-        }
-        # NO fullscreen flags. WGC's frame converter fails on browser
-        # windows in any kind of borderless/fullscreen state — same
-        # failure mode as Chrome --kiosk
-        # (project_chrome_kiosk_wgc_conversion_fail.md) and Edge --kiosk
-        # (project_edge_kiosk_wgc_session_bust.md). Prior measurements
-        # (project_input_present_2026_05_11_measurement.md) used
-        # Edge non-kiosk; the ~30px of window chrome is harmless for the
-        # HMD-camera measurement.
-        # --new-window forces a fresh window if Edge is already running
-        # (cold-start scenario assumes it isn't).
-        $ClockUrl = 'file:///' + ($ClockHtml -replace '\\', '/')
-        Info "  No latency-clock window found; launching Edge..."
-        Start-Process -FilePath $edgePath -ArgumentList '--new-window', $ClockUrl | Out-Null
-        $deadline = (Get-Date).AddSeconds(8)
-        while ((Get-Date) -lt $deadline) {
-            Start-Sleep -Milliseconds 500
-            $match = Find-LatencyClockMatch
-            if ($match) { break }
-        }
+        Start-LatencyClockBrowser $ClockUrl
+        $match = Wait-LatencyClockHwnd
     }
     if (-not $match) {
         Fail @"
 No window matching 'latency clock' in ``windowstream list`` output, even
-after auto-launching Edge. Possible causes:
-  - Edge launched but didn't open the file URL (check the Edge window).
+after launching the browser. Possible causes:
+  - Browser launched but didn't open the file URL (check the window).
   - The latency-clock.html <title> changed and no longer contains
     'latency clock'.
 
 Pass -Hwnd <int> to override and target a different window.
 "@
     }
-    # `windowstream list` format: "HANDLE       PROCESS              TITLE"
-    # First token is the HWND.
-    $TargetHwnd = ($match -split '\s+', 4)[0]
-    if (-not ($TargetHwnd -match '^\d+$')) {
-        Fail "Could not parse HWND from list output line: '$match'"
-    }
+    $TargetHwnd = Get-LatencyClockHwndFromMatch $match
     Ok "Source HWND: $TargetHwnd ('$match')"
 }
 
@@ -263,38 +333,70 @@ Ok "stderr log: $ServerStderrLog"
 # === Step 5: frame-flow probe =================================================
 Info "[5/8] Frame-flow probe ($ProbeDuration s, HMD off-head OK)"
 
-& adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
-& adb -s $DeviceId logcat -c *> $null
+function Invoke-FrameFlowProbe {
+    & adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
+    & adb -s $DeviceId logcat -c *> $null
 
-& adb -s $DeviceId shell am start -n $DemoActivity `
-    --es streamHost $HostIp `
-    --ei streamPort $TcpPort `
-    --ela selectedWindowHwnds $TargetHwnd *> $null
+    & adb -s $DeviceId shell am start -n $DemoActivity `
+        --es streamHost $HostIp `
+        --ei streamPort $TcpPort `
+        --ela selectedWindowHwnds $TargetHwnd *> $null
 
-Start-Sleep -Seconds $ProbeDuration
+    Start-Sleep -Seconds $ProbeDuration
 
-$logcatDump = & adb -s $DeviceId logcat -d 2>$null
-$decCount = ($logcatDump | Select-String 'FRAMECOUNT.*stage=dec').Count
+    $logcatDump = & adb -s $DeviceId logcat -d 2>$null
+    $decCount = ($logcatDump | Select-String 'FRAMECOUNT.*stage=dec').Count
 
-# Server stderr emits [FRAMECOUNT] stage=enc lines (per CLAUDE.md).
-$encCount = 0
-if (Test-Path $ServerStderrLog) {
-    $encCount = (Get-Content $ServerStderrLog | Select-String 'stage=enc').Count
+    $encCount = 0
+    if (Test-Path $ServerStderrLog) {
+        $encCount = (Get-Content $ServerStderrLog | Select-String 'stage=enc').Count
+    }
+
+    # Always force-stop the viewer after the probe -- we'll restart it for
+    # the real record or for the next retry attempt.
+    & adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
+
+    return @{ Dec = $decCount; Enc = $encCount }
 }
 
-Info "  probe results: dec=$decCount, enc=$encCount (in ${ProbeDuration}s)"
+# Probe with retry. The Chrome --kiosk / Edge --kiosk WGC frame-conversion
+# bug is intermittent and typically clears after kill + relaunch (per the
+# 2026-05-11 baseline session). Only retry when the symptom matches
+# dec=0 + enc=0 -- that's the WGC bust signature. Other failures (low
+# frame rate, network blocked) won't benefit from a relaunch.
+$result = $null
+for ($attempt = 1; $attempt -le $ProbeMaxAttempts; $attempt++) {
+    if ($attempt -gt 1) {
+        Info "  attempt $attempt/$ProbeMaxAttempts after WGC bust: reaping browser + relaunching..."
+        if (-not $Hwnd) {
+            Stop-LatencyClockBrowsers | Out-Null
+            Start-LatencyClockBrowser $ClockUrl
+            $match = Wait-LatencyClockHwnd
+            if (-not $match) {
+                Fail "After WGC retry, no latency-clock window appeared in 8s."
+            }
+            $TargetHwnd = Get-LatencyClockHwndFromMatch $match
+            Info "  new HWND: $TargetHwnd"
+        } else {
+            Info "  -Hwnd override in use; cannot relaunch source -- retrying probe in place"
+        }
+    }
+    $result = Invoke-FrameFlowProbe
+    Info "  probe attempt ${attempt}: dec=$($result.Dec), enc=$($result.Enc) (in ${ProbeDuration}s)"
+    if ($result.Dec -ge $DecThreshold) { break }
+    # Only the dec=0 + enc=0 case is worth retrying.
+    if (-not ($result.Dec -eq 0 -and $result.Enc -eq 0)) { break }
+}
 
-# Always force-stop the viewer after the probe — we'll restart it for the real record.
-& adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
-
-if ($decCount -ge $DecThreshold) {
-    Ok "Frames flowing healthy ($decCount >= $DecThreshold)"
-} elseif ($decCount -eq 0 -and $encCount -eq 0) {
+if ($result.Dec -ge $DecThreshold) {
+    Ok "Frames flowing healthy (dec=$($result.Dec) at or above threshold $DecThreshold)"
+} elseif ($result.Dec -eq 0 -and $result.Enc -eq 0) {
     Fail @"
-Server isn't producing frames. Most likely the WGC capture pump can't
-attach to the source window. Try:
+Server isn't producing frames after $ProbeMaxAttempts attempts. WGC capture
+pump can't attach to the source window even after browser relaunch. Try:
   - A different source window (Windows Terminal with a spinner; a Unity
-    Editor scene; non-kiosk Edge with the clock).
+    Editor scene; Fork; etc.).
+  - Re-run with -ProbeMaxAttempts 5 to give Chrome more retries.
   - Memory: project_chrome_kiosk_wgc_conversion_fail.md,
             project_edge_kiosk_wgc_session_bust.md,
             project_firefox_wgc_silent_fail.md,
@@ -302,9 +404,9 @@ attach to the source window. Try:
 Server stderr: $ServerStderrLog (leave running for inspection;
 PID $($ServerProcess.Id))
 "@
-} elseif ($decCount -eq 0 -and $encCount -gt 0) {
+} elseif ($result.Dec -eq 0 -and $result.Enc -gt 0) {
     Fail @"
-Server is encoding ($encCount enc lines) but viewer received nothing.
+Server is encoding ($($result.Enc) enc lines) but viewer received nothing.
 Check:
   - Windows Firewall allowed ports $TcpPort/TCP and $TcpPort/UDP
     (UAC may have been denied on serve launch).
@@ -315,10 +417,9 @@ adb logcat -d ran against device: $DeviceId
 "@
 } else {
     Fail @"
-Low frame rate (dec=$decCount, threshold=$DecThreshold).
-The latency-clock.html page is self-animating, so a low rate usually
-means the browser tab is unfocused or minimised. Bring it to the
-foreground and re-run.
+Low frame rate (dec=$($result.Dec), threshold=$DecThreshold).
+Could be source window unfocused / minimised, or -Cap $Cap is throttling
+too aggressively. Bring the latency-clock window to foreground and re-run.
 "@
 }
 
