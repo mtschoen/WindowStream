@@ -1,23 +1,46 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-REM === Edit these if anything moves ===
-set DEV=192.168.50.111:40393
+REM === record-latency-clock.bat ==============================================
+REM Records a 15s GXR screenrecord of the WindowStream viewer showing a
+REM tools/latency-clock.html source, for HMD-camera input->present
+REM measurement. Outputs land next to this script under tools/.
+REM
+REM Stable home (moved from .claude/scripts/ on 2026-05-11 after the wrap
+REM hygiene there kept deleting it). See git history for prior location.
+REM
+REM Tunables:
+REM   HOST_IP     PC's LAN IP the viewer connects to (hardcoded; update on
+REM               PC IP change). Server picks an ephemeral TCP port each
+REM               launch -- pass it via env var TCP_PORT.
+REM   GXR_SERIAL  HMD device serial. The full mDNS-form `-s` identifier is
+REM               auto-discovered from `adb devices` so it survives
+REM               re-pairings.
+REM ===========================================================================
+
 set HOST_IP=192.168.50.75
-REM Server picks an ephemeral TCP port each launch -- override via:
-REM   set TCP_PORT=<actual>   (cmd)    or   $env:TCP_PORT='<actual>'  (PowerShell)
+set GXR_SERIAL=R3GYB04E2WB
 if "%TCP_PORT%"=="" set TCP_PORT=61613
 set DURATION=15
 set REMOTE=/sdcard/feasibility-recording.mp4
 
-REM Auto-discover the HWND of the latency-clock browser window via windowstream list.
-REM Override by passing an HWND as the first arg: record-latency-clock.bat 12345678
-set EXE=%~dp0..\..\src\WindowStream.Cli\bin\Release\net8.0-windows10.0.19041.0\windowstream.exe
+REM Auto-discover the GXR's full adb identifier (mDNS string or ip:port).
+set DEV=
+for /f "tokens=1" %%a in ('adb devices ^| findstr "%GXR_SERIAL%"') do set DEV=%%a
+if "%DEV%"=="" (
+    echo ERROR: no adb device matching serial %GXR_SERIAL%
+    echo Run: adb devices  -- and verify the HMD is paired over Wi-Fi.
+    exit /b 1
+)
+echo Using adb device: %DEV%
+
+REM Auto-discover the HWND of the latency-clock browser window via
+REM `windowstream list`. Override by passing an HWND as the first arg.
+set EXE=%~dp0..\src\WindowStream.Cli\bin\Release\net8.0-windows10.0.19041.0\windowstream.exe
 set HWND=
 if not "%~1"=="" (
     set HWND=%~1
 ) else (
-    REM Temp-file approach avoids `for /f` quoting hell with PowerShell pipes.
     powershell -NoProfile -Command "$line = (& '%EXE%' list | Select-String -Pattern 'latency clock' | Select-Object -First 1); if ($line) { ($line.Line.Trim() -split '\s+')[0] }" 2>nul > "%TEMP%\record-latency-hwnd.txt"
     set /p HWND=<"%TEMP%\record-latency-hwnd.txt"
     del "%TEMP%\record-latency-hwnd.txt" 2>nul
@@ -29,7 +52,6 @@ if "%HWND%"=="" (
     exit /b 1
 )
 
-REM === Output to the script's own directory (%~dp0) so cwd doesn't matter ===
 set OUTDIR=%~dp0
 for /f "delims=" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set STAMP=%%i
 set OUTPUT=%OUTDIR%feasibility-recording-%STAMP%.mp4

@@ -1,15 +1,29 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-REM === Vintage (v1, swimmy-era 83384b6) variant of record-latency-clock.bat ===
-REM Differs from main: no `--ela selectedWindowHwnds` extra (v1 server already
-REM chose the window via its own --hwnd). Otherwise identical flow.
+REM === record-latency-clock-vintage.bat ======================================
+REM Vintage (v1, swimmy-era 83384b6) variant of record-latency-clock.bat.
+REM Differs in one place: v1 DemoActivity has no `--ela selectedWindowHwnds`
+REM extra because the v1 server already chose its window via `--hwnd`.
+REM
+REM Stable home (moved from .claude/scripts/ on 2026-05-11). See git history
+REM for prior location.
+REM ===========================================================================
 
-set DEV=192.168.50.111:40393
 set HOST_IP=192.168.50.75
+set GXR_SERIAL=R3GYB04E2WB
 if "%TCP_PORT%"=="" set TCP_PORT=49702
 set DURATION=15
 set REMOTE=/sdcard/vintage-recording.mp4
+
+set DEV=
+for /f "tokens=1" %%a in ('adb devices ^| findstr "%GXR_SERIAL%"') do set DEV=%%a
+if "%DEV%"=="" (
+    echo ERROR: no adb device matching serial %GXR_SERIAL%
+    echo Run: adb devices  -- and verify the HMD is paired over Wi-Fi.
+    exit /b 1
+)
+echo Using adb device: %DEV%
 
 set OUTDIR=%~dp0
 for /f "delims=" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set STAMP=%%i
