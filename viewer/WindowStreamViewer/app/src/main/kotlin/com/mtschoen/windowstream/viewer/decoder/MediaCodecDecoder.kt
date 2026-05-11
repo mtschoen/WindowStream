@@ -44,6 +44,11 @@ class MediaCodecDecoder(
 
         val mediaFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, expectedWidth, expectedHeight)
         mediaFormat.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+        // Schedule the decoder as realtime and ask Qualcomm decoders to run
+        // at their maximum clock — the moonlight-android low-latency recipe.
+        // Short.MAX_VALUE is the documented sentinel for "as fast as possible".
+        mediaFormat.setInteger(MediaFormat.KEY_PRIORITY, 0)
+        mediaFormat.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
         val newCodec = if (codecName != null) {
             MediaCodec.createByCodecName(codecName)
         } else {

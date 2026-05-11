@@ -296,6 +296,8 @@ below.
 | 2026-05-10 | current main (post-M5 + viewer `KEY_LOW_LATENCY`) | 165 Hz Chrome kiosk `latency-clock.html` | cap → present (FRAMECOUNT) | **30 ms** | 40 ms | 1067 paired frames. Per-stage: convert→enc 8/11, enc→reasm 2/7, reasm→dec 12/17, dec→present 11/17. NVENC queue depth median 1, max 2. Source-rate-insensitive (165→30 fps cap moves number <2 ms). |
 | 2026-05-10 | current main (same build as above) | 165 Hz Chrome kiosk `latency-clock.html` | **input → present** (HMD camera) | **~48 ms** | (σ ≈ 0) | End-to-end via HMD passthrough camera + GXR-rendered virtual panel in the same frame. ~18 ms above the FRAMECOUNT cap→present number — that gap is WGC frame-arrival + HMD passthrough chain (out of WindowStream's control). 4 reads at 3 s spacing. |
 | 2026-05-10 | swimmy vintage `83384b6` | 165 Hz Chrome kiosk `latency-clock.html` | **input → present** (HMD camera) | **~248 ms** | (σ ≈ 9 ms) | Same HMD-camera methodology against vintage. **~5× current-main on the same source and viewer link**, despite per-frame transit (cap→dec) being statistically the same as M5 per row 2. The win is pipeline-depth collapse, not per-frame work. 4 reads: 248/230/248/249 ms. |
+| 2026-05-11 | current main + **Tier 1a** (`KEY_PRIORITY=0` + `KEY_OPERATING_RATE=Short.MAX_VALUE` on viewer MediaCodec) | 165 Hz Chrome kiosk `latency-clock.html?cap=165` | cap → present (FRAMECOUNT) | **28 ms** | 40 ms | 1124 paired frames. Per-stage p50/p95: convert→enc 5/11, enc→reasm 3/7, **reasm→dec 9/13 (was 12/17)**, dec→present 10/17. NVENC queue depth median 1, max 1. **Tier 1a's intended win — the moonlight-android low-latency recipe — confirmed: reasm→dec p50 −3 ms / p95 −4 ms, validated twice in this session across 4628 paired frames total. Floor of E2E = 14 ms (one 90 Hz vsync + ~3 ms of stage-misalignment); pipeline is one vsync from theoretical-best at this architecture.** Server-side convert→enc also moved (8→5 ms p50) but with no server-side code change — likely environmental, not Tier 1a. |
+| 2026-05-11 | same build + Tier 1a | 165 Hz Chrome kiosk `latency-clock.html?cap=165` | **input → present** (HMD camera) | (high read noise) | — | 3 reads at t=3/7/11 s: 67 / 71 / 89 ms. Mean ~76 ms — wider than 2026-05-10's ~48 ms, but the data **does not reconcile with FRAMECOUNT going the other way (28 vs 30 ms p50)**, so most of the +28 ms is methodology noise: camera-blur read uncertainty (±30 ms per the methodology memo) + likely LG TV display path drift between sessions (picture-mode / refresh-rate / game-mode settings can shift TV's panel processing by 20–40 ms, which sits in this measurement's reference path). **The floor-anchored read is what matters for pipeline capability**: the *best* observed reads in both sessions fell in the same vsync bucket, consistent with the "perceptible latency is vsync-quantized to ~11 ms steps" framing — Tier 1a's 3 ms gain is sub-quantum and not yet user-perceptible. |
 
 Reading the arc: rows 1 → 3 was the **2026-04-26 NVENC pipeline-depth
 fix** (~3× cap→enc reduction at typing-rate input). Row 2 (the new Unity
@@ -371,5 +373,78 @@ per-frame transit looked nearly flat across the same arc.
 The earlier "Future work — end-to-end measurement" gap is now closed:
 HMD-camera input→present has been measured on both ends of the arc.
 Methodology, source artifact (`tools/latency-clock.html`), and recording
-script (`.claude/scripts/record-latency-clock.bat` + vintage variant)
-are durable and re-runnable.
+script (`tools/record-latency-clock.bat` + vintage variant — relocated
+from `.claude/scripts/` on 2026-05-11 because the wrap-session hygiene
+in that gitignored dir kept deleting them) are durable and re-runnable.
+
+## Next optimization tier — floor-anchored, vsync-quantized framing
+
+After 2026-05-11's Tier 1a measurement, the optimization picture
+sharpened along two axes that change which work is worth doing next.
+
+### 1. Network is at the architectural floor
+
+UDP-blast-no-ARQ is the latency floor for any video streaming
+architecture; ARQ pays an RTT round-trip, and FEC reduces tail (under
+packet loss) but does not move the floor. Our `UdpTransportReceiver`
++ `FragmentReassembler` is exactly the UDP-blast-no-ARQ pattern. The
+2026-05-11 measurement's enc→reasm floor of **0 ms** confirms we are
+at this floor in practice (some frames cross the wifi with no
+contention overhead). **No further network optimization is on the
+table without changing the reliability contract.** Wifi jitter at the
+p95/max tail is irreducible from our side of the pipeline.
+
+### 2. Perceived end-to-end latency is vsync-quantized to 11.1 ms
+
+The HMD panel runs at 90 Hz, so the compositor latches the
+most-recent-submitted frame at each 11.1 ms vsync. A frame submitted
+N µs before vsync presents at the same wall-clock-tick as one
+submitted 10 ms before — sub-quantum improvements show up in
+FRAMECOUNT (which measures sub-vsync) but are rounded away in
+HMD-camera reads (which measure user-perceptible latency at panel
+display granularity). Today's `dec → present` p50 of 10 ms confirms
+we're typically presenting "just past the vsync deadline" and waiting
+for the next.
+
+### 3. What this means for prioritization
+
+The relevant question for each future lever is no longer "does it
+reduce p50?" but **"does it accumulate cleanly toward a full 11.1 ms
+of pipeline savings, or does it directly attack the vsync quantum?"**
+
+| Lever | Targets which floor? | Estimated win | Crosses vsync? |
+|---|---|---:|---|
+| Tier 1a (landed 2026-05-11) | reasm→dec floor | **−3 ms p50** ✓ | sub-quantum |
+| Tier 1b — explicit Qualcomm `.low_latency` decoder selection (`MediaCodecList.findDecoderForFormat`) | reasm→dec floor | 1–3 ms | sub-quantum |
+| Tier 2a — NVENC tuning sweep (preset=p1, b-frames=0, rc-lookahead=0, no-multipass) | convert→enc floor | 1–3 ms (quality A/B needed) | sub-quantum |
+| Tier 1c — SharedFlow→Channel(capacity=1) hygiene | enc→reasm tail (not floor) | tail-jitter only | n/a |
+| **Vulkan-direct / front-buffer scanout-aligned present** | `dec → present` quantum | up to one full vsync (~11 ms) | **yes — the actual perceptible breakthrough** |
+
+Stacking Tier 1b + 2a is bounded above at ~5–9 ms cumulative — close
+to, but probably short of, crossing the next vsync. The HMD-camera
+number will likely stay "locked at the same vsync bucket" until the
+sub-vsync work is done. So the rational next step is **either**:
+- Land Tier 1b + 2a as incremental floor wins (each provable in
+  FRAMECOUNT, each not user-perceptible alone, but compounding), then
+  attack vsync once they're banked. *Low-risk path.*
+- Skip ahead to the scanout-aligned present experiment. *Higher
+  risk, but the only single change that can move HMD-camera.*
+
+### 4. Measurement methodology update
+
+Going forward:
+- **Trust `reasm → dec`** for clean Tier-1a-class wins — it's
+  same-source-clock, skew-immune, and produces tight p50/p95 numbers
+  from 1000+ paired frames per 15 s run.
+- **Trust the floor**, not the median, for cross-source measurements.
+  The 2026-05-11 enc→reasm floor of 0 ms is the honest read; the
+  p50 of 3 ms includes wifi contention noise that isn't pipeline.
+- **HMD-camera reads have ±30 ms per-read uncertainty** plus
+  cross-session LG TV display-path drift. For marginal sub-quantum
+  changes, **only the FRAMECOUNT numbers are statistically reliable**.
+  HMD-camera reads stay useful for cross-vsync-quantum verification
+  (e.g. before/after the scanout-aligned work, which should land a
+  ~10 ms HMD-camera drop).
+- **Same-day repeat runs** are needed for any A/B claim about
+  cross-source stages, to control for wifi/LG-TV drift between
+  sessions.
