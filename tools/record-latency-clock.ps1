@@ -275,3 +275,45 @@ means the browser tab is unfocused or minimised. Bring it to the
 foreground and re-run.
 "@
 }
+
+# === Step 6: go-on-head gate =================================================
+Info "[6/8] Go on-head"
+Write-Host ""
+Write-Host "  Put the HMD on, position the host monitor in your gaze," -ForegroundColor Yellow
+Write-Host "  then press ENTER to record ${Duration}s." -ForegroundColor Yellow
+Read-Host | Out-Null
+
+# === Step 7: real record =====================================================
+Info "[7/8] Recording ${Duration}s"
+
+$OutputDir = $PSScriptRoot
+$RecordingMp4   = Join-Path $OutputDir "feasibility-recording-$stamp.mp4"
+$RecordingFrame = Join-Path $OutputDir "feasibility-recording-$stamp-frame.jpg"
+$RemoteMp4 = '/sdcard/feasibility-recording.mp4'
+
+& adb -s $DeviceId logcat -c 2>&1 | Out-Null
+& adb -s $DeviceId shell am start -n $DemoActivity `
+    --es streamHost $HostIp `
+    --ei streamPort $TcpPort `
+    --ela selectedWindowHwnds $TargetHwnd 2>&1 | Out-Null
+
+# Handshake settle
+Start-Sleep -Seconds 3
+
+Info "  recording NOW -- position both clocks in your gaze"
+& adb -s $DeviceId shell screenrecord --time-limit $Duration --bit-rate 20M $RemoteMp4
+
+& adb -s $DeviceId pull $RemoteMp4 $RecordingMp4 2>&1 | Out-Null
+if (-not (Test-Path $RecordingMp4)) {
+    Fail "adb pull failed; recording left at $RemoteMp4 on device $DeviceId for manual recovery."
+}
+& adb -s $DeviceId shell rm $RemoteMp4 2>&1 | Out-Null
+
+# Midpoint frame extraction (ffmpeg must be on PATH)
+$ffmpegOnPath = Get-Command ffmpeg -ErrorAction SilentlyContinue
+if ($ffmpegOnPath) {
+    & ffmpeg -ss ([int]($Duration / 2)) -i $RecordingMp4 -frames:v 1 -y $RecordingFrame 2>$null
+}
+
+Ok "Recording: $RecordingMp4"
+if (Test-Path $RecordingFrame) { Ok "Frame:     $RecordingFrame" }
