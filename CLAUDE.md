@@ -129,9 +129,13 @@ inline rationale; integration tests cover those paths.
 For the standard latency measurement (cold start, with HMD on but
 nothing else running):
 
-```powershell
-pwsh tools/record-latency-clock.ps1
+```cmd
+tools\latency-test
 ```
+
+(`tools\latency-test.bat` is a one-line wrapper that invokes
+`tools\record-latency-clock.ps1` with `-ExecutionPolicy Bypass`. Args
+are forwarded — e.g. `tools\latency-test -Duration 5 -Hwnd 12345`.)
 
 The script handles adb wifi connect, source-window detection, server
 launch, and a 4-second frame-flow probe before asking you to go
