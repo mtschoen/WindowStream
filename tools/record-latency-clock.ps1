@@ -143,3 +143,31 @@ if (-not $DeviceId) {
     Save-HmdIpPort $userInput
     Ok "Connected via prompted $userInput (cached for next run)"
 }
+
+# === Step 3: source-window HWND ==============================================
+Info "[3/8] Find latency-clock HWND"
+
+if ($Hwnd) {
+    Ok "Using HWND override: $Hwnd"
+    $TargetHwnd = $Hwnd
+} else {
+    $listOutput = & $CliExe list 2>&1
+    $match = $listOutput | Where-Object { $_ -match '(?i)latency clock' } | Select-Object -First 1
+    if (-not $match) {
+        Fail @"
+No window matching 'latency clock' in ``windowstream list`` output.
+Open tools/latency-clock.html in a browser (Edge or Chrome, fullscreen
+ideal; AVOID Chrome --kiosk — known WGC frame-conversion bug, see
+project_chrome_kiosk_wgc_conversion_fail.md). Then re-run this script.
+
+Pass -Hwnd <int> to override and target a different window.
+"@
+    }
+    # `windowstream list` format: "HANDLE       PROCESS              TITLE"
+    # First token is the HWND.
+    $TargetHwnd = ($match -split '\s+', 4)[0]
+    if (-not ($TargetHwnd -match '^\d+$')) {
+        Fail "Could not parse HWND from list output line: '$match'"
+    }
+    Ok "Source HWND: $TargetHwnd ('$match')"
+}
