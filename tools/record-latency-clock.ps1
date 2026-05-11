@@ -39,7 +39,11 @@ param(
     [int]$DecThreshold = 20
 )
 
-$ErrorActionPreference = 'Stop'
+# Continue (not Stop): PS 5.1 wraps native-exe stderr as NativeCommandError
+# records at the binding boundary even when the stream is redirected to $null.
+# Stop would abort on benign adb info like "* daemon not running; starting now".
+# Error handling is explicit via Fail() with exit 1; we don't rely on Stop.
+$ErrorActionPreference = 'Continue'
 
 # Hardcoded per project memory; update site below if PC IP or GXR change.
 $HostIp     = '192.168.50.75'
@@ -80,7 +84,7 @@ Ok "Binaries present at $($CliExe)"
 Info "[2/8] HMD adb connect"
 
 function Get-GxrDeviceId {
-    $devicesOutput = & adb devices 2>&1
+    $devicesOutput = & adb devices 2>$null
     foreach ($line in $devicesOutput) {
         if ($line -match "^(\S+$GxrSerial\S*)\s+device") {
             return $matches[1]
@@ -108,8 +112,8 @@ if ($DeviceId) { Ok "Found GXR: $DeviceId"; }
 # 2b: kick the adb mDNS subsystem
 if (-not $DeviceId) {
     Info "  GXR not in adb devices; restarting adb daemon to refresh mDNS..."
-    & adb kill-server 2>&1 | Out-Null
-    & adb start-server 2>&1 | Out-Null
+    & adb kill-server *> $null
+    & adb start-server *> $null
     Start-Sleep -Seconds 2
     $DeviceId = Get-GxrDeviceId
     if ($DeviceId) { Ok "Found GXR after daemon restart: $DeviceId" }
@@ -120,7 +124,7 @@ if (-not $DeviceId) {
     $cached = Read-CachedHmdIpPort
     if ($cached) {
         Info "  Trying cached HMD ip:port $cached..."
-        & adb connect $cached 2>&1 | Out-Null
+        & adb connect $cached *> $null
         Start-Sleep -Seconds 1
         $DeviceId = Get-GxrDeviceId
         if ($DeviceId) { Ok "Connected via cached $cached" }
@@ -134,7 +138,7 @@ if (-not $DeviceId) {
     Write-Host "  Wireless debugging -> look at 'IP address & Port'." -ForegroundColor Yellow
     $userInput = Read-Host "  Enter GXR ip:port (e.g. 192.168.50.42:5555)"
     if (-not $userInput) { Fail "No ip:port provided." }
-    & adb connect $userInput 2>&1 | Out-Null
+    & adb connect $userInput *> $null
     Start-Sleep -Seconds 1
     $DeviceId = Get-GxrDeviceId
     if (-not $DeviceId) {
@@ -148,7 +152,7 @@ if (-not $DeviceId) {
 Info "[3/8] Find latency-clock HWND"
 
 function Find-LatencyClockMatch {
-    $listOutput = & $CliExe list 2>&1
+    $listOutput = & $CliExe list 2>$null
     return ($listOutput | Where-Object { $_ -match '(?i)latency clock' } | Select-Object -First 1)
 }
 
@@ -256,17 +260,17 @@ Ok "stderr log: $ServerStderrLog"
 # === Step 5: frame-flow probe =================================================
 Info "[5/8] Frame-flow probe ($ProbeDuration s, HMD off-head OK)"
 
-& adb -s $DeviceId shell am force-stop $ViewerPkg 2>&1 | Out-Null
-& adb -s $DeviceId logcat -c 2>&1 | Out-Null
+& adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
+& adb -s $DeviceId logcat -c *> $null
 
 & adb -s $DeviceId shell am start -n $DemoActivity `
     --es streamHost $HostIp `
     --ei streamPort $TcpPort `
-    --ela selectedWindowHwnds $TargetHwnd 2>&1 | Out-Null
+    --ela selectedWindowHwnds $TargetHwnd *> $null
 
 Start-Sleep -Seconds $ProbeDuration
 
-$logcatDump = & adb -s $DeviceId logcat -d 2>&1
+$logcatDump = & adb -s $DeviceId logcat -d 2>$null
 $decCount = ($logcatDump | Select-String 'FRAMECOUNT.*stage=dec').Count
 
 # Server stderr emits [FRAMECOUNT] stage=enc lines (per CLAUDE.md).
@@ -278,7 +282,7 @@ if (Test-Path $ServerStderrLog) {
 Info "  probe results: dec=$decCount, enc=$encCount (in ${ProbeDuration}s)"
 
 # Always force-stop the viewer after the probe — we'll restart it for the real record.
-& adb -s $DeviceId shell am force-stop $ViewerPkg 2>&1 | Out-Null
+& adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
 
 if ($decCount -ge $DecThreshold) {
     Ok "Frames flowing healthy ($decCount >= $DecThreshold)"
@@ -330,11 +334,11 @@ $RecordingMp4   = Join-Path $OutputDir "feasibility-recording-$stamp.mp4"
 $RecordingFrame = Join-Path $OutputDir "feasibility-recording-$stamp-frame.jpg"
 $RemoteMp4 = '/sdcard/feasibility-recording.mp4'
 
-& adb -s $DeviceId logcat -c 2>&1 | Out-Null
+& adb -s $DeviceId logcat -c *> $null
 & adb -s $DeviceId shell am start -n $DemoActivity `
     --es streamHost $HostIp `
     --ei streamPort $TcpPort `
-    --ela selectedWindowHwnds $TargetHwnd 2>&1 | Out-Null
+    --ela selectedWindowHwnds $TargetHwnd *> $null
 
 # Handshake settle
 Start-Sleep -Seconds 3
@@ -342,11 +346,11 @@ Start-Sleep -Seconds 3
 Info "  recording NOW -- position both clocks in your gaze"
 & adb -s $DeviceId shell screenrecord --time-limit $Duration --bit-rate 20M $RemoteMp4
 
-& adb -s $DeviceId pull $RemoteMp4 $RecordingMp4 2>&1 | Out-Null
+& adb -s $DeviceId pull $RemoteMp4 $RecordingMp4 *> $null
 if (-not (Test-Path $RecordingMp4)) {
     Fail "adb pull failed; recording left at $RemoteMp4 on device $DeviceId for manual recovery."
 }
-& adb -s $DeviceId shell rm $RemoteMp4 2>&1 | Out-Null
+& adb -s $DeviceId shell rm $RemoteMp4 *> $null
 
 # Midpoint frame extraction (ffmpeg must be on PATH)
 $ffmpegOnPath = Get-Command ffmpeg -ErrorAction SilentlyContinue
