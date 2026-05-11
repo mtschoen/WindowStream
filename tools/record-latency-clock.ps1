@@ -75,3 +75,71 @@ FFmpeg DLLs missing next to windowstream.exe. Either:
 "@
 }
 Ok "Binaries present at $($CliExe)"
+
+# === Step 2: HMD adb ==========================================================
+Info "[2/8] HMD adb connect"
+
+function Get-GxrDeviceId {
+    $devicesOutput = & adb devices 2>&1
+    foreach ($line in $devicesOutput) {
+        if ($line -match "^(\S+$GxrSerial\S*)\s+device") {
+            return $matches[1]
+        }
+    }
+    return $null
+}
+
+function Read-CachedHmdIpPort {
+    if (Test-Path $ConfigFile) {
+        try { return (Get-Content $ConfigFile -Raw | ConvertFrom-Json).hmdIpPort }
+        catch { return $null }
+    }
+    return $null
+}
+
+function Save-HmdIpPort($ipPort) {
+    @{ hmdIpPort = $ipPort } | ConvertTo-Json | Set-Content -Path $ConfigFile -Encoding utf8
+}
+
+# 2a: try adb devices first (mDNS-native path)
+$DeviceId = Get-GxrDeviceId
+if ($DeviceId) { Ok "Found GXR: $DeviceId"; }
+
+# 2b: kick the adb mDNS subsystem
+if (-not $DeviceId) {
+    Info "  GXR not in adb devices; restarting adb daemon to refresh mDNS..."
+    & adb kill-server 2>&1 | Out-Null
+    & adb start-server 2>&1 | Out-Null
+    Start-Sleep -Seconds 2
+    $DeviceId = Get-GxrDeviceId
+    if ($DeviceId) { Ok "Found GXR after daemon restart: $DeviceId" }
+}
+
+# 2c: try cached ip:port
+if (-not $DeviceId) {
+    $cached = Read-CachedHmdIpPort
+    if ($cached) {
+        Info "  Trying cached HMD ip:port $cached..."
+        & adb connect $cached 2>&1 | Out-Null
+        Start-Sleep -Seconds 1
+        $DeviceId = Get-GxrDeviceId
+        if ($DeviceId) { Ok "Connected via cached $cached" }
+    }
+}
+
+# 2d: prompt user
+if (-not $DeviceId) {
+    Write-Host ""
+    Write-Host "  GXR not auto-discovered. On the HMD: Developer options ->" -ForegroundColor Yellow
+    Write-Host "  Wireless debugging -> look at 'IP address & Port'." -ForegroundColor Yellow
+    $userInput = Read-Host "  Enter GXR ip:port (e.g. 192.168.50.42:5555)"
+    if (-not $userInput) { Fail "No ip:port provided." }
+    & adb connect $userInput 2>&1 | Out-Null
+    Start-Sleep -Seconds 1
+    $DeviceId = Get-GxrDeviceId
+    if (-not $DeviceId) {
+        Fail "adb connect $userInput did not produce a device. Check HMD is awake, on Wi-Fi, and adb-wifi paired (`adb pair <ip>:<pair-port> <code>` once if first time)."
+    }
+    Save-HmdIpPort $userInput
+    Ok "Connected via prompted $userInput (cached for next run)"
+}
