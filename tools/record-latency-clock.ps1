@@ -317,3 +317,22 @@ if ($ffmpegOnPath) {
 
 Ok "Recording: $RecordingMp4"
 if (Test-Path $RecordingFrame) { Ok "Frame:     $RecordingFrame" }
+
+# === Step 8: teardown ========================================================
+Info "[8/8] Off-head"
+Write-Host ""
+Write-Host "  Recording done. Come off-head when you're ready." -ForegroundColor Yellow
+$tearDown = Read-Host "  Tear down server + firewall rules? [y/N]"
+
+if ($tearDown -match '^[Yy]') {
+    Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
+    Get-NetFirewallRule -DisplayName 'WindowStream-Session-*' -ErrorAction SilentlyContinue |
+        Remove-NetFirewallRule -ErrorAction SilentlyContinue
+    Ok "Server stopped, firewall rules removed."
+} else {
+    Write-Host ""
+    Write-Host "  Server PID: $($ServerProcess.Id) left running." -ForegroundColor Yellow
+    Write-Host "  To stop later:  Stop-Process -Id $($ServerProcess.Id)" -ForegroundColor Yellow
+    Write-Host "  Firewall cleanup (also handled by /wrap):" -ForegroundColor Yellow
+    Write-Host "    Get-NetFirewallRule -DisplayName WindowStream-Session-* | Remove-NetFirewallRule" -ForegroundColor Yellow
+}
