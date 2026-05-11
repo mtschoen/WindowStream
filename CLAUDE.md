@@ -124,6 +124,23 @@ inline rationale; integration tests cover those paths.
 
 ## Running the demo end-to-end
 
+### Fast path: HMD-camera latency-clock test
+
+For the standard latency measurement (cold start, with HMD on but
+nothing else running):
+
+```powershell
+pwsh tools/record-latency-clock.ps1
+```
+
+The script handles adb wifi connect, source-window detection, server
+launch, and a 4-second frame-flow probe before asking you to go
+on-head. Diagnostics on every common failure mode (no HMD,
+no source window, WGC capture failed, network blocked).
+
+The manual recipe below is the fallback when the script itself is
+broken or you want to test something the script doesn't cover.
+
 ### Server side (Windows)
 
 1. Install OBS Studio (provides FFmpeg native DLLs) OR manually drop `avcodec-61.dll`, `avutil-59.dll`, `swscale-8.dll`, `swresample-5.dll`, `zlib.dll`, `libx264-164.dll` next to the CLI output.
