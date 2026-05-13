@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Build + Test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      NODE_TLS_REJECT_UNAUTHORIZED: 0
+      WINDOWSTREAM_SKIP_NVENC: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.x
+            10.x
+      - uses: actions/cache@v4
+        with:
+          path: ~\.nuget\packages
+          key: windows-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: windows-nuget-
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore
+      - name: Build
+        shell: pwsh
+        run: dotnet build -c Release --no-restore
+      - name: Test (unit + server, skip integration)
+        shell: pwsh
+        run: |
+          dotnet test tests/WindowStream.Core.Tests/WindowStream.Core.Tests.csproj -c Release --no-build -v normal
+          dotnet test tests/WindowStream.Server.Tests/WindowStream.Server.Tests.csproj -c Release --no-build -v normal
