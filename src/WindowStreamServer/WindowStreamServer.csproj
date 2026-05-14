@@ -9,9 +9,14 @@
     <ApplicationTitle>WindowStreamServer</ApplicationTitle>
     <ApplicationId>com.mtschoen.windowstream.server</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationIcon>Resources\AppIcon\windowstream.ico</ApplicationIcon>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
   </PropertyGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\windowstream.png" BaseSize="1024,1024" />
+  </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Program.cs" />

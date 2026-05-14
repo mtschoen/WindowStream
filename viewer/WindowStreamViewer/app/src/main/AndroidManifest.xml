@@ -9,7 +9,9 @@
     <application
         android:name=".app.WindowStreamViewerApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="WindowStream Viewer"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".app.MainActivity"
