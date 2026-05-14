@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewModels="clr-namespace:WindowStream.Server.ViewModels"
+             xmlns:capture="clr-namespace:WindowStream.Core.Capture;assembly=WindowStream.Core"
              x:Class="WindowStream.Server.Pages.MainPage"
              x:DataType="viewModels:WindowPickerViewModel">
     <Grid ColumnDefinitions="*,2*" Padding="12" RowDefinitions="Auto,*">
@@ -10,7 +11,7 @@
                         ItemsSource="{Binding Windows}"
                         SelectionMode="Single">
             <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="viewModels:WindowPickerViewModel">
+                <DataTemplate x:DataType="capture:WindowInformation">
                     <Grid Padding="8" ColumnDefinitions="Auto,*">
                         <Label Grid.Column="0" Text="{Binding processName}" WidthRequest="120" />
                         <Label Grid.Column="1" Text="{Binding title}" />
@@ -20,6 +21,7 @@
         </CollectionView>
         <VerticalStackLayout Grid.Row="1" Grid.Column="1" Padding="12" Spacing="8"
                              x:Name="SessionPane"
+                             x:DataType="viewModels:SessionViewModel"
                              BindingContext="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=SessionViewModel}">
             <Label Text="{Binding Status}" FontSize="20" />
             <Label Text="{Binding FramesPerSecond, StringFormat='FPS: {0:F1}'}" />
