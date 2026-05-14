@@ -87,7 +87,11 @@ class MediaCodecDecoder(
                     "FRAMECOUNT",
                     "stage=dec ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
                 )
-                mediaCodec.releaseOutputBuffer(outputBufferIndex, surface != null)
+                if (surface != null) {
+                    mediaCodec.releaseOutputBuffer(outputBufferIndex, System.nanoTime())
+                } else {
+                    mediaCodec.releaseOutputBuffer(outputBufferIndex, false)
+                }
                 // Approximate the frame's actual on-screen present time by hopping
                 // to the main looper and posting a Choreographer frame callback;
                 // it fires at the next vsync, which is when SurfaceFlinger
