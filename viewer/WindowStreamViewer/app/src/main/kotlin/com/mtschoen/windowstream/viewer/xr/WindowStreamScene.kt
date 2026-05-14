@@ -27,7 +27,6 @@ fun WindowStreamScene(panelSink: XrPanelSink) {
                 .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS).dp)
                 .movable()
         ) {
-            // alpha04 API: register lifecycle callbacks via scope DSL
             onSurfaceCreated { providedSurface ->
                 panelSink.provideSurfaceFromXrSystem(providedSurface)
             }

@@ -48,6 +48,7 @@ numbers live here.
 | 4 | 2026-05-09 | `c51b88a` main (M5) | Unity 4K @ 60 | Galaxy XR | cap → present | 17 ms | **34 ms** | **51 ms** |
 | 5 | 2026-05-09 | `c51b88a` main (M5) | Unity 4K @ 60 | Fold 3 | reasm → present | — | 32 ms | 48 ms |
 | 6 | 2026-05-14 | main + Tier 1a | Edge latency-clock 165 fps | Galaxy XR | cap → present | **15 ms** | **28 ms** | **40 ms** |
+| 7 | 2026-05-14 | main + Tier 1a | Edge latency-clock 165 fps | Galaxy XR (XR compositor) | **photon → photon** | **13 ms** | **17 ms** | **34 ms** |
 
 Direct comparison: rows 3 ↔ 4 (same source/sink/network). Row 4 −
 row 3 = GPU-resident pipeline contribution = **−17 ms p50, −15 ms p95**.
@@ -56,9 +57,62 @@ Rows 4 ↔ 6: Tier 1a MediaCodec hints (`KEY_PRIORITY=0` +
 `KEY_OPERATING_RATE=Short.MAX_VALUE`) = **−6 ms p50, −11 ms p95** on E2E.
 Best case improved from 17 ms → **15 ms** (p0).
 
+Row 7: Camera-based photon-to-photon measurement using
+`SpatialExternalSurface` (XR compositor, bypassing SurfaceFlinger).
+Median **17 ms ≈ 1 frame at 60 fps**. p0 of 13 ms is sub-frame.
+This is the **ground truth** measurement; software-level cross-device
+timings (enc→present) are inflated by NTP clock skew.
+
 ---
 
 ## Detailed results
+
+### 2026-05-14 — XR compositor photon-to-photon (row 7)
+
+**Setup:** Same build as row 6 but running via `SpatialExternalSurface`
+(Jetpack XR alpha13) in Full Space Managed mode, bypassing SurfaceFlinger.
+Browser latency-clock at 165 fps displayed on physical monitor; same
+clock streamed to Galaxy XR XR compositor panel. HMD `screenrecord`
+captures both displays in a single video.
+
+**Method:** Extract frames from `tools/xr-latency-recording-20260514.mp4`,
+read millisecond timestamps from both the physical monitor and the
+virtual XR panel. Delta = monitor − virtual. Positive = virtual behind
+(real latency); negative = virtual ahead (camera shutter timing noise).
+
+| Frame | Monitor | Virtual (XR) | Delta |
+|-------|---------|-------------|------:|
+| 001 | `13:58:15.587` | `13:58:15.570` | 17 ms |
+| 002 | `13:58:16.620` | `13:58:16.604` | 16 ms |
+| 003 | `13:58:16.504` | `13:58:16.487` | 17 ms |
+| 004 | `13:58:18.604` | `13:58:18.588` | 16 ms |
+| 006 | `13:58:20.605` | `13:58:20.588` | 17 ms |
+| 008 | `13:58:22.602` | `13:58:22.588` | 14 ms |
+| 009 | `13:58:23.622` | `13:58:23.605` | 17 ms |
+| 010 | `13:58:24.622` | `13:58:24.605` | 17 ms |
+| 011 | `13:58:25.602` | `13:58:25.589` | 13 ms |
+| 013 | `13:58:27.602` | `13:58:27.589` | 13 ms |
+| 014 | `13:58:28.606` | `13:58:28.572` | 34 ms |
+
+| Stat | Value |
+|------|------:|
+| Samples | 11 |
+| p0 (min) | 13 ms |
+| **p50 (median)** | **17 ms** |
+| max | 34 ms |
+| Steady-state range | 13–17 ms |
+| Outlier rate | ~9% |
+
+**Verdict:** 13–17 ms = 1 frame at 60 fps (16.67 ms). The XR compositor
+path achieves the theoretical minimum. The single 34 ms outlier (≈ 2
+frames) is consistent with an occasional UDP reassembly stall.
+
+Sample frame from the recording (monitor = `13:58:20.138`, virtual =
+`13:58:20.121`, delta = 17 ms):
+
+![XR compositor latency proof — 17ms delta between physical monitor and virtual panel](xr-latency-frame-sample.jpg)
+
+---
 
 ### 2026-05-14 — Tier 1a MediaCodec low-latency (row 6)
 

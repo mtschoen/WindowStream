@@ -28,5 +28,8 @@
             android:screenOrientation="sensorLandscape"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|keyboard|keyboardHidden|navigation|fontScale" />
+        <activity
+            android:name=".demo.XrDemoActivity"
+            android:exported="true" />
     </application>
 </manifest>
