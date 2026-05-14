@@ -49,9 +49,30 @@ class MediaCodecDecoder(
         // Short.MAX_VALUE is the documented sentinel for "as fast as possible".
         mediaFormat.setInteger(MediaFormat.KEY_PRIORITY, 0)
         mediaFormat.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
-        val newCodec = if (codecName != null) {
-            MediaCodec.createByCodecName(codecName)
+        var selectedCodecName = codecName
+        if (selectedCodecName == null) {
+            val codecList = android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS)
+            for (codecInfo in codecList.codecInfos) {
+                if (codecInfo.isEncoder) continue
+                if (!codecInfo.supportedTypes.contains(MediaFormat.MIMETYPE_VIDEO_AVC)) continue
+                if (codecInfo.name.contains(".low_latency")) {
+                    selectedCodecName = codecInfo.name
+                    Log.i("MediaCodecDecoder", "Found explicit low_latency codec variant: $selectedCodecName")
+                    break
+                }
+            }
+            if (selectedCodecName == null) {
+                selectedCodecName = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).findDecoderForFormat(mediaFormat)
+                if (selectedCodecName != null) {
+                    Log.i("MediaCodecDecoder", "findDecoderForFormat selected: $selectedCodecName")
+                }
+            }
+        }
+
+        val newCodec = if (selectedCodecName != null) {
+            MediaCodec.createByCodecName(selectedCodecName)
         } else {
+            Log.w("MediaCodecDecoder", "Falling back to default AVC decoder")
             MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         }
         newCodec.setCallback(object : MediaCodec.Callback() {

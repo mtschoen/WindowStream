@@ -59,7 +59,7 @@ $ErrorActionPreference = 'Continue'
 
 # Hardcoded per project memory; update site below if PC IP or GXR change.
 $HostIp     = '192.168.50.75'
-$GxrSerial  = 'R3GYB04E2WB'
+$GxrSerial  = 'RFCRB0G5DLW'
 $ViewerPkg  = 'com.mtschoen.windowstream.viewer'
 $DemoActivity = "$ViewerPkg/.demo.DemoActivity"
 
@@ -97,8 +97,16 @@ Info "[2/8] HMD adb connect"
 
 function Get-GxrDeviceId {
     $devicesOutput = & adb devices 2>$null
+    # Prefer matching by USB serial (appears when USB-connected or mDNS-discovered).
     foreach ($line in $devicesOutput) {
-        if ($line -match "^(\S+$GxrSerial\S*)\s+device") {
+        if ($line -match "^(\S*$GxrSerial\S*)\s+device") {
+            return $matches[1]
+        }
+    }
+    # Fallback: wifi-connected devices show as ip:port (e.g. 192.168.50.115:35179)
+    # with no serial in the ID. Match any ip:port device line.
+    foreach ($line in $devicesOutput) {
+        if ($line -match "^(\d+\.\d+\.\d+\.\d+:\d+)\s+device") {
             return $matches[1]
         }
     }
@@ -127,6 +135,12 @@ if (-not $DeviceId) {
     & adb kill-server *> $null
     & adb start-server *> $null
     Start-Sleep -Seconds 2
+    # kill-server drops wifi connections; re-connect cached ip:port if available.
+    $cached = Read-CachedHmdIpPort
+    if ($cached) {
+        & adb connect $cached *> $null
+        Start-Sleep -Milliseconds 500
+    }
     $DeviceId = Get-GxrDeviceId
     if ($DeviceId) { Ok "Found GXR after daemon restart: $DeviceId" }
 }
@@ -215,12 +229,9 @@ function Start-LatencyClockBrowser($ClockUrl) {
     # Edge --app= fallback (chromeless without Fullscreen Optimizations).
     # Both keep the page foregrounded with no browser chrome --
     # "fullscreen-but-not-fullscreen" from the prior session.
-    $chromePath = Resolve-ChromePath
-    if ($chromePath) {
-        Info "  Launching Chrome --kiosk..."
-        Start-Process -FilePath $chromePath -ArgumentList '--kiosk', $ClockUrl | Out-Null
-        return
-    }
+    # Chrome --kiosk disabled due to WGC conversion bug.
+    # Fall through to Edge --app=
+
     $edgePath = Resolve-EdgePath
     if ($edgePath) {
         Info "  Chrome not found; launching Edge --app..."
