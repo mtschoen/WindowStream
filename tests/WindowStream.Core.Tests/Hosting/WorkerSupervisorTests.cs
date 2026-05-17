@@ -26,6 +26,8 @@ public class WorkerSupervisorTests
 
         public Stream Pipe { get; }
 
+        public int ProcessId => 0;
+
         public Task<int> WaitForExitAsync() => exitSource.Task;
 
         public void Kill() => exitSource.TrySetResult(137);

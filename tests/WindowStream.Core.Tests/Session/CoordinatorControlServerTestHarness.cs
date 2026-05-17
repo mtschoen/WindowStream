@@ -163,6 +163,8 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
 
         public Stream Pipe { get; } = new MemoryStream();
 
+        public int ProcessId => 0;
+
         public Task<int> WaitForExitAsync() => exitSource.Task;
 
         public void Kill() => exitSource.TrySetResult(137);

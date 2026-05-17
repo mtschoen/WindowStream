@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -14,6 +13,7 @@ using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Discovery;
 using WindowStream.Core.Encode;
+using WindowStream.Core.Observability;
 using WindowStream.Core.Protocol;
 using WindowStream.Core.Session;
 using WindowStream.Core.Session.Adapters;
@@ -34,24 +34,12 @@ namespace WindowStream.Core.Hosting;
 public sealed class CoordinatorLauncher : ISessionHostLauncher
 {
     private readonly int tcpPort;
-    private readonly TextWriter output;
+    private readonly Diagnostics diagnostics;
 
-    /// <summary>Called when the available-window count changes.</summary>
-    public Action<int>? OnAvailableWindowCountChanged { get; set; }
-
-    /// <summary>Called when a viewer connects or disconnects (null = disconnected).</summary>
-    public Action<string?>? OnViewerChanged { get; set; }
-
-    /// <summary>Called once when the coordinator is listening, with (tcpPort, udpPort).</summary>
-    public Action<int, int>? OnPortsAssigned { get; set; }
-
-    /// <summary>Called when the number of active streams changes.</summary>
-    public Action<int>? OnActiveStreamCountChanged { get; set; }
-
-    public CoordinatorLauncher(int tcpPort, TextWriter output)
+    public CoordinatorLauncher(int tcpPort, Diagnostics diagnostics)
     {
         this.tcpPort = tcpPort;
-        this.output = output ?? throw new ArgumentNullException(nameof(output));
+        this.diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
     }
 
     public async Task LaunchAsync(CancellationToken cancellationToken)
@@ -127,17 +115,27 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             },
             timeProvider: TimeProvider.System);
 
-        // Hook supervisor stream lifecycle for routing.
-        supervisor.StreamStarted += (_, args) =>
+        // Hook supervisor stream lifecycle for routing and diagnostics.
+        supervisor.StreamStarted += (_, arguments) =>
         {
-            streamIdToWindowId[args.StreamId] = args.WindowId;
-            _ = router.ReadFromPipeAsync(args.StreamId, args.Pipe, cancellationToken);
-            OnActiveStreamCountChanged?.Invoke(streamIdToWindowId.Count);
+            streamIdToWindowId[arguments.StreamId] = arguments.WindowId;
+            _ = router.ReadFromPipeAsync(arguments.StreamId, arguments.Pipe, cancellationToken);
+            diagnostics.Report(new PipelineEvent.WorkerSpawned(arguments.StreamId, arguments.WorkerProcessId));
         };
-        supervisor.StreamEnded += (_, args) =>
+        supervisor.StreamEnded += (_, arguments) =>
         {
-            streamIdToWindowId.TryRemove(args.StreamId, out ulong _);
-            OnActiveStreamCountChanged?.Invoke(streamIdToWindowId.Count);
+            streamIdToWindowId.TryRemove(arguments.StreamId, out ulong _);
+            diagnostics.Report(new PipelineEvent.StreamStopped(arguments.StreamId, arguments.Reason.ToString()));
+        };
+
+        // Subscribe to viewer connect/disconnect events from the control server.
+        controlServer.ViewerConnected += (_, arguments) =>
+        {
+            diagnostics.Report(new PipelineEvent.ViewerAccepted(arguments.Endpoint));
+        };
+        controlServer.ViewerDisconnected += (_, arguments) =>
+        {
+            diagnostics.Report(new PipelineEvent.ViewerDisconnected(arguments.Endpoint, arguments.Reason));
         };
 
         // Spin up loops: load shedder, fragmenter+UDP sender, window enumerator.
@@ -148,7 +146,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         Task enumerationLoop = Task.Run(
             () => RunEnumerationLoopAsync(
                 captureSource, registry, controlServer, windowIdToHwnd, windowIdToDescriptor,
-                OnAvailableWindowCountChanged, cancellationToken),
+                diagnostics, cancellationToken),
             cancellationToken);
 
         // mDNS advertise — instance name = MachineName, version=2 per spec.
@@ -166,10 +164,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         await advertiser.StartAsync(advertisementOptions, controlServer.TcpPort, cancellationToken)
             .ConfigureAwait(false);
 
-        OnPortsAssigned?.Invoke(controlServer.TcpPort, udpSender.LocalPort);
-        output.WriteLine($"windowstream: serving on TCP {controlServer.TcpPort}, UDP {udpSender.LocalPort}");
-        output.WriteLine($"  mDNS: _windowstream._tcp as '{Environment.MachineName}' (v2)");
-        output.WriteLine("  Press Ctrl-C to stop.");
+        diagnostics.Report(new PipelineEvent.Listening(controlServer.TcpPort, udpSender.LocalPort));
 
         try
         {
@@ -188,9 +183,9 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
 
     /// <summary>
     /// Fast path: use the dimensions already known from window enumeration instead of
-    /// doing a WGC capture probe. The probe (<see cref="ResolveEncoderOptions"/>) blocks
-    /// the control server's TCP reader thread for up to 5 seconds per window, which causes
-    /// OPEN_STREAM requests to pile up and hang the viewer.
+    /// doing a WGC capture probe. A probe-based approach blocks the control server's TCP
+    /// reader thread for up to 5 seconds per window, causing OPEN_STREAM requests to pile
+    /// up and hang the viewer.
     /// </summary>
     private static EncoderOptions? ResolveEncoderOptionsFromDescriptor(
         ulong windowId,
@@ -231,94 +226,6 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             bitrateBitsPerSecond: bitrateBitsPerSecond,
             groupOfPicturesLength: gopLength,
             safetyKeyframeIntervalSeconds: 1);
-    }
-
-    private static EncoderOptions? ResolveEncoderOptions(
-        ulong windowId,
-        Func<ulong, long?> resolveHwnd,
-        CancellationToken cancellationToken)
-    {
-        long? hwnd = resolveHwnd(windowId);
-        if (hwnd is null)
-        {
-            return null;
-        }
-
-        WindowHandle handle = new WindowHandle(hwnd.Value);
-        (int probeWidth, int probeHeight)? probed;
-        try
-        {
-            probed = ProbeCaptureSizeAsync(handle, cancellationToken).GetAwaiter().GetResult();
-        }
-        catch (Exception probeException)
-        {
-            Console.Error.WriteLine(
-                $"ProbeCaptureSizeAsync threw for windowId={windowId} hwnd={hwnd.Value}: " +
-                $"{probeException.GetType().Name}: {probeException.Message}");
-            return null;
-        }
-
-        if (probed is null)
-        {
-            Console.Error.WriteLine(
-                $"ProbeCaptureSizeAsync returned null for windowId={windowId} hwnd={hwnd.Value}");
-            return null;
-        }
-
-        // NV12 requires even dimensions — round DOWN.
-        int physicalWidth = probed.Value.probeWidth - (probed.Value.probeWidth % 2);
-        int physicalHeight = probed.Value.probeHeight - (probed.Value.probeHeight % 2);
-        if (physicalWidth <= 0 || physicalHeight <= 0)
-        {
-            return null;
-        }
-
-        int gopLength = 30;
-        string? gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
-        if (gopOverride is not null && int.TryParse(gopOverride, out int parsedGop) && parsedGop >= 1)
-        {
-            gopLength = parsedGop;
-        }
-
-        int framesPerSecond = 60;
-        string? fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
-        if (fpsOverride is not null && int.TryParse(fpsOverride, out int parsedFps) && parsedFps >= 1)
-        {
-            framesPerSecond = parsedFps;
-        }
-        int bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
-
-        return new EncoderOptions(
-            widthPixels: physicalWidth,
-            heightPixels: physicalHeight,
-            framesPerSecond: framesPerSecond,
-            bitrateBitsPerSecond: bitrateBitsPerSecond,
-            groupOfPicturesLength: gopLength,
-            safetyKeyframeIntervalSeconds: 1);
-    }
-
-    private static async Task<(int probeWidth, int probeHeight)?> ProbeCaptureSizeAsync(
-        WindowHandle handle,
-        CancellationToken cancellationToken)
-    {
-        WgcCaptureSource probeSource = new WgcCaptureSource();
-        using CancellationTokenSource probeTimeout =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        probeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-        try
-        {
-            await using IWindowCapture probe = probeSource.Start(
-                handle, new CaptureOptions(30, false), probeTimeout.Token);
-            await foreach (CapturedFrame frame in probe.Frames.WithCancellation(probeTimeout.Token))
-            {
-                return (frame.widthPixels, frame.heightPixels);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
-        return null;
     }
 
     private static async Task RunFragmenterLoopAsync(
@@ -363,7 +270,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         CoordinatorControlServer controlServer,
         ConcurrentDictionary<ulong, long> windowIdToHwnd,
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor,
-        Action<int>? onWindowCountChanged,
+        Diagnostics diagnostics,
         CancellationToken cancellationToken)
     {
         using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
@@ -376,9 +283,9 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                 {
                     snapshot = captureSource.ListWindows().ToList();
                 }
-                catch (Exception)
+                catch (Exception enumerationException)
                 {
-                    // Enumeration failure is transient — try again next tick.
+                    diagnostics.Report(new PipelineEvent.EnumerationFailed(enumerationException));
                     continue;
                 }
 
@@ -398,13 +305,18 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                                 PhysicalHeight: appeared.Information.heightPixels);
                             windowIdToDescriptor[appeared.WindowId] = descriptor;
                             controlServer.NotifyWindowAppeared(descriptor);
-                            onWindowCountChanged?.Invoke(windowIdToDescriptor.Count);
+                            diagnostics.Report(new PipelineEvent.WindowAppeared(
+                                appeared.WindowId,
+                                appeared.Information.title,
+                                appeared.Information.processName,
+                                appeared.Information.widthPixels,
+                                appeared.Information.heightPixels));
                             break;
                         case WindowDisappeared gone:
                             windowIdToHwnd.TryRemove(gone.WindowId, out long _);
                             windowIdToDescriptor.TryRemove(gone.WindowId, out WindowDescriptor? _);
                             controlServer.NotifyWindowDisappeared(gone.WindowId);
-                            onWindowCountChanged?.Invoke(windowIdToDescriptor.Count);
+                            diagnostics.Report(new PipelineEvent.WindowDisappeared(gone.WindowId));
                             break;
                         case WindowChanged changed:
                             if (windowIdToDescriptor.TryGetValue(changed.WindowId, out WindowDescriptor? existing))
@@ -422,6 +334,11 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                                 changed.NewTitle,
                                 changed.NewWidthPixels,
                                 changed.NewHeightPixels);
+                            diagnostics.Report(new PipelineEvent.WindowChanged(
+                                changed.WindowId,
+                                changed.NewTitle,
+                                changed.NewWidthPixels,
+                                changed.NewHeightPixels));
                             break;
                     }
                 }

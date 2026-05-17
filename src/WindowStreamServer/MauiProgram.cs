@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Hosting;
 using WindowStream.Core.Hosting;
+using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
 using WindowStream.Server.Pages;
 using WindowStream.Server.ViewModels;
@@ -14,22 +15,46 @@ public static class MauiProgram
         MauiAppBuilder builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
-        CoordinatorLauncher launcher = new CoordinatorLauncher(tcpPort: 0, output: Console.Out);
+#if DEBUG
+        builder.Logging.AddDebug();
+#endif
+
+        MauiApp app = builder.Build();
+
+        ILogger logger = app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger<CoordinatorLauncher>();
+        Diagnostics diagnostics = new Diagnostics(logger);
+
+        CoordinatorLauncher launcher = new CoordinatorLauncher(tcpPort: 0, diagnostics);
         ServerDashboardViewModel dashboard = new ServerDashboardViewModel(launcher);
 
-        // Wire coordinator status callbacks → dashboard VM (thread-safe; VM uses INotifyPropertyChanged).
-        launcher.OnAvailableWindowCountChanged = count => dashboard.ReportAvailableWindows(count);
-        launcher.OnPortsAssigned = (tcp, udp) => dashboard.ReportPorts(tcp, udp);
-        launcher.OnActiveStreamCountChanged = count => dashboard.ReportActiveStreams(count);
+        // Wire pipeline events → dashboard VM via Diagnostics.Subscribe.
+        diagnostics.Subscribe(pipelineEvent =>
+        {
+            switch (pipelineEvent)
+            {
+                case PipelineEvent.Listening listening:
+                    dashboard.ReportPorts(listening.TcpPort, listening.UdpPort);
+                    break;
+                case PipelineEvent.ViewerAccepted viewerAccepted:
+                    dashboard.ReportConnectedViewer(viewerAccepted.Endpoint);
+                    break;
+                case PipelineEvent.ViewerDisconnected:
+                    dashboard.ReportConnectedViewer(null);
+                    break;
+                case PipelineEvent.WorkerSpawned:
+                    // Active stream count is tracked separately; no direct mapping needed.
+                    break;
+                case PipelineEvent.StreamStopped:
+                    // Active stream count is tracked separately; no direct mapping needed.
+                    break;
+            }
+        });
 
         builder.Services.AddSingleton<ISessionHostLauncher>(launcher);
         builder.Services.AddSingleton(dashboard);
         builder.Services.AddTransient<MainPage>();
 
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
-
-        return builder.Build();
+        return app;
     }
 }

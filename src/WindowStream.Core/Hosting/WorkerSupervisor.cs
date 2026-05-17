@@ -51,7 +51,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         ActiveStream record = new ActiveStream(streamId, windowId, handle);
         activeStreams[streamId] = record;
 
-        StreamStarted?.Invoke(this, new StreamStartedEventArguments(streamId, windowId, handle.Pipe));
+        StreamStarted?.Invoke(this, new StreamStartedEventArguments(streamId, windowId, handle.Pipe, handle.ProcessId));
 
         _ = MonitorAsync(record);
         return new StreamHandle(streamId, windowId);

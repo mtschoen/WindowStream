@@ -67,6 +67,8 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
     /// <summary>The test-facing pipe; write encoded chunks here, read commands from here.</summary>
     public Stream WorkerSidePipe => pipePair.WorkerSide;
 
+    public int ProcessId => 0;
+
     public Task<int> WaitForExitAsync() => exitSource.Task;
 
     public void Kill()

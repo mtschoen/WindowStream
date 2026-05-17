@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using Microsoft.Extensions.Logging;
 using WindowStream.Core.Capture;
+using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
 #if WINDOWS
 using WindowStream.Core.Capture.Windows;
@@ -34,7 +36,10 @@ public sealed class CliServices : ICliServices
     {
 #if WINDOWS
         IWindowCaptureSource captureSource = new WgcCaptureSource();
-        ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, Console.Out);
+        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        ILogger logger = loggerFactory.CreateLogger<CoordinatorLauncher>();
+        Diagnostics diagnostics = new Diagnostics(logger);
+        ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, diagnostics);
         return new CliServices(captureSource, hostLauncher, Console.Out);
 #else
         throw new PlatformNotSupportedException(

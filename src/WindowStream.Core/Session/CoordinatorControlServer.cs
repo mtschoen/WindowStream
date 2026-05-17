@@ -37,6 +37,10 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
     private IPEndPoint? activeViewerEndpoint;
     private bool disposed;
 
+    public event EventHandler<ViewerConnectedEventArguments>? ViewerConnected;
+
+    public event EventHandler<ViewerDisconnectedEventArguments>? ViewerDisconnected;
+
     public int TcpPort => tcpAcceptor.LocalPort;
 
     public IPEndPoint? ActiveViewerEndpoint
@@ -187,10 +191,16 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
         finally
         {
+            IPEndPoint? disconnectedEndpoint;
             lock (stateLock)
             {
+                disconnectedEndpoint = activeViewerEndpoint;
                 activeViewerEndpoint = null;
                 activeChannel = null;
+            }
+            if (disconnectedEndpoint is not null)
+            {
+                ViewerDisconnected?.Invoke(this, new ViewerDisconnectedEventArguments(disconnectedEndpoint.ToString()));
             }
             await channel.DisposeAsync().ConfigureAwait(false);
         }
@@ -212,10 +222,12 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                     IPAddress? viewerAddress = channel.RemoteIpAddress;
                     if (viewerAddress is not null)
                     {
+                        IPEndPoint endpoint = new IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort);
                         lock (stateLock)
                         {
-                            activeViewerEndpoint = new IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort);
+                            activeViewerEndpoint = endpoint;
                         }
+                        ViewerConnected?.Invoke(this, new ViewerConnectedEventArguments(endpoint.ToString()));
                     }
                     break;
                 case OpenStreamMessage openStream:

@@ -98,6 +98,8 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
 
         public Stream Pipe { get; }
 
+        public int ProcessId => process.Id;
+
         public Task<int> WaitForExitAsync()
         {
             TaskCompletionSource<int> source = new TaskCompletionSource<int>();
