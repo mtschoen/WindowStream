@@ -53,4 +53,23 @@ public class ServerStateReducerTests
         reducer.Apply(new PipelineEvent.StreamStopped(1, "viewer-disconnect"));
         Assert.False(reducer.State.Streams.ContainsKey(1));
     }
+
+    [Fact]
+    public void WindowAppeared_And_Disappeared_Adjust_Window_Count()
+    {
+        ServerStateReducer reducer = new();
+        reducer.Apply(new PipelineEvent.WindowAppeared(WindowId: 1UL, Title: "a", ProcessName: "p", Width: 100, Height: 100));
+        reducer.Apply(new PipelineEvent.WindowAppeared(WindowId: 2UL, Title: "b", ProcessName: "p", Width: 100, Height: 100));
+        Assert.Equal(2, reducer.State.WindowCount);
+        reducer.Apply(new PipelineEvent.WindowDisappeared(WindowId: 1UL));
+        Assert.Equal(1, reducer.State.WindowCount);
+    }
+
+    [Fact]
+    public void WindowDisappeared_Below_Zero_Is_Clamped()
+    {
+        ServerStateReducer reducer = new();
+        reducer.Apply(new PipelineEvent.WindowDisappeared(WindowId: 99UL));
+        Assert.Equal(0, reducer.State.WindowCount);
+    }
 }

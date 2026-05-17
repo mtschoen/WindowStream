@@ -42,10 +42,9 @@ public sealed class ServerStateReducer
                 ViewerEndpoint = null,
             },
 
-            PipelineEvent.ServerHelloSent serverHello => State with
-            {
-                WindowCount = serverHello.WindowCount,
-            },
+            PipelineEvent.WindowAppeared => State with { WindowCount = State.WindowCount + 1 },
+
+            PipelineEvent.WindowDisappeared => State with { WindowCount = System.Math.Max(0, State.WindowCount - 1) },
 
             PipelineEvent.OpenStreamReceived open => State with
             {
