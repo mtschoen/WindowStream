@@ -714,7 +714,7 @@ git commit -m "feat(server): InAppDashboardSink ring buffer with OnEvent fan-out
 - Create: `src/WindowStreamServer/Observability/ServerStateReducer.cs`
 - Create: `tests/WindowStream.Server.Tests/Observability/ServerStateReducerTests.cs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 // tests/WindowStream.Server.Tests/Observability/ServerStateReducerTests.cs
@@ -776,12 +776,12 @@ public class ServerStateReducerTests
 }
 ```
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `dotnet test tests/WindowStream.Server.Tests/ --filter ServerStateReducerTests`
 Expected: FAIL.
 
-- [ ] **Step 3: Write `StageStatus.cs`**
+- [x] **Step 3: Write `StageStatus.cs`**
 
 ```csharp
 namespace WindowStream.Server.Observability;
@@ -796,7 +796,7 @@ public enum StageStatus
 }
 ```
 
-- [ ] **Step 4: Write `StreamStateRow.cs`**
+- [x] **Step 4: Write `StreamStateRow.cs`**
 
 ```csharp
 namespace WindowStream.Server.Observability;
@@ -813,18 +813,17 @@ public sealed record StreamStateRow
     public int? CaptureHeight { get; init; }
     public StageStatus Encode { get; init; } = StageStatus.Pending;
     public string? EncodeError { get; init; }
-    public int? EncodeFps { get; init; }
-    public int? EncodeKbps { get; init; }
+    public int? EncodeFramesPerSecond { get; init; }
+    public int? EncodeBitrateKilobitsPerSecond { get; init; }
     public StageStatus UdpSend { get; init; } = StageStatus.Pending;
-    public double? CurrentFps { get; init; }
-    public int? CurrentKbps { get; init; }
+    public double? MeasuredFramesPerSecond { get; init; }
+    public int? MeasuredBitrateKilobitsPerSecond { get; init; }
 }
 ```
 
-- [ ] **Step 5: Write `ServerStateReducer.cs`**
+- [x] **Step 5: Write `ServerStateReducer.cs`**
 
 ```csharp
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using WindowStream.Core.Observability;
 
@@ -866,77 +865,83 @@ public sealed class ServerStateReducer
                 ViewerConnected = StageStatus.Pending,
                 ViewerEndpoint = null,
             },
-            PipelineEvent.WindowAppeared => State with { WindowCount = State.WindowCount + 1 },
-            PipelineEvent.WindowDisappeared => State with { WindowCount = System.Math.Max(0, State.WindowCount - 1) },
+            PipelineEvent.ServerHelloSent serverHello => State with
+            {
+                WindowCount = serverHello.WindowCount,
+            },
             PipelineEvent.OpenStreamReceived open => State with
             {
-                Streams = State.Streams.SetItem(open.StreamId,
+                Streams = State.Streams.SetItem(open.StreamId!.Value,
                     new StreamStateRow { WindowId = open.WindowId }),
             },
-            PipelineEvent.WorkerSpawned spawned when State.Streams.ContainsKey(spawned.StreamId) =>
-                State with { Streams = State.Streams.SetItem(spawned.StreamId,
-                    State.Streams[spawned.StreamId] with { WorkerSpawn = StageStatus.Ok }) },
-            PipelineEvent.WorkerSpawnFailed failed when State.Streams.ContainsKey(failed.StreamId) =>
-                State with { Streams = State.Streams.SetItem(failed.StreamId,
-                    State.Streams[failed.StreamId] with
-                    {
-                        WorkerSpawn = StageStatus.Error,
-                        WorkerSpawnError = failed.Exception.Message,
-                    }) },
-            PipelineEvent.CaptureStarted captured when State.Streams.ContainsKey(captured.StreamId) =>
-                State with { Streams = State.Streams.SetItem(captured.StreamId,
-                    State.Streams[captured.StreamId] with
-                    {
-                        Capture = StageStatus.Ok,
-                        CaptureWidth = captured.Width,
-                        CaptureHeight = captured.Height,
-                    }) },
-            PipelineEvent.CaptureFailed cf when State.Streams.ContainsKey(cf.StreamId) =>
-                State with { Streams = State.Streams.SetItem(cf.StreamId,
-                    State.Streams[cf.StreamId] with
-                    {
-                        Capture = StageStatus.Error,
-                        CaptureError = cf.Exception.Message,
-                    }) },
-            PipelineEvent.EncodeStarted enc when State.Streams.ContainsKey(enc.StreamId) =>
-                State with { Streams = State.Streams.SetItem(enc.StreamId,
-                    State.Streams[enc.StreamId] with
-                    {
-                        Encode = StageStatus.Ok,
-                        EncodeFps = enc.Fps,
-                        EncodeKbps = enc.Kbps,
-                    }) },
-            PipelineEvent.EncodeFailed ef when State.Streams.ContainsKey(ef.StreamId) =>
-                State with { Streams = State.Streams.SetItem(ef.StreamId,
-                    State.Streams[ef.StreamId] with
-                    {
-                        Encode = StageStatus.Error,
-                        EncodeError = ef.Exception.Message,
-                    }) },
-            PipelineEvent.FramesFlowing flowing when State.Streams.ContainsKey(flowing.StreamId) =>
-                State with { Streams = State.Streams.SetItem(flowing.StreamId,
-                    State.Streams[flowing.StreamId] with
-                    {
-                        UdpSend = StageStatus.Ok,
-                        CurrentFps = flowing.Fps,
-                        CurrentKbps = flowing.Kbps,
-                    }) },
+            PipelineEvent.WorkerSpawning spawning => UpdateStream(spawning.StreamId!.Value, row => row with
+            {
+                WorkerSpawn = StageStatus.InProgress,
+            }),
+            PipelineEvent.WorkerSpawned => UpdateStream(pipelineEvent.StreamId!.Value, row => row with
+            {
+                WorkerSpawn = StageStatus.Ok,
+            }),
+            PipelineEvent.WorkerSpawnFailed failed => UpdateStream(failed.StreamId!.Value, row => row with
+            {
+                WorkerSpawn = StageStatus.Error,
+                WorkerSpawnError = failed.Exception.Message,
+            }),
+            PipelineEvent.CaptureStarted captured => UpdateStream(captured.StreamId!.Value, row => row with
+            {
+                Capture = StageStatus.Ok,
+                CaptureWidth = captured.Width,
+                CaptureHeight = captured.Height,
+            }),
+            PipelineEvent.CaptureFailed captureFailed => UpdateStream(captureFailed.StreamId!.Value, row => row with
+            {
+                Capture = StageStatus.Error,
+                CaptureError = captureFailed.Exception.Message,
+            }),
+            PipelineEvent.EncodeStarted encodeStarted => UpdateStream(encodeStarted.StreamId!.Value, row => row with
+            {
+                Encode = StageStatus.Ok,
+                EncodeFramesPerSecond = encodeStarted.TargetFramesPerSecond,
+                EncodeBitrateKilobitsPerSecond = encodeStarted.BitrateKilobitsPerSecond,
+            }),
+            PipelineEvent.EncodeFailed encodeFailed => UpdateStream(encodeFailed.StreamId!.Value, row => row with
+            {
+                Encode = StageStatus.Error,
+                EncodeError = encodeFailed.Exception.Message,
+            }),
+            PipelineEvent.FramesFlowing flowing => UpdateStream(flowing.StreamId!.Value, row => row with
+            {
+                UdpSend = StageStatus.Ok,
+                MeasuredFramesPerSecond = flowing.MeasuredFramesPerSecond,
+                MeasuredBitrateKilobitsPerSecond = flowing.BitrateKilobitsPerSecond,
+            }),
             PipelineEvent.StreamStopped stopped => State with
             {
-                Streams = State.Streams.Remove(stopped.StreamId),
+                Streams = State.Streams.Remove(stopped.StreamId!.Value),
             },
             _ => State,
+        };
+    }
+
+    private ServerState UpdateStream(int streamId, Func<StreamStateRow, StreamStateRow> update)
+    {
+        if (!State.Streams.TryGetValue(streamId, out StreamStateRow? existing))
+            return State;
+
+        return State with
+        {
+            Streams = State.Streams.SetItem(streamId, update(existing)),
         };
     }
 }
 ```
 
-- [ ] **Step 6: Run, verify PASS**
+- [x] **Step 6: Run, verify PASS**
 
 Run: `dotnet test tests/WindowStream.Server.Tests/ --filter ServerStateReducerTests`
 Expected: PASS 5/5.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/WindowStreamServer/Observability/StageStatus.cs \
