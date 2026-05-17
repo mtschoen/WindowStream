@@ -2,7 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Maui.ApplicationModel;
@@ -64,8 +64,12 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
     private void OnSinkEvent(LogEntry entry) =>
         MarshalEntryToMainThread(entry);
 
-    // Separated so the MAUI-dispatcher call (which throws in headless test hosts)
-    // can be excluded from coverage without losing coverage on the catch fallback path.
+    // The MAUI BeginInvokeOnMainThread call inside the try is uncoverable in headless
+    // xUnit: WinRT's DispatcherQueue factory throws COMException ("ClassFactory cannot
+    // supply requested class") before the dispatcher can run. The synchronous catch
+    // fallback IS exercised by On_Sink_Event_Appends_Entry_Synchronously_In_Headless_Host.
+    // We attribute the whole method so the dispatcher call site doesn't keep the
+    // line-coverage gate red.
     [ExcludeFromCodeCoverage]
     private void MarshalEntryToMainThread(LogEntry entry)
     {
@@ -74,10 +78,11 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         {
             MainThread.BeginInvokeOnMainThread(() => AppendEntry(entry));
         }
-        catch (Exception)
+        catch (COMException)
         {
-            // No MAUI dispatcher available (e.g. headless unit-test host).
-            // Fall back to a synchronous append so the entry is not lost.
+            // No MAUI dispatcher available (e.g. headless unit-test host —
+            // WinRT factory throws). Fall back to a synchronous append so the
+            // entry is not lost.
             AppendEntry(entry);
         }
     }
@@ -95,8 +100,12 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         MarshalRaiseAllToMainThread();
     }
 
-    // Separated so the MAUI-dispatcher call (which throws in headless test hosts)
-    // can be excluded from coverage without losing coverage of the catch fallback path.
+    // The MAUI BeginInvokeOnMainThread call inside the try is uncoverable in headless
+    // xUnit: WinRT's DispatcherQueue factory throws COMException ("ClassFactory cannot
+    // supply requested class") before the dispatcher can run. The synchronous catch
+    // fallback IS exercised by Apply_Event_Fires_Property_Changed_Synchronously_In_Headless_Host.
+    // We attribute the whole method so the dispatcher call site doesn't keep the
+    // line-coverage gate red.
     [ExcludeFromCodeCoverage]
     private void MarshalRaiseAllToMainThread()
     {
@@ -104,11 +113,11 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         {
             MainThread.BeginInvokeOnMainThread(RaiseAll);
         }
-        catch (Exception)
+        catch (COMException)
         {
-            // No MAUI dispatcher available (e.g. headless unit-test host).
-            // Fall back to a synchronous raise so callers see up-to-date
-            // property-changed notifications immediately.
+            // No MAUI dispatcher available (e.g. headless unit-test host —
+            // WinRT factory throws). Fall back to a synchronous raise so callers
+            // see up-to-date property-changed notifications immediately.
             RaiseAll();
         }
     }
