@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Observability;
 
 /// <summary>
