@@ -506,7 +506,7 @@ git commit -m "build(server): add Serilog file + compact-json sinks"
 - Create: `src/WindowStreamServer/Observability/InAppDashboardSink.cs`
 - Create: `tests/WindowStream.Server.Tests/Observability/InAppDashboardSinkTests.cs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 // tests/WindowStream.Server.Tests/Observability/InAppDashboardSinkTests.cs
@@ -571,12 +571,12 @@ public class InAppDashboardSinkTests
 }
 ```
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `dotnet test tests/WindowStream.Server.Tests/`
 Expected: FAIL — `LogEntry` and `InAppDashboardSink` missing.
 
-- [ ] **Step 3: Write `LogEntry.cs`**
+- [x] **Step 3: Write `LogEntry.cs`**
 
 ```csharp
 using System;
@@ -598,7 +598,7 @@ public sealed record LogEntry(
     Exception? Exception);
 ```
 
-- [ ] **Step 4: Write `InAppDashboardSink.cs`**
+- [x] **Step 4: Write `InAppDashboardSink.cs`**
 
 ```csharp
 using System;
@@ -679,7 +679,7 @@ public sealed class InAppDashboardSink : ILogEventSink
 }
 ```
 
-- [ ] **Step 5: Add a `ProjectReference` for `WindowStream.Server.Tests`**
+- [x] **Step 5: Add a `ProjectReference` for `WindowStream.Server.Tests`**
 
 Edit `tests/WindowStream.Server.Tests/WindowStream.Server.Tests.csproj`, ensure it references the server project. If the test project doesn't exist yet, scaffold it with `dotnet new xunit -o tests/WindowStream.Server.Tests`, then add references to `WindowStream.Server` and `Serilog`.
 
@@ -689,12 +689,12 @@ Quick sanity check: the directory exists (per earlier `ls`), so just verify `Win
 <ProjectReference Include="..\..\src\WindowStreamServer\WindowStreamServer.csproj" />
 ```
 
-- [ ] **Step 6: Run, verify PASS**
+- [x] **Step 6: Run, verify PASS**
 
 Run: `dotnet test tests/WindowStream.Server.Tests/ --filter FullyQualifiedName~InAppDashboardSinkTests`
 Expected: PASS 3/3.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/WindowStreamServer/Observability/LogEntry.cs \
