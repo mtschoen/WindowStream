@@ -954,7 +954,7 @@ git commit -m "feat(server): state-board reducer with per-stream rows"
 **Files:**
 - Modify: `src/WindowStreamServer/MauiProgram.cs`
 
-- [ ] **Step 1: Replace the `MauiProgram.CreateMauiApp` body**
+- [x] **Step 1: Replace the `MauiProgram.CreateMauiApp` body**
 
 ```csharp
 using System;
@@ -1022,12 +1022,12 @@ public static class MauiProgram
 
 Note that `Logger` here is `Serilog.Core.Logger`. Add `using Serilog.Core;` if compiler complains.
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `dotnet build src/WindowStreamServer/WindowStreamServer.csproj`
 Expected: 0 errors. (`ServerDashboardViewModel` constructor will be modified in Task 9 to accept `InAppDashboardSink` — for the next build step, accept the temporary build failure.)
 
-- [ ] **Step 3: Commit (intermediate, allowed to be red on Server only)**
+- [x] **Step 3: Commit (intermediate, allowed to be red on Server only)**
 
 Defer the commit until Task 9 completes — they're tightly coupled. **Don't commit yet.**
 
@@ -1038,7 +1038,7 @@ Defer the commit until Task 9 completes — they're tightly coupled. **Don't com
 - Create: `src/WindowStreamServer/ViewModels/LogEntryViewModel.cs`
 - Modify: `tests/WindowStream.Server.Tests/` — add test that an emitted event surfaces in the VM within 1 s.
 
-- [ ] **Step 1: Rewrite `ServerDashboardViewModel.cs`**
+- [x] **Step 1: Rewrite `ServerDashboardViewModel.cs`**
 
 ```csharp
 using System;
@@ -1140,7 +1140,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
 
 Note: the sink-driven `AppendEntry` path appends entries to the event-log pane only. The reducer-driven state is updated by an additional path — `Diagnostics` will be extended in Step 3 of this task to also invoke `dashboard.ApplyEvent(...)` when the dashboard is registered as a subscriber.
 
-- [ ] **Step 2: Write `LogEntryViewModel.cs`**
+- [x] **Step 2: Write `LogEntryViewModel.cs`**
 
 ```csharp
 using WindowStream.Server.Observability;
@@ -1163,7 +1163,7 @@ public sealed record LogEntryViewModel(LogEntry Entry)
 }
 ```
 
-- [ ] **Step 3: Extend `Diagnostics` to also notify a registered dashboard**
+- [x] **Step 3: Extend `Diagnostics` to also notify a registered dashboard**
 
 In `src/WindowStream.Core/Observability/Diagnostics.cs`, add:
 ```csharp
@@ -1186,12 +1186,12 @@ diagnostics.Subscribe(dashboard.ApplyEvent);
 
 (Note: forward declare — `dashboard` is constructed after `diagnostics`, so move the `dashboard.ApplyEvent` subscribe call after `dashboard` is constructed.)
 
-- [ ] **Step 4: Build + test**
+- [x] **Step 4: Build + test**
 
 Run: `dotnet build && dotnet test`
 Expected: PASS — all existing tests still green, plus the new reducer/sink tests.
 
-- [ ] **Step 5: Commit (the Task 8 + 9 pair)**
+- [x] **Step 5: Commit (the Task 8 + 9 pair)**
 
 ```bash
 git add src/WindowStreamServer/MauiProgram.cs \
