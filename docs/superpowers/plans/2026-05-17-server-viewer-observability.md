@@ -23,7 +23,7 @@ All Core changes target `net8.0` + `net8.0-windows10.0.19041.0`. Tests run under
 - Create: `src/WindowStream.Core/Observability/PipelineEvent.cs`
 - Create: `tests/WindowStream.Core.Tests/Observability/PipelineEventTests.cs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 // tests/WindowStream.Core.Tests/Observability/PipelineEventTests.cs
@@ -65,12 +65,12 @@ public class PipelineEventTests
 }
 ```
 
-- [ ] **Step 2: Run test, verify FAIL with missing types**
+- [x] **Step 2: Run test, verify FAIL with missing types**
 
 Run: `dotnet test tests/WindowStream.Core.Tests/ --filter FullyQualifiedName~PipelineEventTests -v normal`
 Expected: FAIL — `The type or namespace name 'PipelineEvent' could not be found`
 
-- [ ] **Step 3: Write `Severity.cs`**
+- [x] **Step 3: Write `Severity.cs`**
 
 ```csharp
 namespace WindowStream.Core.Observability;
@@ -83,7 +83,7 @@ public enum Severity
 }
 ```
 
-- [ ] **Step 4: Write `PipelineEvent.cs`**
+- [x] **Step 4: Write `PipelineEvent.cs`**
 
 ```csharp
 using System;
@@ -162,12 +162,12 @@ public abstract record PipelineEvent(Severity Severity, int? StreamId)
 }
 ```
 
-- [ ] **Step 5: Run test, verify PASS**
+- [x] **Step 5: Run test, verify PASS**
 
 Run: `dotnet test tests/WindowStream.Core.Tests/ --filter FullyQualifiedName~PipelineEventTests -v normal`
 Expected: PASS, 3/3.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/WindowStream.Core/Observability/Severity.cs \
