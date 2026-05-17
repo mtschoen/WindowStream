@@ -356,7 +356,7 @@ git commit -m "build(core): add Microsoft.Extensions.Logging.Abstractions refere
 
 Replace the constructor's `TextWriter output` with `Diagnostics diagnostics`. Replace `output.WriteLine` and `Console.Error.WriteLine` calls with `Diagnostics.Report(...)`. Replace the `OnAvailableWindowCountChanged` / `OnPortsAssigned` / `OnActiveStreamCountChanged` / `OnViewerChanged` action delegates — they go away (their state lives in the reducer).
 
-- [ ] **Step 1: Modify the constructor and remove action callbacks**
+- [x] **Step 1: Modify the constructor and remove action callbacks**
 
 In `CoordinatorLauncher.cs`, replace:
 ```csharp
@@ -386,7 +386,7 @@ public CoordinatorLauncher(int tcpPort, Diagnostics diagnostics)
 }
 ```
 
-- [ ] **Step 2: Replace banner writes with `Listening` event**
+- [x] **Step 2: Replace banner writes with `Listening` event**
 
 In `CoordinatorLauncher.LaunchAsync`, replace:
 ```csharp
@@ -400,7 +400,7 @@ with:
 diagnostics.Report(new PipelineEvent.Listening(controlServer.TcpPort, udpSender.LocalPort));
 ```
 
-- [ ] **Step 3: Replace probe-failure `Console.Error.WriteLine` with `ProbeFailed` event**
+- [x] **Step 3: Replace probe-failure `Console.Error.WriteLine` with `ProbeFailed` event**
 
 In `ResolveEncoderOptions` (kept around but no longer used on the hot path), replace the two `Console.Error.WriteLine` calls with:
 ```csharp
@@ -411,7 +411,7 @@ diagnostics.Report(new PipelineEvent.ProbeFailed(windowId, hwnd.Value,
 ```
 Note: since `ResolveEncoderOptions` is static and has no access to `diagnostics`, accept `Diagnostics` as a parameter when calling it. **However** the live path uses `ResolveEncoderOptionsFromDescriptor` and does not throw — so a simpler change: leave `ResolveEncoderOptions` deleted-by-disuse, or remove the dead method. Inspect whether anything still calls `ResolveEncoderOptions`; if not, delete it. **Action:** delete the static `ResolveEncoderOptions` method and `ProbeCaptureSizeAsync` method (both unused after the fast-path refactor noted in `ResolveEncoderOptionsFromDescriptor`'s doc-comment).
 
-- [ ] **Step 4: Replace enumeration exception swallow**
+- [x] **Step 4: Replace enumeration exception swallow**
 
 In `RunEnumerationLoopAsync`, replace:
 ```csharp
@@ -432,7 +432,7 @@ catch (Exception enumerationException)
 ```
 Update `RunEnumerationLoopAsync`'s signature to take a `Diagnostics diagnostics` parameter, and update the `Task.Run(...)` call in `LaunchAsync` to pass it.
 
-- [ ] **Step 5: Emit per-stream lifecycle events**
+- [x] **Step 5: Emit per-stream lifecycle events**
 
 In the `supervisor.StreamStarted += ...` handler in `LaunchAsync`, after `streamIdToWindowId[args.StreamId] = args.WindowId;` add:
 ```csharp
@@ -447,19 +447,19 @@ diagnostics.Report(new PipelineEvent.StreamStopped(args.StreamId, args.Reason ??
 
 In the `controlServer` configuration, for the viewer accept hook — search for where `ActiveViewerEndpoint` is set or where `TcpAccepted` fires (read `CoordinatorControlServer.cs`). Emit `ViewerAccepted(endpoint)` there.
 
-- [ ] **Step 6: Emit `WindowAppeared` / `WindowDisappeared` / `WindowChanged`**
+- [x] **Step 6: Emit `WindowAppeared` / `WindowDisappeared` / `WindowChanged`**
 
 In `RunEnumerationLoopAsync`'s switch, in each `case`, after the existing call to `controlServer.NotifyWindow*`, emit:
 - `case WindowAppeared appeared`: `diagnostics.Report(new PipelineEvent.WindowAppeared(appeared.WindowId, descriptor.Title, descriptor.ProcessName, descriptor.PhysicalWidth, descriptor.PhysicalHeight));`
 - `case WindowDisappeared gone`: `diagnostics.Report(new PipelineEvent.WindowDisappeared(gone.WindowId));`
 - `case WindowChanged changed`: `diagnostics.Report(new PipelineEvent.WindowChanged(changed.WindowId, changed.NewTitle, changed.NewWidthPixels, changed.NewHeightPixels));`
 
-- [ ] **Step 7: Build and run all Core tests**
+- [x] **Step 7: Build and run all Core tests**
 
 Run: `dotnet build && dotnet test tests/WindowStream.Core.Tests/`
 Expected: 0 errors, all tests pass. (Coverage may dip below 100% — that's addressed in Task 5.)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/WindowStream.Core/Hosting/CoordinatorLauncher.cs
