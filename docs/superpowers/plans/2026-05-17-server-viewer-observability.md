@@ -472,25 +472,27 @@ git commit -m "refactor(core): route CoordinatorLauncher through Diagnostics fa�
 
 ### Task 5: Add Serilog packages to the server project
 
+> **Deviation from original plan:** Serilog bumped 4.1.0 → 4.2.0 — minimum compatible with Serilog.Extensions.Logging 9.0.0 (which has a transitive `Serilog >= 4.2.0` floor; 4.1.0 triggers NU1605 downgrade error). Other three package versions unchanged.
+
 **Files:**
 - Modify: `src/WindowStreamServer/WindowStreamServer.csproj`
 
-- [ ] **Step 1: Add the four Serilog packages**
+- [x] **Step 1: Add the four Serilog packages**
 
 Add inside the existing `<ItemGroup>` that contains `Microsoft.Extensions.Logging.Debug`:
 ```xml
-<PackageReference Include="Serilog" Version="4.1.0" />
+<PackageReference Include="Serilog" Version="4.2.0" />
 <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.0" />
 <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
 <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
 ```
 
-- [ ] **Step 2: Restore + build**
+- [x] **Step 2: Restore + build**
 
 Run: `dotnet restore && dotnet build src/WindowStreamServer/WindowStreamServer.csproj`
 Expected: 0 errors. May warn about MAUI workload version — ignore.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/WindowStreamServer/WindowStreamServer.csproj
