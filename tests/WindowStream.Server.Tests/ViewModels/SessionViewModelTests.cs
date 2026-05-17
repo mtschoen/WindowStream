@@ -6,16 +6,12 @@ namespace WindowStream.Server.Tests.ViewModels;
 
 public sealed class SessionViewModelTests
 {
-    // SessionStatus.Idle and SessionStatus.Streaming were renamed in T4 to Starting/Serving/Stopped/Error.
-    // The three tests below are skipped until they are rewritten against the new enum values.
-    // Next session: update Initial_State_Is_Idle → Starting, Stop_Transitions_To_Idle and
-    // Report_Status_Raises_Property_Changed → Serving/Stopped, and remove these skips.
-
-    [Fact(Skip = "SessionStatus.Idle replaced by SessionStatus.Starting; tracked separately")]
-    public void Initial_State_Is_Idle()
+    [Fact]
+    public void Initial_State_Is_Starting()
     {
-        // Original assertion: Assert.Equal(SessionStatus.Idle, viewModel.Status);
-        // Rewrite: use SessionStatus.Starting once tests are updated.
+        var viewModel = new SessionViewModel();
+
+        Assert.Equal(SessionStatus.Starting, viewModel.Status);
     }
 
     [Fact]
@@ -36,24 +32,37 @@ public sealed class SessionViewModelTests
         Assert.Equal(nameof(SessionViewModel.ConnectedViewerEndpoint), lastChanged);
     }
 
-    [Fact(Skip = "SessionStatus.Streaming/Idle replaced by Serving/Stopped; tracked separately")]
-    public void Stop_Transitions_To_Idle()
+    [Fact]
+    public void Stop_Transitions_To_Stopped()
     {
-        // Original: ReportStatus(SessionStatus.Streaming); ReportStatus(SessionStatus.Idle);
-        // Rewrite: use SessionStatus.Serving → SessionStatus.Stopped once tests are updated.
+        var viewModel = new SessionViewModel();
+        viewModel.ReportStatus(SessionStatus.Serving);
+        viewModel.ReportStatus(SessionStatus.Stopped);
+
+        Assert.Equal(SessionStatus.Stopped, viewModel.Status);
     }
 
-    [Fact(Skip = "SessionStatus.Streaming replaced by SessionStatus.Serving; tracked separately")]
+    [Fact]
     public void Report_Status_Raises_Property_Changed()
     {
-        // Original: viewModel.ReportStatus(SessionStatus.Streaming);
-        // Rewrite: use SessionStatus.Serving once tests are updated.
+        var viewModel = new SessionViewModel();
+        string? lastChanged = null;
+        viewModel.PropertyChanged += (_, eventArguments) => lastChanged = eventArguments.PropertyName;
+
+        viewModel.ReportStatus(SessionStatus.Serving);
+
+        Assert.Equal(nameof(SessionViewModel.Status), lastChanged);
     }
 
-    [Fact(Skip = "SessionStatus.Idle replaced by SessionStatus.Starting; tracked separately")]
+    [Fact]
     public void Set_Field_Does_Not_Raise_Property_Changed_When_Value_Unchanged()
     {
-        // Original: viewModel.ReportStatus(SessionStatus.Idle);
-        // Rewrite: default is Starting; verify no event fires when re-setting to Starting.
+        var viewModel = new SessionViewModel();
+        int raised = 0;
+        viewModel.PropertyChanged += (_, _) => raised++;
+
+        viewModel.ReportStatus(SessionStatus.Starting);
+
+        Assert.Equal(0, raised);
     }
 }
