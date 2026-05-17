@@ -5,7 +5,7 @@ namespace WindowStream.Server.ViewModels;
 
 public sealed class SessionViewModel : INotifyPropertyChanged
 {
-    private SessionStatus status = SessionStatus.Idle;
+    private SessionStatus status = SessionStatus.Starting;
     private double framesPerSecond;
     private int bitrateKilobitsPerSecond;
     private string? connectedViewerEndpoint;

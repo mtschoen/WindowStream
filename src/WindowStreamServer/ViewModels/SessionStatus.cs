@@ -2,7 +2,8 @@ namespace WindowStream.Server.ViewModels;
 
 public enum SessionStatus
 {
-    Idle,
-    Streaming,
+    Starting,
+    Serving,
+    Stopped,
     Error,
 }

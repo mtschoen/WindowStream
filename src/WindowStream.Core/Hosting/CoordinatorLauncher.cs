@@ -36,6 +36,18 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
     private readonly int tcpPort;
     private readonly TextWriter output;
 
+    /// <summary>Called when the available-window count changes.</summary>
+    public Action<int>? OnAvailableWindowCountChanged { get; set; }
+
+    /// <summary>Called when a viewer connects or disconnects (null = disconnected).</summary>
+    public Action<string?>? OnViewerChanged { get; set; }
+
+    /// <summary>Called once when the coordinator is listening, with (tcpPort, udpPort).</summary>
+    public Action<int, int>? OnPortsAssigned { get; set; }
+
+    /// <summary>Called when the number of active streams changes.</summary>
+    public Action<int>? OnActiveStreamCountChanged { get; set; }
+
     public CoordinatorLauncher(int tcpPort, TextWriter output)
     {
         this.tcpPort = tcpPort;
@@ -81,7 +93,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             windowIdToHwnd.TryGetValue(windowId, out long handle) ? handle : null;
 
         Func<ulong, EncoderOptions?> resolveEncoderOptions = windowId =>
-            ResolveEncoderOptions(windowId, resolveHwnd, cancellationToken);
+            ResolveEncoderOptionsFromDescriptor(windowId, windowIdToDescriptor);
 
         await using CoordinatorControlServer controlServer = new CoordinatorControlServer(
             options: coordinatorOptions,
@@ -120,10 +132,12 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         {
             streamIdToWindowId[args.StreamId] = args.WindowId;
             _ = router.ReadFromPipeAsync(args.StreamId, args.Pipe, cancellationToken);
+            OnActiveStreamCountChanged?.Invoke(streamIdToWindowId.Count);
         };
         supervisor.StreamEnded += (_, args) =>
         {
             streamIdToWindowId.TryRemove(args.StreamId, out ulong _);
+            OnActiveStreamCountChanged?.Invoke(streamIdToWindowId.Count);
         };
 
         // Spin up loops: load shedder, fragmenter+UDP sender, window enumerator.
@@ -133,7 +147,8 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             cancellationToken);
         Task enumerationLoop = Task.Run(
             () => RunEnumerationLoopAsync(
-                captureSource, registry, controlServer, windowIdToHwnd, windowIdToDescriptor, cancellationToken),
+                captureSource, registry, controlServer, windowIdToHwnd, windowIdToDescriptor,
+                OnAvailableWindowCountChanged, cancellationToken),
             cancellationToken);
 
         // mDNS advertise — instance name = MachineName, version=2 per spec.
@@ -151,6 +166,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         await advertiser.StartAsync(advertisementOptions, controlServer.TcpPort, cancellationToken)
             .ConfigureAwait(false);
 
+        OnPortsAssigned?.Invoke(controlServer.TcpPort, udpSender.LocalPort);
         output.WriteLine($"windowstream: serving on TCP {controlServer.TcpPort}, UDP {udpSender.LocalPort}");
         output.WriteLine($"  mDNS: _windowstream._tcp as '{Environment.MachineName}' (v2)");
         output.WriteLine("  Press Ctrl-C to stop.");
@@ -168,6 +184,53 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         try { await shedderLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
         try { await fragmenterLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
         try { await enumerationLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Fast path: use the dimensions already known from window enumeration instead of
+    /// doing a WGC capture probe. The probe (<see cref="ResolveEncoderOptions"/>) blocks
+    /// the control server's TCP reader thread for up to 5 seconds per window, which causes
+    /// OPEN_STREAM requests to pile up and hang the viewer.
+    /// </summary>
+    private static EncoderOptions? ResolveEncoderOptionsFromDescriptor(
+        ulong windowId,
+        ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor)
+    {
+        if (!windowIdToDescriptor.TryGetValue(windowId, out WindowDescriptor? descriptor))
+        {
+            return null;
+        }
+
+        // NV12 requires even dimensions — round DOWN.
+        int physicalWidth = descriptor.PhysicalWidth - (descriptor.PhysicalWidth % 2);
+        int physicalHeight = descriptor.PhysicalHeight - (descriptor.PhysicalHeight % 2);
+        if (physicalWidth <= 0 || physicalHeight <= 0)
+        {
+            return null;
+        }
+
+        int gopLength = 30;
+        string? gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
+        if (gopOverride is not null && int.TryParse(gopOverride, out int parsedGop) && parsedGop >= 1)
+        {
+            gopLength = parsedGop;
+        }
+
+        int framesPerSecond = 60;
+        string? fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
+        if (fpsOverride is not null && int.TryParse(fpsOverride, out int parsedFps) && parsedFps >= 1)
+        {
+            framesPerSecond = parsedFps;
+        }
+        int bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
+
+        return new EncoderOptions(
+            widthPixels: physicalWidth,
+            heightPixels: physicalHeight,
+            framesPerSecond: framesPerSecond,
+            bitrateBitsPerSecond: bitrateBitsPerSecond,
+            groupOfPicturesLength: gopLength,
+            safetyKeyframeIntervalSeconds: 1);
     }
 
     private static EncoderOptions? ResolveEncoderOptions(
@@ -300,6 +363,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         CoordinatorControlServer controlServer,
         ConcurrentDictionary<ulong, long> windowIdToHwnd,
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor,
+        Action<int>? onWindowCountChanged,
         CancellationToken cancellationToken)
     {
         using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
@@ -334,11 +398,13 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                                 PhysicalHeight: appeared.Information.heightPixels);
                             windowIdToDescriptor[appeared.WindowId] = descriptor;
                             controlServer.NotifyWindowAppeared(descriptor);
+                            onWindowCountChanged?.Invoke(windowIdToDescriptor.Count);
                             break;
                         case WindowDisappeared gone:
                             windowIdToHwnd.TryRemove(gone.WindowId, out long _);
                             windowIdToDescriptor.TryRemove(gone.WindowId, out WindowDescriptor? _);
                             controlServer.NotifyWindowDisappeared(gone.WindowId);
+                            onWindowCountChanged?.Invoke(windowIdToDescriptor.Count);
                             break;
                         case WindowChanged changed:
                             if (windowIdToDescriptor.TryGetValue(changed.WindowId, out WindowDescriptor? existing))

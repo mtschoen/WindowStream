@@ -6,13 +6,20 @@
         android:required="false" />
 
     <application>
+        <!-- UnifiedStreamingActivity is the new LAUNCHER: auto-discovers servers,
+             provides a window drawer for dynamic open/close during streaming. -->
         <activity
-            android:name=".app.ServerSelectionActivity"
+            android:name=".demo.UnifiedStreamingActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Legacy ServerSelectionActivity kept for backward compatibility
+             but no longer the launcher. -->
+        <activity
+            android:name=".app.ServerSelectionActivity"
+            android:exported="true" />
     </application>
 </manifest>

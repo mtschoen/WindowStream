@@ -5,7 +5,7 @@
        x:Class="WindowStream.Server.AppShell"
        Title="WindowStream">
     <ShellContent
-        Title="Windows"
+        Title="Dashboard"
         ContentTemplate="{DataTemplate pages:MainPage}"
         Route="MainPage" />
 </Shell>

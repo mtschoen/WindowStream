@@ -2,32 +2,57 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewModels="clr-namespace:WindowStream.Server.ViewModels"
-             xmlns:capture="clr-namespace:WindowStream.Core.Capture;assembly=WindowStream.Core"
              x:Class="WindowStream.Server.Pages.MainPage"
-             x:DataType="viewModels:WindowPickerViewModel">
-    <Grid ColumnDefinitions="*,2*" Padding="12" RowDefinitions="Auto,*">
-        <Label Grid.ColumnSpan="2" Text="WindowStream" FontSize="28" />
-        <CollectionView Grid.Row="1" Grid.Column="0"
-                        ItemsSource="{Binding Windows}"
-                        SelectionMode="Single">
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="capture:WindowInformation">
-                    <Grid Padding="8" ColumnDefinitions="Auto,*">
-                        <Label Grid.Column="0" Text="{Binding processName}" WidthRequest="120" />
-                        <Label Grid.Column="1" Text="{Binding title}" />
-                    </Grid>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-        <VerticalStackLayout Grid.Row="1" Grid.Column="1" Padding="12" Spacing="8"
-                             x:Name="SessionPane"
-                             x:DataType="viewModels:SessionViewModel"
-                             BindingContext="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=SessionViewModel}">
-            <Label Text="{Binding Status}" FontSize="20" />
-            <Label Text="{Binding FramesPerSecond, StringFormat='FPS: {0:F1}'}" />
-            <Label Text="{Binding BitrateKilobitsPerSecond, StringFormat='Bitrate: {0} kbps'}" />
-            <Label Text="{Binding ConnectedViewerEndpoint, StringFormat='Viewer: {0}'}" />
-            <Button Text="Stop" Clicked="OnStopClicked" />
-        </VerticalStackLayout>
+             x:DataType="viewModels:ServerDashboardViewModel"
+             Title="WindowStream Server">
+    <Grid Padding="24" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="16">
+
+        <!-- Title -->
+        <Label Grid.Row="0"
+               Text="WindowStream Server"
+               FontSize="28"
+               FontAttributes="Bold" />
+
+        <!-- Status indicator -->
+        <HorizontalStackLayout Grid.Row="1" Spacing="8">
+            <BoxView WidthRequest="14" HeightRequest="14"
+                     CornerRadius="7"
+                     Color="{Binding ServerStatus, Converter={StaticResource StatusColorConverter}}"
+                     VerticalOptions="Center" />
+            <Label Text="{Binding ServerStatus}"
+                   FontSize="20"
+                   VerticalOptions="Center" />
+        </HorizontalStackLayout>
+
+        <!-- Ports -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4">
+            <Label Grid.Row="0" Grid.Column="0" Text="TCP Port:" FontAttributes="Bold" />
+            <Label Grid.Row="0" Grid.Column="1" Text="{Binding TcpPort}" />
+            <Label Grid.Row="1" Grid.Column="0" Text="UDP Port:" FontAttributes="Bold" />
+            <Label Grid.Row="1" Grid.Column="1" Text="{Binding UdpPort}" />
+        </Grid>
+
+        <!-- Connected viewer -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Label Grid.Column="0" Text="Viewer:" FontAttributes="Bold" />
+            <Label Grid.Column="1"
+                   Text="{Binding ConnectedViewer, TargetNullValue='None'}" />
+        </Grid>
+
+        <!-- Streams / Windows summary -->
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12">
+            <Label Grid.Column="0" Text="Active Streams:" FontAttributes="Bold" />
+            <Label Grid.Column="1" Text="{Binding ActiveStreamCount}" />
+            <Label Grid.Column="2" Text="Available Windows:" FontAttributes="Bold" />
+            <Label Grid.Column="3" Text="{Binding AvailableWindowCount}" />
+        </Grid>
+
+        <!-- Instructions -->
+        <Label Grid.Row="5"
+               Text="The server is running. Connect from the WindowStream Viewer app on your headset or phone."
+               FontSize="14"
+               TextColor="Gray"
+               VerticalOptions="End"
+               Margin="0,0,0,12" />
     </Grid>
 </ContentPage>

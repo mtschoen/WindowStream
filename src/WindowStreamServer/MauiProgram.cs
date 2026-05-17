@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Hosting;
-using WindowStream.Core.Capture;
-using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Session;
 using WindowStream.Server.Pages;
@@ -15,10 +13,17 @@ public static class MauiProgram
     {
         MauiAppBuilder builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
-        builder.Services.AddSingleton<IWindowCaptureSource>(_ => new WgcCaptureSource());
-        builder.Services.AddSingleton<ISessionHostLauncher>(_ => new CoordinatorLauncher(tcpPort: 0, output: Console.Out));
-        builder.Services.AddSingleton<WindowPickerViewModel>();
-        builder.Services.AddSingleton<SessionViewModel>();
+
+        CoordinatorLauncher launcher = new CoordinatorLauncher(tcpPort: 0, output: Console.Out);
+        ServerDashboardViewModel dashboard = new ServerDashboardViewModel(launcher);
+
+        // Wire coordinator status callbacks → dashboard VM (thread-safe; VM uses INotifyPropertyChanged).
+        launcher.OnAvailableWindowCountChanged = count => dashboard.ReportAvailableWindows(count);
+        launcher.OnPortsAssigned = (tcp, udp) => dashboard.ReportPorts(tcp, udp);
+        launcher.OnActiveStreamCountChanged = count => dashboard.ReportActiveStreams(count);
+
+        builder.Services.AddSingleton<ISessionHostLauncher>(launcher);
+        builder.Services.AddSingleton(dashboard);
         builder.Services.AddTransient<MainPage>();
 
 #if DEBUG

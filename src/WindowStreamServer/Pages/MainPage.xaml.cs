@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.Maui.Controls;
 using WindowStream.Server.ViewModels;
 
@@ -5,17 +6,33 @@ namespace WindowStream.Server.Pages;
 
 public partial class MainPage : ContentPage
 {
-    public SessionViewModel SessionViewModel { get; }
+    private readonly ServerDashboardViewModel dashboardViewModel;
+    private CancellationTokenSource? servingCancellation;
 
-    public MainPage(WindowPickerViewModel pickerViewModel, SessionViewModel sessionViewModel)
+    public MainPage(ServerDashboardViewModel dashboardViewModel)
     {
         InitializeComponent();
-        BindingContext = pickerViewModel;
-        SessionViewModel = sessionViewModel;
+        this.dashboardViewModel = dashboardViewModel;
+        BindingContext = dashboardViewModel;
     }
 
-    private void OnStopClicked(object? sender, System.EventArgs eventArguments)
+    protected override async void OnAppearing()
     {
-        SessionViewModel.ReportStatus(SessionStatus.Idle);
+        base.OnAppearing();
+        if (servingCancellation is not null)
+        {
+            return;
+        }
+
+        servingCancellation = new CancellationTokenSource();
+        await dashboardViewModel.StartServingAsync(servingCancellation.Token);
+    }
+
+    protected override void OnDisappearing()
+    {
+        servingCancellation?.Cancel();
+        servingCancellation?.Dispose();
+        servingCancellation = null;
+        base.OnDisappearing();
     }
 }
