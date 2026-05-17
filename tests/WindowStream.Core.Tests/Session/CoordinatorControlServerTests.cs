@@ -345,6 +345,56 @@ public sealed class CoordinatorControlServerTests
     }
 
     [Fact]
+    public async Task ViewerReady_FiresViewerConnectedEvent_WithEndpoint()
+    {
+        using CancellationTokenSource cancellation = new CancellationTokenSource(DefaultTestTimeout);
+        await using CoordinatorControlServerTestHarness harness = CoordinatorControlServerTestHarness.Start();
+
+        IPAddress remote = IPAddress.Parse("10.0.0.42");
+        await using FakeViewerEndpoint viewer = await harness.ConnectAndHandshakeAsync(cancellation.Token, remote);
+
+        TaskCompletionSource<ViewerConnectedEventArguments> eventCapture =
+            new TaskCompletionSource<ViewerConnectedEventArguments>();
+        harness.Server.ViewerConnected += (_, eventArguments) =>
+            eventCapture.TrySetResult(eventArguments);
+
+        await viewer.SendAsync(new ViewerReadyMessage(ViewerUdpPort: 55555), cancellation.Token);
+
+        ViewerConnectedEventArguments captured =
+            await eventCapture.Task.WaitAsync(cancellation.Token);
+        Assert.Equal("10.0.0.42:55555", captured.Endpoint);
+    }
+
+    [Fact]
+    public async Task ViewerDisconnect_FiresViewerDisconnectedEvent_WithEndpoint()
+    {
+        using CancellationTokenSource cancellation = new CancellationTokenSource(DefaultTestTimeout);
+        await using CoordinatorControlServerTestHarness harness = CoordinatorControlServerTestHarness.Start();
+
+        IPAddress remote = IPAddress.Parse("10.0.0.42");
+        FakeViewerEndpoint viewer = await harness.ConnectAndHandshakeAsync(cancellation.Token, remote);
+
+        TaskCompletionSource<ViewerConnectedEventArguments> connectedCapture =
+            new TaskCompletionSource<ViewerConnectedEventArguments>();
+        harness.Server.ViewerConnected += (_, eventArguments) =>
+            connectedCapture.TrySetResult(eventArguments);
+
+        TaskCompletionSource<ViewerDisconnectedEventArguments> disconnectedCapture =
+            new TaskCompletionSource<ViewerDisconnectedEventArguments>();
+        harness.Server.ViewerDisconnected += (_, eventArguments) =>
+            disconnectedCapture.TrySetResult(eventArguments);
+
+        await viewer.SendAsync(new ViewerReadyMessage(ViewerUdpPort: 55555), cancellation.Token);
+        _ = await connectedCapture.Task.WaitAsync(cancellation.Token);
+
+        await viewer.DisposeAsync();
+
+        ViewerDisconnectedEventArguments captured =
+            await disconnectedCapture.Task.WaitAsync(cancellation.Token);
+        Assert.Equal("10.0.0.42:55555", captured.Endpoint);
+    }
+
+    [Fact]
     public async Task ViewerReady_WithoutRemoteAddress_IsIgnored()
     {
         using CancellationTokenSource cancellation = new CancellationTokenSource(DefaultTestTimeout);
