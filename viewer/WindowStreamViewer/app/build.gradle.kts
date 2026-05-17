@@ -114,6 +114,13 @@ kover {
                     "com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication",
                     "com.mtschoen.windowstream.viewer.app.MainActivity",
                     "com.mtschoen.windowstream.viewer.app.MainActivity\$*",
+                    // Compose generates a top-level ComposableSingletons$MainActivityKt
+                    // holder (with $lambda-N$M inner classes) for the Composable lambdas
+                    // inside MainActivity. It's a peer of MainActivity, not nested, so
+                    // MainActivity$* doesn't catch it — same rationale as MainActivity
+                    // itself: requires the Android Compose runtime to execute.
+                    "com.mtschoen.windowstream.viewer.app.ComposableSingletons\$MainActivityKt",
+                    "com.mtschoen.windowstream.viewer.app.ComposableSingletons\$MainActivityKt\$*",
                     "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity",
                     "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity\$*"
                 )
@@ -215,7 +222,13 @@ kover {
                     "com.mtschoen.windowstream.viewer.demo.DirectSurfaceFrameSink",
                     "com.mtschoen.windowstream.viewer.control.ControlMessage\$KeyEvent",
                     "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity",
-                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity\$*"
+                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity\$*",
+                    "com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity",
+                    "com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity\$*",
+                    "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay",
+                    "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay\$*",
+                    "com.mtschoen.windowstream.viewer.demo.XrDemoActivity",
+                    "com.mtschoen.windowstream.viewer.demo.XrDemoActivity\$*"
                 )
                 // ViewerPipeline.Companion.create() constructs ControlClient,
                 // UdpTransportReceiver, and MediaCodecDecoder — all three require Android
