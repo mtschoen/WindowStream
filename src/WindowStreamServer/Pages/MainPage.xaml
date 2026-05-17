@@ -2,57 +2,108 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewModels="clr-namespace:WindowStream.Server.ViewModels"
+             xmlns:pages="clr-namespace:WindowStream.Server.Pages"
+             xmlns:observability="clr-namespace:WindowStream.Server.Observability"
              x:Class="WindowStream.Server.Pages.MainPage"
              x:DataType="viewModels:ServerDashboardViewModel"
              Title="WindowStream Server">
-    <Grid Padding="24" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="16">
+    <ContentPage.Resources>
+        <pages:StageStatusGlyphConverter x:Key="GlyphConverter" />
+    </ContentPage.Resources>
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="16">
+            <Label Text="WindowStream Server" FontSize="28" FontAttributes="Bold" />
 
-        <!-- Title -->
-        <Label Grid.Row="0"
-               Text="WindowStream Server"
-               FontSize="28"
-               FontAttributes="Bold" />
+            <!-- Top-level state board -->
+            <Grid ColumnDefinitions="Auto,Auto,*"
+                  RowDefinitions="Auto,Auto,Auto,Auto"
+                  RowSpacing="6"
+                  ColumnSpacing="12">
+                <Label Grid.Row="0" Grid.Column="0"
+                       Text="{Binding State.Listening, Converter={StaticResource GlyphConverter}}"
+                       FontSize="18" />
+                <Label Grid.Row="0" Grid.Column="1" Text="Listening" FontAttributes="Bold" />
+                <Label Grid.Row="0" Grid.Column="2"
+                       Text="{Binding TcpPort, StringFormat='TCP {0} / UDP varies'}" />
 
-        <!-- Status indicator -->
-        <HorizontalStackLayout Grid.Row="1" Spacing="8">
-            <BoxView WidthRequest="14" HeightRequest="14"
-                     CornerRadius="7"
-                     Color="{Binding ServerStatus, Converter={StaticResource StatusColorConverter}}"
-                     VerticalOptions="Center" />
-            <Label Text="{Binding ServerStatus}"
-                   FontSize="20"
-                   VerticalOptions="Center" />
-        </HorizontalStackLayout>
+                <Label Grid.Row="1" Grid.Column="0"
+                       Text="{Binding State.ViewerConnected, Converter={StaticResource GlyphConverter}}"
+                       FontSize="18" />
+                <Label Grid.Row="1" Grid.Column="1" Text="Viewer" FontAttributes="Bold" />
+                <Label Grid.Row="1" Grid.Column="2"
+                       Text="{Binding ConnectedViewer, TargetNullValue='not connected'}" />
 
-        <!-- Ports -->
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4">
-            <Label Grid.Row="0" Grid.Column="0" Text="TCP Port:" FontAttributes="Bold" />
-            <Label Grid.Row="0" Grid.Column="1" Text="{Binding TcpPort}" />
-            <Label Grid.Row="1" Grid.Column="0" Text="UDP Port:" FontAttributes="Bold" />
-            <Label Grid.Row="1" Grid.Column="1" Text="{Binding UdpPort}" />
-        </Grid>
+                <Label Grid.Row="2" Grid.Column="0" Text="✓" FontSize="18" />
+                <Label Grid.Row="2" Grid.Column="1" Text="Windows" FontAttributes="Bold" />
+                <Label Grid.Row="2" Grid.Column="2" Text="{Binding AvailableWindowCount}" />
 
-        <!-- Connected viewer -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*" ColumnSpacing="12">
-            <Label Grid.Column="0" Text="Viewer:" FontAttributes="Bold" />
-            <Label Grid.Column="1"
-                   Text="{Binding ConnectedViewer, TargetNullValue='None'}" />
-        </Grid>
+                <Label Grid.Row="3" Grid.Column="0" Text="…" FontSize="18" />
+                <Label Grid.Row="3" Grid.Column="1" Text="Streams" FontAttributes="Bold" />
+                <Label Grid.Row="3" Grid.Column="2" Text="{Binding ActiveStreamCount}" />
+            </Grid>
 
-        <!-- Streams / Windows summary -->
-        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12">
-            <Label Grid.Column="0" Text="Active Streams:" FontAttributes="Bold" />
-            <Label Grid.Column="1" Text="{Binding ActiveStreamCount}" />
-            <Label Grid.Column="2" Text="Available Windows:" FontAttributes="Bold" />
-            <Label Grid.Column="3" Text="{Binding AvailableWindowCount}" />
-        </Grid>
+            <!-- Per-stream rows -->
+            <Label Text="Active streams" FontAttributes="Bold" Margin="0,12,0,0" />
+            <CollectionView ItemsSource="{Binding State.Streams.Values}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="observability:StreamStateRow">
+                        <Border StrokeThickness="1" Stroke="#333" Padding="8" Margin="0,2">
+                            <VerticalStackLayout>
+                                <Label Text="{Binding WindowId, StringFormat='windowId {0}'}"
+                                       FontAttributes="Bold" />
+                                <Grid ColumnDefinitions="Auto,Auto,*"
+                                      RowDefinitions="Auto,Auto,Auto,Auto"
+                                      RowSpacing="2"
+                                      ColumnSpacing="8">
+                                    <Label Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding WorkerSpawn, Converter={StaticResource GlyphConverter}}" />
+                                    <Label Grid.Row="0" Grid.Column="1" Text="Worker spawn" />
+                                    <Label Grid.Row="0" Grid.Column="2"
+                                           Text="{Binding WorkerSpawnError, TargetNullValue=''}" />
 
-        <!-- Instructions -->
-        <Label Grid.Row="5"
-               Text="The server is running. Connect from the WindowStream Viewer app on your headset or phone."
-               FontSize="14"
-               TextColor="Gray"
-               VerticalOptions="End"
-               Margin="0,0,0,12" />
-    </Grid>
+                                    <Label Grid.Row="1" Grid.Column="0"
+                                           Text="{Binding Capture, Converter={StaticResource GlyphConverter}}" />
+                                    <Label Grid.Row="1" Grid.Column="1" Text="Capture" />
+                                    <Label Grid.Row="1" Grid.Column="2"
+                                           Text="{Binding CaptureError, TargetNullValue=''}" />
+
+                                    <Label Grid.Row="2" Grid.Column="0"
+                                           Text="{Binding Encode, Converter={StaticResource GlyphConverter}}" />
+                                    <Label Grid.Row="2" Grid.Column="1" Text="Encode" />
+                                    <Label Grid.Row="2" Grid.Column="2"
+                                           Text="{Binding EncodeError, TargetNullValue=''}" />
+
+                                    <Label Grid.Row="3" Grid.Column="0"
+                                           Text="{Binding UdpSend, Converter={StaticResource GlyphConverter}}" />
+                                    <Label Grid.Row="3" Grid.Column="1" Text="UDP send" />
+                                    <Label Grid.Row="3" Grid.Column="2"
+                                           Text="{Binding MeasuredFramesPerSecond, StringFormat='{0:0.0} fps', TargetNullValue=''}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <!-- Event log pane -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+                <Label Grid.Column="0" Text="Recent events" FontAttributes="Bold" VerticalOptions="Center" />
+                <Button Grid.Column="1" Text="Open log folder" Clicked="OnOpenLogFolderClicked" />
+            </Grid>
+            <CollectionView ItemsSource="{Binding RecentEvents}" HeightRequest="320">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="viewModels:LogEntryViewModel">
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="8" Padding="2">
+                            <Label Grid.Column="0" Text="{Binding Timestamp}"
+                                   TextColor="#888" FontFamily="Consolas" />
+                            <Label Grid.Column="1" Text="{Binding Severity}"
+                                   TextColor="{Binding SeverityColor}" FontFamily="Consolas" />
+                            <Label Grid.Column="2" Text="{Binding EventType}" FontAttributes="Bold" />
+                            <Label Grid.Column="3" Text="{Binding Message}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>
