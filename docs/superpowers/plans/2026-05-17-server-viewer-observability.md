@@ -184,7 +184,7 @@ git commit -m "feat(core): add PipelineEvent hierarchy and Severity enum"
 
 The façade translates a `PipelineEvent` into a structured `ILogger` call. It is the ONE place that knows how to map events → log records.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 // tests/WindowStream.Core.Tests/Observability/DiagnosticsTests.cs
@@ -243,12 +243,12 @@ Add `Moq` to test project: edit `tests/WindowStream.Core.Tests/WindowStream.Core
 ```
 if not already present.
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `dotnet test tests/WindowStream.Core.Tests/ --filter FullyQualifiedName~DiagnosticsTests`
 Expected: FAIL (Diagnostics type missing).
 
-- [ ] **Step 3: Write `Diagnostics.cs`**
+- [x] **Step 3: Write `Diagnostics.cs`**
 
 ```csharp
 using System;
@@ -310,12 +310,12 @@ public sealed class Diagnostics
 }
 ```
 
-- [ ] **Step 4: Run, verify PASS**
+- [x] **Step 4: Run, verify PASS**
 
 Run: `dotnet test tests/WindowStream.Core.Tests/ --filter FullyQualifiedName~DiagnosticsTests`
 Expected: PASS 2/2.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/WindowStream.Core/Observability/Diagnostics.cs \
