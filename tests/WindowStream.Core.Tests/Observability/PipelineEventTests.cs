@@ -28,10 +28,10 @@ public class PipelineEventTests
     [Fact]
     public void FramesFlowing_Heartbeat_Has_Info_And_StreamId()
     {
-        PipelineEvent.FramesFlowing evt = new(StreamId: 3, Fps: 60.0, Kbps: 4800);
+        PipelineEvent.FramesFlowing evt = new(StreamId: 3, MeasuredFramesPerSecond: 60.0, BitrateKilobitsPerSecond: 4800);
         Assert.Equal(Severity.Info, evt.Severity);
         Assert.Equal(3, evt.StreamId);
-        Assert.Equal(60.0, evt.Fps);
+        Assert.Equal(60.0, evt.MeasuredFramesPerSecond);
     }
 
     [Fact]
@@ -104,14 +104,15 @@ public class PipelineEventTests
         PipelineEvent.WorkerSpawning evt = new(StreamId: 5, WindowId: 42UL);
         Assert.Equal(Severity.Info, evt.Severity);
         Assert.Equal(5, evt.StreamId);
+        Assert.Equal(42UL, evt.WindowId);
     }
 
     [Fact]
-    public void WorkerSpawned_Carries_Pid()
+    public void WorkerSpawned_Carries_ProcessId()
     {
-        PipelineEvent.WorkerSpawned evt = new(StreamId: 5, Pid: 18420);
+        PipelineEvent.WorkerSpawned evt = new(StreamId: 5, ProcessId: 18420);
         Assert.Equal(Severity.Info, evt.Severity);
-        Assert.Equal(18420, evt.Pid);
+        Assert.Equal(18420, evt.ProcessId);
     }
 
     [Fact]
@@ -133,12 +134,12 @@ public class PipelineEventTests
     }
 
     [Fact]
-    public void EncodeStarted_Carries_Fps_And_Kbps()
+    public void EncodeStarted_Carries_TargetFramesPerSecond_And_Bitrate()
     {
-        PipelineEvent.EncodeStarted evt = new(StreamId: 5, Fps: 60, Kbps: 4800);
+        PipelineEvent.EncodeStarted evt = new(StreamId: 5, TargetFramesPerSecond: 60, BitrateKilobitsPerSecond: 4800);
         Assert.Equal(Severity.Info, evt.Severity);
-        Assert.Equal(60, evt.Fps);
-        Assert.Equal(4800, evt.Kbps);
+        Assert.Equal(60, evt.TargetFramesPerSecond);
+        Assert.Equal(4800, evt.BitrateKilobitsPerSecond);
     }
 
     [Fact]

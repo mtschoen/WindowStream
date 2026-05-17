@@ -1,13 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace WindowStream.Core.Observability;
 
-/// <summary>
-/// Typed pipeline-stage events emitted from coordinator and worker code.
-/// The Diagnostics façade routes these through ILogger; sinks fan them out
-/// to the in-app dashboard and a rotating JSONL file.
-///
-/// Per-frame markers ([FRAMECOUNT]) are deliberately NOT modeled here —
-/// they live on stderr / logcat to avoid flooding the in-app buffer.
-/// </summary>
+// Per-frame [FRAMECOUNT] markers are intentionally excluded — they stay on stderr/logcat to avoid flooding the in-app buffer.
 public abstract record PipelineEvent
 {
     public Severity Severity { get; init; }
@@ -30,8 +25,9 @@ public abstract record PipelineEvent
 
     public sealed record ViewerAccepted : PipelineEvent
     {
-        public string Endpoint { get; init; }
+        public required string Endpoint { get; init; }
 
+        [SetsRequiredMembers]
         public ViewerAccepted(string Endpoint)
         {
             this.Endpoint = Endpoint;
@@ -41,9 +37,10 @@ public abstract record PipelineEvent
 
     public sealed record ViewerDisconnected : PipelineEvent
     {
-        public string Endpoint { get; init; }
-        public string Reason { get; init; }
+        public required string Endpoint { get; init; }
+        public required string Reason { get; init; }
 
+        [SetsRequiredMembers]
         public ViewerDisconnected(string Endpoint, string Reason)
         {
             this.Endpoint = Endpoint;
@@ -66,11 +63,12 @@ public abstract record PipelineEvent
     public sealed record WindowAppeared : PipelineEvent
     {
         public ulong WindowId { get; init; }
-        public string Title { get; init; }
-        public string ProcessName { get; init; }
+        public required string Title { get; init; }
+        public required string ProcessName { get; init; }
         public int Width { get; init; }
         public int Height { get; init; }
 
+        [SetsRequiredMembers]
         public WindowAppeared(ulong WindowId, string Title, string ProcessName, int Width, int Height)
         {
             this.WindowId = WindowId;
@@ -114,8 +112,9 @@ public abstract record PipelineEvent
     {
         public ulong WindowId { get; init; }
         public long Hwnd { get; init; }
-        public Exception Exception { get; init; }
+        public required Exception Exception { get; init; }
 
+        [SetsRequiredMembers]
         public ProbeFailed(ulong WindowId, long Hwnd, Exception Exception)
         {
             this.WindowId = WindowId;
@@ -127,8 +126,9 @@ public abstract record PipelineEvent
 
     public sealed record EnumerationFailed : PipelineEvent
     {
-        public Exception Exception { get; init; }
+        public required Exception Exception { get; init; }
 
+        [SetsRequiredMembers]
         public EnumerationFailed(Exception Exception)
         {
             this.Exception = Exception;
@@ -164,20 +164,21 @@ public abstract record PipelineEvent
 
     public sealed record WorkerSpawned : PipelineEvent
     {
-        public int Pid { get; init; }
+        public int ProcessId { get; init; }
 
-        public WorkerSpawned(int StreamId, int Pid)
+        public WorkerSpawned(int StreamId, int ProcessId)
         {
             this.StreamId = StreamId;
-            this.Pid = Pid;
+            this.ProcessId = ProcessId;
             Severity = Severity.Info;
         }
     }
 
     public sealed record WorkerSpawnFailed : PipelineEvent
     {
-        public Exception Exception { get; init; }
+        public required Exception Exception { get; init; }
 
+        [SetsRequiredMembers]
         public WorkerSpawnFailed(int StreamId, Exception Exception)
         {
             this.StreamId = StreamId;
@@ -202,8 +203,9 @@ public abstract record PipelineEvent
 
     public sealed record CaptureFailed : PipelineEvent
     {
-        public Exception Exception { get; init; }
+        public required Exception Exception { get; init; }
 
+        [SetsRequiredMembers]
         public CaptureFailed(int StreamId, Exception Exception)
         {
             this.StreamId = StreamId;
@@ -214,22 +216,23 @@ public abstract record PipelineEvent
 
     public sealed record EncodeStarted : PipelineEvent
     {
-        public int Fps { get; init; }
-        public int Kbps { get; init; }
+        public int TargetFramesPerSecond { get; init; }
+        public int BitrateKilobitsPerSecond { get; init; }
 
-        public EncodeStarted(int StreamId, int Fps, int Kbps)
+        public EncodeStarted(int StreamId, int TargetFramesPerSecond, int BitrateKilobitsPerSecond)
         {
             this.StreamId = StreamId;
-            this.Fps = Fps;
-            this.Kbps = Kbps;
+            this.TargetFramesPerSecond = TargetFramesPerSecond;
+            this.BitrateKilobitsPerSecond = BitrateKilobitsPerSecond;
             Severity = Severity.Info;
         }
     }
 
     public sealed record EncodeFailed : PipelineEvent
     {
-        public Exception Exception { get; init; }
+        public required Exception Exception { get; init; }
 
+        [SetsRequiredMembers]
         public EncodeFailed(int StreamId, Exception Exception)
         {
             this.StreamId = StreamId;
@@ -240,23 +243,24 @@ public abstract record PipelineEvent
 
     public sealed record FramesFlowing : PipelineEvent
     {
-        public double Fps { get; init; }
-        public int Kbps { get; init; }
+        public double MeasuredFramesPerSecond { get; init; }
+        public int BitrateKilobitsPerSecond { get; init; }
 
-        public FramesFlowing(int StreamId, double Fps, int Kbps)
+        public FramesFlowing(int StreamId, double MeasuredFramesPerSecond, int BitrateKilobitsPerSecond)
         {
             this.StreamId = StreamId;
-            this.Fps = Fps;
-            this.Kbps = Kbps;
+            this.MeasuredFramesPerSecond = MeasuredFramesPerSecond;
+            this.BitrateKilobitsPerSecond = BitrateKilobitsPerSecond;
             Severity = Severity.Info;
         }
     }
 
     public sealed record StreamRefused : PipelineEvent
     {
-        public string ErrorCode { get; init; }
-        public string Message { get; init; }
+        public required string ErrorCode { get; init; }
+        public required string Message { get; init; }
 
+        [SetsRequiredMembers]
         public StreamRefused(int StreamId, string ErrorCode, string Message)
         {
             this.StreamId = StreamId;
@@ -268,8 +272,9 @@ public abstract record PipelineEvent
 
     public sealed record StreamStopped : PipelineEvent
     {
-        public string Reason { get; init; }
+        public required string Reason { get; init; }
 
+        [SetsRequiredMembers]
         public StreamStopped(int StreamId, string Reason)
         {
             this.StreamId = StreamId;
