@@ -459,6 +459,8 @@ In `RunEnumerationLoopAsync`'s switch, in each `case`, after the existing call t
 Run: `dotnet build && dotnet test tests/WindowStream.Core.Tests/`
 Expected: 0 errors, all tests pass. (Coverage may dip below 100% — that's addressed in Task 5.)
 
+> **Deviation:** Task 4's note "(Coverage may dip below 100% — that's addressed in Task 5.)" was wrong — T5 only adds Serilog packages. Coverage of the new ViewerConnected/Disconnected branches was added in a follow-up commit "test(core): cover ViewerConnected/Disconnected event invocation paths" between T6 and T7.
+
 - [x] **Step 8: Commit**
 
 ```bash
