@@ -527,12 +527,17 @@ class UnifiedStreamingActivity : Activity() {
         val frames: Flow<EncodedFrame> = udpReceiver.start(pipelineScope)
 
         val openInstantNanos = System.nanoTime()
-        var firstReported = false
+        val firstReportedFlag = java.util.concurrent.atomic.AtomicBoolean(false)
         val instrumentedFrames: Flow<EncodedFrame> = frames.onEach {
-            if (!firstReported) {
-                firstReported = true
+            if (firstReportedFlag.compareAndSet(false, true)) {
                 val delay = (System.nanoTime() - openInstantNanos) / 1_000_000
                 Diagnostics.report(PipelineEvent.UdpFirstPacketReceived(streamId, delay))
+            }
+        }
+        pipelineScope.launch {
+            kotlinx.coroutines.delay(2000)
+            if (!firstReportedFlag.get()) {
+                Diagnostics.report(PipelineEvent.UdpStalled(streamId, 2000))
             }
         }
         Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))

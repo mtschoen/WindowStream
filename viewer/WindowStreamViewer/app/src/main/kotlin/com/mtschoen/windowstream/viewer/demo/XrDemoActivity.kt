@@ -31,6 +31,7 @@ import com.mtschoen.windowstream.viewer.xr.XrPanelSink
 import com.mtschoen.windowstream.viewer.xr.computePanelDimensionsMeters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.net.InetAddress
@@ -153,9 +154,24 @@ class XrDemoActivity : ComponentActivity() {
             bindAddress = InetAddress.getByName("0.0.0.0"),
             requestedPort = 0
         )
+        val openInstantNanos = System.nanoTime()
         val frames: Flow<EncodedFrame> = udpReceiver.start(lifecycleScope)
         Log.i(TAG, "UDP bound on port ${udpReceiver.boundPort}")
         Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
+
+        val firstReportedFlag = java.util.concurrent.atomic.AtomicBoolean(false)
+        val instrumentedFrames: Flow<EncodedFrame> = frames.onEach {
+            if (firstReportedFlag.compareAndSet(false, true)) {
+                val delay = (System.nanoTime() - openInstantNanos) / 1_000_000
+                Diagnostics.report(PipelineEvent.UdpFirstPacketReceived(stream.streamId, delay))
+            }
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(2000)
+            if (!firstReportedFlag.get()) {
+                Diagnostics.report(PipelineEvent.UdpStalled(stream.streamId, 2000))
+            }
+        }
 
         controlConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
         controlConnection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
@@ -169,7 +185,7 @@ class XrDemoActivity : ComponentActivity() {
         )
         decoder = newDecoder
         Diagnostics.report(PipelineEvent.DecoderStarting(stream.streamId, stream.width, stream.height))
-        newDecoder.start(lifecycleScope, frames, stream.width, stream.height)
+        newDecoder.start(lifecycleScope, instrumentedFrames, stream.width, stream.height)
         Log.i(TAG, "decoder started, rendering through XR compositor")
         Diagnostics.report(PipelineEvent.DecoderStarted(stream.streamId))
     }
