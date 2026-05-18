@@ -28,18 +28,22 @@ import com.mtschoen.windowstream.viewer.control.WindowDescriptor
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
+import com.mtschoen.windowstream.viewer.observability.Diagnostics
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -230,18 +234,30 @@ class UnifiedStreamingActivity : Activity() {
 
     private suspend fun discoverAndConnect() {
         val discoveryClient = NetworkServiceDiscoveryClient(applicationContext)
+        Diagnostics.report(PipelineEvent.DiscoveryStarted)
         try {
-            val server: ServerInformation = withTimeout(30_000) {
-                discoveryClient.discover(activityScope).first()
+            val server: ServerInformation = try {
+                withTimeout(30_000) {
+                    discoveryClient.discover(activityScope).first()
+                }
+            } catch (timeoutException: TimeoutCancellationException) {
+                Diagnostics.report(PipelineEvent.DiscoveryTimedOut)
+                runOnUiThread { statusLabel.text = "Discovery timed out" }
+                return
             }
-            Log.i(TAG, "discovered ${server.hostname} at ${server.host.hostAddress}:${server.controlPort}")
+            Diagnostics.report(PipelineEvent.DiscoveryResultReceived(
+                hostname = server.hostname,
+                address = server.host.hostAddress ?: "?",
+                port = server.controlPort))
             runOnUiThread { statusLabel.text = "Connecting to ${server.hostname}…" }
             connectToServer(
                 server.host.hostAddress ?: server.hostname,
                 server.controlPort
             )
         } catch (throwable: Throwable) {
-            Log.e(TAG, "discovery/connect failed", throwable)
+            val host = ""
+            val port = 0
+            Diagnostics.report(PipelineEvent.TcpConnectFailed(host = host, port = port, cause = throwable))
             runOnUiThread { statusLabel.text = "Connection failed: ${throwable.message}" }
         }
     }
@@ -256,13 +272,19 @@ class UnifiedStreamingActivity : Activity() {
                 supportedCodecs = listOf("h264")
             )
         )
+        val connectStart = System.nanoTime()
+        Diagnostics.report(PipelineEvent.TcpConnecting(host = host, port = port))
         val liveConnection: MultiStreamControlConnection = client.connect(activityScope)
+        val elapsedMs = (System.nanoTime() - connectStart) / 1_000_000
+        Diagnostics.report(PipelineEvent.TcpConnected(durationMs = elapsedMs))
         connection = liveConnection
 
         // Seed window catalogue from ServerHello.
         val initialCatalogue = liveConnection.serverHello.windows.associateBy { it.windowId }
         windowCatalogue.value = initialCatalogue
-        Log.i(TAG, "connected: ${initialCatalogue.size} window(s) advertised")
+        Diagnostics.report(PipelineEvent.ServerHelloReceived(
+            windowCount = initialCatalogue.size,
+            udpPort = liveConnection.serverHello.udpPort))
 
         runOnUiThread {
             statusLabel.text = if (initialCatalogue.isEmpty()) "No windows available"
@@ -321,12 +343,12 @@ class UnifiedStreamingActivity : Activity() {
 
     private suspend fun openWindow(windowId: ULong) {
         val liveConnection = connection ?: return
-        Log.i(TAG, "opening stream for windowId=$windowId")
+        Diagnostics.report(PipelineEvent.OpenStreamSent(windowId = windowId))
 
         liveConnection.openStream(windowId, activityScope).collect { event ->
             when (event) {
                 is StreamLifecycleEvent.Opened -> {
-                    Log.i(TAG, "stream opened: streamId=${event.streamId} ${event.width}x${event.height}")
+                    Diagnostics.report(PipelineEvent.StreamOpened(event.streamId, event.width, event.height))
                     runOnUiThread {
                         addPanel(windowId, event.streamId, event.width, event.height)
                         openWindowIds.value = openWindowIds.value + windowId
@@ -335,14 +357,14 @@ class UnifiedStreamingActivity : Activity() {
                     }
                 }
                 is StreamLifecycleEvent.Refused -> {
-                    Log.e(TAG, "stream refused: ${event.errorCode} — ${event.message}")
+                    Diagnostics.report(PipelineEvent.StreamRefused(0, event.errorCode, event.message))
                     runOnUiThread {
                         statusLabel.text = "Stream refused: ${event.message}"
                         statusLabel.visibility = View.VISIBLE
                     }
                 }
                 is StreamLifecycleEvent.Stopped -> {
-                    Log.i(TAG, "stream stopped: ${event.reason.reason}")
+                    Diagnostics.report(PipelineEvent.StreamStopped(event.reason.streamId, event.reason.reason.name))
                     runOnUiThread {
                         removePanelByWindowId(windowId)
                         openWindowIds.value = openWindowIds.value - windowId
@@ -473,6 +495,7 @@ class UnifiedStreamingActivity : Activity() {
     private fun createSurfaceCallback(panelIndex: Int): SurfaceHolder.Callback =
         object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
+                Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex))
                 val panel = panels.getOrNull(panelIndex) ?: return
                 activityScope.launch {
                     surfaceLock.withLock {
@@ -482,6 +505,7 @@ class UnifiedStreamingActivity : Activity() {
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {
+                Diagnostics.report(PipelineEvent.SurfaceDestroyed(panelIndex, reasonHint = "lifecycle"))
                 activityScope.launch {
                     surfaceLock.withLock { tearDownDecoderLocked(panelIndex) }
                 }
@@ -502,11 +526,23 @@ class UnifiedStreamingActivity : Activity() {
         val pipelineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val frames: Flow<EncodedFrame> = udpReceiver.start(pipelineScope)
 
+        val openInstantNanos = System.nanoTime()
+        var firstReported = false
+        val instrumentedFrames: Flow<EncodedFrame> = frames.onEach {
+            if (!firstReported) {
+                firstReported = true
+                val delay = (System.nanoTime() - openInstantNanos) / 1_000_000
+                Diagnostics.report(PipelineEvent.UdpFirstPacketReceived(streamId, delay))
+            }
+        }
+        Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
+
         runCatching { liveConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort)) }
         runCatching { liveConnection.requestKeyframe(streamId) }
 
         val resolvedWidth = if (width > 0) width else DEFAULT_SURFACE_DIMENSION
         val resolvedHeight = if (height > 0) height else DEFAULT_SURFACE_DIMENSION
+        Diagnostics.report(PipelineEvent.DecoderStarting(streamId, resolvedWidth, resolvedHeight))
 
         val frameSink = DirectSurfaceFrameSink(surface)
         val decoder = MediaCodecDecoder(
@@ -517,7 +553,12 @@ class UnifiedStreamingActivity : Activity() {
         if (panelIndex in panels.indices) {
             panels[panelIndex] = panels[panelIndex].copy(decoder = decoder, pipelineScope = pipelineScope)
         }
-        decoder.start(pipelineScope, frames, resolvedWidth, resolvedHeight)
+        try {
+            decoder.start(pipelineScope, instrumentedFrames, resolvedWidth, resolvedHeight)
+            Diagnostics.report(PipelineEvent.DecoderStarted(streamId))
+        } catch (decoderException: Exception) {
+            Diagnostics.report(PipelineEvent.DecoderFailed(streamId, decoderException))
+        }
     }
 
     private suspend fun tearDownDecoderLocked(panelIndex: Int) {
@@ -666,13 +707,18 @@ class UnifiedStreamingActivity : Activity() {
         val lock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "UnifiedStreaming")
         lock.acquire()
         lowLatencyWifiLock = lock
-        Log.i(TAG, "acquired WIFI_MODE_FULL_LOW_LATENCY lock")
+        Diagnostics.report(PipelineEvent.WifiLockAcquired)
     }
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
     override fun onDestroy() {
-        lowLatencyWifiLock?.runCatching { if (isHeld) release() }
+        lowLatencyWifiLock?.runCatching {
+            if (isHeld) {
+                release()
+                Diagnostics.report(PipelineEvent.WifiLockReleased)
+            }
+        }
         lowLatencyWifiLock = null
         panels.forEach { panel ->
             panel.decoder?.runCatching { stop() }
