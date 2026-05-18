@@ -222,6 +222,27 @@ adb shell am force-stop com.mtschoen.windowstream.viewer
 - Viewer logs: `adb logcat -d --pid=$(adb shell pidof com.mtschoen.windowstream.viewer) -s WindowStreamDemo:V MediaCodec:V MediaCodecDecoder:V FRAMECOUNT:V *:E` filters to relevant output. The `FRAMECOUNT` tag emits one line per frame at `stage=reasm` (reassembler complete) and `stage=dec` (output buffer rendered); pair with server stderr `[FRAMECOUNT]` lines (`stage=enc`/`stage=frag`) to measure pipeline-depth latency. PTS in microseconds is the join key across server/viewer.
 - Frame flow check: `adb shell cat /proc/net/dev | grep wlan0` and watch RX bytes climb; steady 0 → server isn't actually sending → likely VIEWER_READY / endpoint issue.
 
+### Diagnostics — pipeline state + JSONL logs
+
+Both apps emit typed `PipelineEvent`s through a `Diagnostics` façade. State
+boards and event logs live in-app; a rotating JSONL file log persists for
+7 days.
+
+**Server file log:** `%LOCALAPPDATA%\WindowStream\logs\server-YYYY-MM-DD.jsonl`.
+Open via the dashboard's "Open log folder" button, or grep with `jq`:
+
+```bash
+jq 'select(.EventType=="WorkerSpawnFailed")' server-2026-05-17.jsonl
+```
+
+**Viewer file log:** `<app-external-files>/logs/viewer-YYYY-MM-DD.jsonl`.
+Pull via `adb pull /storage/emulated/0/Android/data/com.mtschoen.windowstream.viewer/files/logs/`.
+
+**What's NOT in the pipeline event stream:** `[FRAMECOUNT]` per-frame markers
+stay on stderr / logcat — they would flood the in-app buffer + balloon the
+file. The diagnostic boundary is *stage transitions and errors*, not
+per-frame.
+
 ## Dependency report
 
 Generate with:
