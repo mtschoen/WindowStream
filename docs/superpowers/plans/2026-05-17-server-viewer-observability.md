@@ -334,7 +334,7 @@ git commit -m "feat(viewer): Diagnostics façade with ThreadLocal payload bridge
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTree.kt`
 - Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTreeTest.kt`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -363,12 +363,12 @@ class InAppBufferTreeTest {
 }
 ```
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*InAppBufferTreeTest*"`
 Expected: FAIL — `InAppBufferTree` missing.
 
-- [ ] **Step 3: Write `InAppBufferTree.kt`**
+- [x] **Step 3: Write `InAppBufferTree.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -406,12 +406,12 @@ class InAppBufferTree(replay: Int = 200) : Timber.Tree() {
 }
 ```
 
-- [ ] **Step 4: Run, verify PASS**
+- [x] **Step 4: Run, verify PASS**
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*InAppBufferTreeTest*"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTree.kt \
