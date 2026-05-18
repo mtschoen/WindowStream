@@ -425,7 +425,7 @@ git commit -m "feat(viewer): InAppBufferTree exposing SharedFlow of LogEvent"
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTree.kt`
 - Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTreeTest.kt`
 
-- [ ] **Step 1: Write the failing test (Robolectric-free, uses a temp dir directly)**
+- [x] **Step 1: Write the failing test (Robolectric-free, uses a temp dir directly)**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -482,12 +482,12 @@ class FileLoggingTreeTest {
 }
 ```
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*FileLoggingTreeTest*"`
 Expected: FAIL — `FileLoggingTree` missing.
 
-- [ ] **Step 3: Write `FileLoggingTree.kt`**
+- [x] **Step 3: Write `FileLoggingTree.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -592,12 +592,12 @@ class FileLoggingTree(
 }
 ```
 
-- [ ] **Step 4: Run, verify PASS**
+- [x] **Step 4: Run, verify PASS**
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*FileLoggingTreeTest*"`
 Expected: PASS 2/2. If serialization complains about generic `Any?` in `put(...)`, switch the loop to `put(key, JsonPrimitive(value?.toString()))`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTree.kt \
