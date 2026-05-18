@@ -22,6 +22,8 @@ import com.mtschoen.windowstream.viewer.control.ControlMessage
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
 import com.mtschoen.windowstream.viewer.control.awaitOrError
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
+import com.mtschoen.windowstream.viewer.observability.Diagnostics
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import com.mtschoen.windowstream.viewer.xr.PanelPlacement
@@ -89,10 +91,12 @@ class XrDemoActivity : ComponentActivity() {
                 ) {
                     onSurfaceCreated { providedSurface ->
                         Log.i(TAG, "SpatialExternalSurface created: $providedSurface")
+                        Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex = 0))
                         xrPanelSink.provideSurfaceFromXrSystem(providedSurface)
                     }
                     onSurfaceDestroyed {
                         Log.i(TAG, "SpatialExternalSurface destroyed")
+                        Diagnostics.report(PipelineEvent.SurfaceDestroyed(panelIndex = 0, "spatial-lifecycle"))
                     }
                 }
             }
@@ -113,14 +117,18 @@ class XrDemoActivity : ComponentActivity() {
                 supportedCodecs = listOf("h264")
             )
         )
+        val connectStartNanos: Long = System.nanoTime()
         val controlConnection: ControlConnection = client.connect(lifecycleScope)
         connection = controlConnection
+        val connectDurationMs: Long = (System.nanoTime() - connectStartNanos) / 1_000_000L
         Log.i(TAG, "TCP connected to $host:$port")
+        Diagnostics.report(PipelineEvent.TcpConnected(durationMs = connectDurationMs))
 
         val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
             controlConnection.incoming.awaitOrError(ControlMessage.ServerHello::class)
         }
         Log.i(TAG, "ServerHello: ${serverHello.windows.size} window(s), udpPort=${serverHello.udpPort}")
+        Diagnostics.report(PipelineEvent.ServerHelloReceived(serverHello.windows.size, serverHello.udpPort))
 
         // Pick window: selectedWindowHwnds[0] if present, else first advertised
         val windowId: ULong = if (selectedWindowHwnds.isNotEmpty()) {
@@ -132,12 +140,14 @@ class XrDemoActivity : ComponentActivity() {
                 ?: error("server advertised no windows")).windowId
         }
         Log.i(TAG, "opening windowId=$windowId")
+        Diagnostics.report(PipelineEvent.OpenStreamSent(windowId))
         controlConnection.send(ControlMessage.OpenStream(windowId = windowId))
 
         val stream: ControlMessage.StreamStarted = withTimeout(10_000) {
             controlConnection.incoming.awaitOrError(ControlMessage.StreamStarted::class)
         }
         Log.i(TAG, "StreamStarted: ${stream.width}x${stream.height} streamId=${stream.streamId}")
+        Diagnostics.report(PipelineEvent.StreamOpened(stream.streamId, stream.width, stream.height))
 
         val udpReceiver = UdpTransportReceiver(
             bindAddress = InetAddress.getByName("0.0.0.0"),
@@ -145,6 +155,7 @@ class XrDemoActivity : ComponentActivity() {
         )
         val frames: Flow<EncodedFrame> = udpReceiver.start(lifecycleScope)
         Log.i(TAG, "UDP bound on port ${udpReceiver.boundPort}")
+        Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
 
         controlConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
         controlConnection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
@@ -156,8 +167,10 @@ class XrDemoActivity : ComponentActivity() {
             }
         )
         decoder = newDecoder
+        Diagnostics.report(PipelineEvent.DecoderStarting(stream.streamId, stream.width, stream.height))
         newDecoder.start(lifecycleScope, frames, stream.width, stream.height)
         Log.i(TAG, "decoder started, rendering through XR compositor")
+        Diagnostics.report(PipelineEvent.DecoderStarted(stream.streamId))
     }
 
     override fun onDestroy() {

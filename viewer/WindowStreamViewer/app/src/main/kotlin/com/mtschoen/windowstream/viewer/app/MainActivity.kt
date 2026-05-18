@@ -47,6 +47,8 @@ import com.mtschoen.windowstream.viewer.control.StreamLifecycleEvent
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
+import com.mtschoen.windowstream.viewer.observability.Diagnostics
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import com.mtschoen.windowstream.viewer.xr.PanelPlacement
@@ -56,6 +58,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -264,10 +267,12 @@ class MainActivity : ComponentActivity() {
             ) {
                 onSurfaceCreated { providedSurface ->
                     Log.i(TAG, "SpatialExternalSurface created: $providedSurface")
+                    Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex = 0))
                     sink.provideSurfaceFromXrSystem(providedSurface)
                 }
                 onSurfaceDestroyed {
                     Log.i(TAG, "SpatialExternalSurface destroyed")
+                    Diagnostics.report(PipelineEvent.SurfaceDestroyed(panelIndex = 0, "spatial-lifecycle"))
                 }
             }
         }
@@ -290,9 +295,18 @@ class MainActivity : ComponentActivity() {
                     supportedCodecs = listOf("h264")
                 )
             )
+            val connectStartNanos: Long = System.nanoTime()
             val liveConnection: MultiStreamControlConnection = client.connect(activityScope)
+            val connectDurationMs: Long = (System.nanoTime() - connectStartNanos) / 1_000_000L
             connection = liveConnection
             Log.i(TAG, "connected: ${liveConnection.serverHello.windows.size} window(s) advertised")
+            Diagnostics.report(PipelineEvent.TcpConnected(durationMs = connectDurationMs))
+            Diagnostics.report(
+                PipelineEvent.ServerHelloReceived(
+                    liveConnection.serverHello.windows.size,
+                    liveConnection.serverHello.udpPort
+                )
+            )
             showPicker(liveConnection)
         } catch (throwable: Throwable) {
             Log.e(TAG, "startup connect failed", throwable)
@@ -312,9 +326,22 @@ class MainActivity : ComponentActivity() {
             )
         }
         val discoveryClient = NetworkServiceDiscoveryClient(applicationContext)
-        val discovered: ServerInformation = withTimeout(30_000) {
-            discoveryClient.discover(activityScope).first()
+        Diagnostics.report(PipelineEvent.DiscoveryStarted)
+        val discovered: ServerInformation = try {
+            withTimeout(30_000) {
+                discoveryClient.discover(activityScope).first()
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            Diagnostics.report(PipelineEvent.DiscoveryTimedOut)
+            throw timeout
         }
+        Diagnostics.report(
+            PipelineEvent.DiscoveryResultReceived(
+                hostname = discovered.hostname,
+                address = discovered.host.hostAddress ?: discovered.hostname,
+                port = discovered.controlPort
+            )
+        )
         return ResolvedServer(
             host = discovered.host.hostAddress ?: discovered.hostname,
             port = discovered.controlPort,
@@ -345,6 +372,7 @@ class MainActivity : ComponentActivity() {
         val sink = XrPanelSink()
         uiState = UiState.Streaming(sink)
 
+        Diagnostics.report(PipelineEvent.OpenStreamSent(windowId))
         val pipelineJob = activityScope.launch {
             try {
                 runPipeline(liveConnection, windowId, sink)
@@ -369,18 +397,21 @@ class MainActivity : ComponentActivity() {
             when (event) {
                 is StreamLifecycleEvent.Opened -> {
                     Log.i(TAG, "stream opened: streamId=${event.streamId} ${event.width}x${event.height}")
+                    Diagnostics.report(PipelineEvent.StreamOpened(event.streamId, event.width, event.height))
                     opened = event
                     activeStreamId = event.streamId
                     startDecoderForStream(liveConnection, event, sink)
                 }
                 is StreamLifecycleEvent.Refused -> {
                     Log.e(TAG, "stream refused: ${event.errorCode} — ${event.message}")
+                    Diagnostics.report(PipelineEvent.StreamRefused(0, event.errorCode, event.message))
                     pickerErrorBanner = "Couldn't open that window: ${event.message}"
                     val liveConnection = connection
                     if (liveConnection != null) showPicker(liveConnection)
                 }
                 is StreamLifecycleEvent.Stopped -> {
                     Log.i(TAG, "stream stopped: ${event.reason.reason}")
+                    Diagnostics.report(PipelineEvent.StreamStopped(activeStreamId ?: 0, event.reason.reason.name))
                     activeDecoder?.runCatching { stop() }
                     activeDecoder = null
                     activeStreamId = null
@@ -403,6 +434,7 @@ class MainActivity : ComponentActivity() {
         )
         val frames: Flow<EncodedFrame> = udpReceiver.start(activityScope)
         Log.i(TAG, "UDP bound on port ${udpReceiver.boundPort}")
+        Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
 
         liveConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
         liveConnection.requestKeyframe(opened.streamId)
@@ -414,8 +446,10 @@ class MainActivity : ComponentActivity() {
             }
         )
         activeDecoder = decoder
+        Diagnostics.report(PipelineEvent.DecoderStarting(opened.streamId, opened.width, opened.height))
         decoder.start(activityScope, frames, opened.width, opened.height)
         Log.i(TAG, "decoder started, rendering through XR compositor")
+        Diagnostics.report(PipelineEvent.DecoderStarted(opened.streamId))
     }
 
     private suspend fun returnToPicker() {
