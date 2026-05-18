@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
+import com.mtschoen.windowstream.viewer.observability.Diagnostics
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,7 @@ import java.nio.ByteBuffer
 class MediaCodecDecoder(
     private val frameSink: FrameSink,
     private val onKeyframeRequested: suspend () -> Unit,
+    private val streamId: Int = 0,
     private val codecName: String? = null,
     private val outputToSurface: Boolean = true
 ) {
@@ -109,6 +112,9 @@ class MediaCodecDecoder(
             }
             override fun onError(mediaCodec: MediaCodec, exception: MediaCodec.CodecException) {
                 Log.e("MediaCodecDecoder", "onError: ${exception.diagnosticInfo} errorCode=${exception.errorCode} isRecoverable=${exception.isRecoverable} isTransient=${exception.isTransient}")
+                // Async codec failure — the activity's synchronous try/catch around decoder.start()
+                // cannot observe this path, so we emit defense-in-depth here.
+                Diagnostics.report(PipelineEvent.DecoderFailed(sid = streamId, cause = exception))
             }
             override fun onOutputFormatChanged(mediaCodec: MediaCodec, newFormat: MediaFormat) {
                 Log.d("MediaCodecDecoder", "onOutputFormatChanged: $newFormat")

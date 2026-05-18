@@ -1,5 +1,7 @@
 package com.mtschoen.windowstream.viewer.control
 
+import com.mtschoen.windowstream.viewer.observability.InAppBufferTree
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,8 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import timber.log.Timber
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -629,6 +633,41 @@ class MultiStreamControlClientTest {
         connection.close()
         serverJob.cancelAndJoin()
         serverSocket.close()
+    }
+
+    @Test
+    fun `connect emits TcpConnectFailed when socketFactory throws`() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.IO)
+        val tree = InAppBufferTree(replay = 16)
+        Timber.plant(tree)
+        val connectError = IOException("connection refused")
+        val client = MultiStreamControlClient(
+            host = "127.0.0.1",
+            port = 9,
+            displayCapabilities = capabilities,
+            socketFactory = { _, _ -> throw connectError }
+        )
+
+        var caughtException: Throwable? = null
+        try {
+            client.connect(scope)
+        } catch (exception: Exception) {
+            caughtException = exception
+        }
+
+        // Collect from replay buffer before uprooting the tree.
+        val event = withTimeout(1.seconds) {
+            tree.events.first { it.pipelineEvent is PipelineEvent.TcpConnectFailed }
+        }
+        Timber.uproot(tree)
+
+        assertTrue(caughtException is IOException)
+        assertEquals("connection refused", caughtException?.message)
+        val tcpFailed = event.pipelineEvent as PipelineEvent.TcpConnectFailed
+        assertEquals("127.0.0.1", tcpFailed.host)
+        assertEquals(9, tcpFailed.port)
+        // The reported cause is the same instance thrown by the socketFactory.
+        assertEquals(connectError, tcpFailed.cause)
     }
 
 }

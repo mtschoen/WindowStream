@@ -1,5 +1,7 @@
 package com.mtschoen.windowstream.viewer.control
 
+import com.mtschoen.windowstream.viewer.observability.Diagnostics
+import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -217,7 +219,12 @@ class MultiStreamControlClient(
      */
     suspend fun connect(scope: CoroutineScope): MultiStreamControlConnection =
         withContext(Dispatchers.IO) {
-            val socket = socketFactory(host, port)
+            val socket = try {
+                socketFactory(host, port)
+            } catch (connectException: Exception) {
+                Diagnostics.report(PipelineEvent.TcpConnectFailed(host = host, port = port, cause = connectException))
+                throw connectException
+            }
             socket.tcpNoDelay = true
             val input = socket.getInputStream()
             val output = socket.getOutputStream()

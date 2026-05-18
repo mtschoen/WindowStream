@@ -164,7 +164,8 @@ class XrDemoActivity : ComponentActivity() {
             frameSink = xrPanelSink,
             onKeyframeRequested = {
                 controlConnection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
-            }
+            },
+            streamId = stream.streamId
         )
         decoder = newDecoder
         Diagnostics.report(PipelineEvent.DecoderStarting(stream.streamId, stream.width, stream.height))

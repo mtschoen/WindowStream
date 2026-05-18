@@ -547,7 +547,8 @@ class UnifiedStreamingActivity : Activity() {
         val frameSink = DirectSurfaceFrameSink(surface)
         val decoder = MediaCodecDecoder(
             frameSink = frameSink,
-            onKeyframeRequested = { runCatching { liveConnection.requestKeyframe(streamId) } }
+            onKeyframeRequested = { runCatching { liveConnection.requestKeyframe(streamId) } },
+            streamId = streamId
         )
         panels.getOrNull(panelIndex)?.decoder?.runCatching { stop() }
         if (panelIndex in panels.indices) {
