@@ -218,7 +218,7 @@ git commit -m "feat(viewer): add PipelineEvent sealed hierarchy and Severity enu
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/LogEvent.kt`
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/Diagnostics.kt`
 
-- [ ] **Step 1: Write `LogEvent.kt`**
+- [x] **Step 1: Write `LogEvent.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -236,7 +236,7 @@ data class LogEvent(
 )
 ```
 
-- [ ] **Step 2: Write `Diagnostics.kt`**
+- [x] **Step 2: Write `Diagnostics.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -317,11 +317,11 @@ object Diagnostics {
 }
 ```
 
-- [ ] **Step 3: Build + smoke test**
+- [x] **Step 3: Build + smoke test**
 
 Run: `./gradlew :app:assemblePortableDebug` — expect SUCCESS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/
