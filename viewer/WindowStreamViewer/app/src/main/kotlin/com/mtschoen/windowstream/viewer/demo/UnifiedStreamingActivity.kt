@@ -94,6 +94,7 @@ class UnifiedStreamingActivity : Activity() {
     private lateinit var tabBar: LinearLayout
     private lateinit var statusLabel: TextView
     private lateinit var drawerOverlay: WindowDrawerOverlay
+    private lateinit var observabilityOverlay: ObservabilityOverlay
     private lateinit var softInputEditText: EditText
     private lateinit var inputPreviewTextView: TextView
     private var previousSoftInputLength: Int = 0
@@ -102,6 +103,18 @@ class UnifiedStreamingActivity : Activity() {
         super.onCreate(savedInstanceState)
         buildLayout()
         acquireWifiLock()
+
+        val app = applicationContext as com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication
+        val reducer = com.mtschoen.windowstream.viewer.observability.ViewerStateReducer()
+        activityScope.launch {
+            app.inAppBufferTree.events.collect { event ->
+                event.pipelineEvent?.let { reducer.apply(it) }
+                runOnUiThread {
+                    observabilityOverlay.appendEvent(event)
+                    observabilityOverlay.renderState(reducer.state)
+                }
+            }
+        }
 
         val directHost: String? = intent.getStringExtra("streamHost")
         val directPort: Int = intent.getIntExtra("streamPort", -1)
@@ -146,7 +159,7 @@ class UnifiedStreamingActivity : Activity() {
             text = "+"
             setTextColor(Color.rgb(130, 180, 255))
             textSize = 22f
-            setPadding(20, 0, 28, 0)
+            setPadding(20, 0, 16, 0)
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
@@ -155,6 +168,23 @@ class UnifiedStreamingActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT
             )
             setOnClickListener { drawerOverlay.show() }
+        }
+
+        // "ℹ" observability overlay toggle button
+        observabilityOverlay = ObservabilityOverlay(this)
+        val observabilityToggle = TextView(this).apply {
+            text = "ℹ"
+            setTextColor(Color.rgb(130, 200, 130))
+            textSize = 18f
+            setPadding(8, 0, 28, 0)
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            setOnClickListener { observabilityOverlay.toggle() }
         }
 
         val tabBarWithControls = LinearLayout(this).apply {
@@ -166,6 +196,7 @@ class UnifiedStreamingActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             })
             addView(addButton)
+            addView(observabilityToggle)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 TAB_BAR_HEIGHT_PX,
@@ -224,6 +255,7 @@ class UnifiedStreamingActivity : Activity() {
             addView(softInputEditText)
             addView(inputPreviewTextView)
             addView(drawerOverlay.rootView)
+            addView(observabilityOverlay.rootView)
             isClickable = true
             setOnClickListener { toggleSoftKeyboard() }
         }

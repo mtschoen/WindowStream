@@ -228,6 +228,12 @@ kover {
                     "com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity\$*",
                     "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay",
                     "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay\$*",
+                    // ObservabilityOverlay is pure Android view scaffolding (LinearLayout /
+                    // TextView / FrameLayout / ScrollView). It requires the Android view
+                    // runtime and is exercised by manual / integration testing.
+                    // Follows the WindowDrawerOverlay exclusion pattern.
+                    "com.mtschoen.windowstream.viewer.demo.ObservabilityOverlay",
+                    "com.mtschoen.windowstream.viewer.demo.ObservabilityOverlay\$*",
                     "com.mtschoen.windowstream.viewer.demo.XrDemoActivity",
                     "com.mtschoen.windowstream.viewer.demo.XrDemoActivity\$*"
                 )
