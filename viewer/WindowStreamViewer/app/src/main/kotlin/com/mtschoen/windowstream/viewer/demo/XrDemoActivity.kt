@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.lifecycleScope
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialExternalSurface
@@ -16,6 +17,7 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.offset
 import androidx.xr.compose.subspace.layout.width
+import com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication
 import com.mtschoen.windowstream.viewer.control.ControlClient
 import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
@@ -24,6 +26,7 @@ import com.mtschoen.windowstream.viewer.control.awaitOrError
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.observability.Diagnostics
 import com.mtschoen.windowstream.viewer.observability.PipelineEvent
+import com.mtschoen.windowstream.viewer.observability.ViewerStateReducer
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import com.mtschoen.windowstream.viewer.xr.PanelPlacement
@@ -58,6 +61,7 @@ class XrDemoActivity : ComponentActivity() {
     private val xrPanelSink = XrPanelSink()
     private var decoder: MediaCodecDecoder? = null
     private var connection: ControlConnection? = null
+    private lateinit var observabilityOverlay: ObservabilityOverlay
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,15 +75,37 @@ class XrDemoActivity : ComponentActivity() {
 
         Log.i(TAG, "starting XR compositor path: $host:$port")
 
+        // Wire observability overlay + event collector.
+        observabilityOverlay = ObservabilityOverlay(this)
+        val app = applicationContext as WindowStreamViewerApplication
+        val reducer = ViewerStateReducer()
+        lifecycleScope.launch {
+            app.inAppBufferTree.events.collect { event ->
+                event.pipelineEvent?.let { reducer.apply(it) }
+                runOnUiThread {
+                    observabilityOverlay.appendEvent(event)
+                    observabilityOverlay.renderState(reducer.state)
+                }
+            }
+        }
+
         // Launch the v2 pipeline on IO
         lifecycleScope.launch(Dispatchers.IO) {
             runPipeline(host, port, selectedWindowHwnds)
         }
 
-        // Compose content: a single SpatialExternalSurface panel
+        // Compose content: streaming SpatialExternalSurface + 2D observability overlay
         setContent {
             val dimensions by xrPanelSink.dimensions.collectAsState()
             val (panelWidthMeters, panelHeightMeters) = computePanelDimensionsMeters(dimensions)
+
+            // 2D observability overlay rendered as a regular AndroidView alongside
+            // the spatial panel. Shown immediately so diagnostics are visible from
+            // session start; the user can tap the ℹ button in UnifiedStreamingActivity
+            // (portable flavor) — here it stays visible as there is no tab bar.
+            AndroidView(factory = {
+                observabilityOverlay.also { it.show() }.rootView
+            })
 
             Subspace {
                 SpatialExternalSurface(

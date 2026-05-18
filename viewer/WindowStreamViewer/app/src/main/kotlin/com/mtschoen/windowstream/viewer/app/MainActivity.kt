@@ -18,6 +18,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialExternalSurface
 import androidx.xr.compose.subspace.StereoMode
@@ -40,6 +42,8 @@ import androidx.xr.compose.subspace.layout.width
 import com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreen
 import com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel
 import com.mtschoen.windowstream.viewer.control.ControlMessage
+import com.mtschoen.windowstream.viewer.demo.ObservabilityOverlay
+import com.mtschoen.windowstream.viewer.observability.ViewerStateReducer
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection
@@ -109,6 +113,7 @@ class MainActivity : ComponentActivity() {
     private var streamingJob: Job? = null
     private var activeStreamId: Int? = null
     private var activeDecoder: MediaCodecDecoder? = null
+    private lateinit var observabilityOverlay: ObservabilityOverlay
 
     // Pipeline + multi-stream openStream coroutines must NOT run on Main.
     // SpatialExternalSurface.onSurfaceCreated fires on Main and calls
@@ -123,13 +128,40 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Wire observability overlay + event collector.
+        observabilityOverlay = ObservabilityOverlay(this)
+        val app = applicationContext as WindowStreamViewerApplication
+        val reducer = ViewerStateReducer()
+        activityScope.launch {
+            app.inAppBufferTree.events.collect { event ->
+                event.pipelineEvent?.let { reducer.apply(it) }
+                runOnUiThread {
+                    observabilityOverlay.appendEvent(event)
+                    observabilityOverlay.renderState(reducer.state)
+                }
+            }
+        }
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                when (val state = uiState) {
-                    UiState.Connecting -> ConnectingScreen()
-                    is UiState.Picking -> PickerScreen(state.viewModel)
-                    is UiState.Streaming -> StreamingScene(state.sink)
-                    is UiState.Failed -> FailedScreen(state.message)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (val state = uiState) {
+                        UiState.Connecting -> ConnectingScreen()
+                        is UiState.Picking -> PickerScreen(state.viewModel)
+                        is UiState.Streaming -> StreamingScene(state.sink)
+                        is UiState.Failed -> FailedScreen(state.message)
+                    }
+                    // Observability overlay floats above all screens; toggle with ℹ button.
+                    AndroidView(
+                        factory = { observabilityOverlay.rootView },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    TextButton(
+                        onClick = { observabilityOverlay.toggle() },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                    ) {
+                        Text("ℹ", fontSize = 18.sp)
+                    }
                 }
             }
         }
