@@ -12,258 +12,6 @@
 
 ---
 
-## Phase 5: Viewer instrumentation (call sites → Diagnostics)
-
-### Task 17: Refactor `UnifiedStreamingActivity` to emit `PipelineEvent`s
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt`
-
-Replace existing `Log.i(TAG, …)` / `Log.e(TAG, …)` calls that mark pipeline stages with `Diagnostics.report(...)`. Keep `Log.i` / `Log.e` for purely free-form info (tab UI, soft keyboard) — those don't need typed events.
-
-- [x] **Step 1: Replace discovery + connect events**
-
-In `discoverAndConnect()`, replace:
-```kotlin
-Log.i(TAG, "discovered ${server.hostname} at ${server.host.hostAddress}:${server.controlPort}")
-```
-with:
-```kotlin
-Diagnostics.report(PipelineEvent.DiscoveryResultReceived(
-    hostname = server.hostname,
-    address = server.host.hostAddress ?: "?",
-    port = server.controlPort))
-```
-
-Add at the start of `discoverAndConnect()`:
-```kotlin
-Diagnostics.report(PipelineEvent.DiscoveryStarted)
-```
-
-Wrap the `withTimeout(30_000)` in a `try`/`catch (TimeoutCancellationException)` and report `DiscoveryTimedOut` (also keep the existing catch for general throwables, where we already log).
-
-Replace:
-```kotlin
-Log.e(TAG, "discovery/connect failed", throwable)
-```
-with:
-```kotlin
-Diagnostics.report(PipelineEvent.TcpConnectFailed(host = host, port = port, cause = throwable))
-```
-
-- [x] **Step 2: Replace ServerHello + open + lifecycle**
-
-In `connectToServer`, around `client.connect(...)`:
-```kotlin
-val connectStart = System.nanoTime()
-Diagnostics.report(PipelineEvent.TcpConnecting(host = host, port = port))
-val liveConnection = client.connect(activityScope)
-val elapsedMs = (System.nanoTime() - connectStart) / 1_000_000
-Diagnostics.report(PipelineEvent.TcpConnected(durationMs = elapsedMs))
-```
-
-Replace `Log.i(TAG, "connected: ${initialCatalogue.size} window(s) advertised")` with:
-```kotlin
-Diagnostics.report(PipelineEvent.ServerHelloReceived(
-    windowCount = initialCatalogue.size,
-    udpPort = liveConnection.serverHello.udpPort))
-```
-
-In `openWindow`, replace `Log.i(TAG, "opening stream for windowId=$windowId")`:
-```kotlin
-Diagnostics.report(PipelineEvent.OpenStreamSent(windowId = windowId))
-```
-
-For the `StreamLifecycleEvent` collector branches:
-- `Opened` → `Diagnostics.report(PipelineEvent.StreamOpened(event.streamId, event.width, event.height))`
-- `Refused` → `Diagnostics.report(PipelineEvent.StreamRefused(event.streamId, event.errorCode, event.message))`
-- `Stopped` → `Diagnostics.report(PipelineEvent.StreamStopped(event.streamId, event.reason.reason))`
-
-Keep the existing `runOnUiThread { statusLabel.text = ... }` UI updates.
-
-- [x] **Step 3: Surface lifecycle**
-
-In `createSurfaceCallback`:
-- `surfaceCreated`: `Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex))`
-- `surfaceDestroyed`: `Diagnostics.report(PipelineEvent.SurfaceDestroyed(panelIndex, reasonHint = "lifecycle"))`
-
-In `acquireWifiLock`:
-```kotlin
-Diagnostics.report(PipelineEvent.WifiLockAcquired)
-```
-And in `onDestroy` where the lock is released:
-```kotlin
-Diagnostics.report(PipelineEvent.WifiLockReleased)
-```
-
-- [x] **Step 4: UDP arrival tracking**
-
-In `startDecoderLocked`, after `udpReceiver.start(pipelineScope)`, but before kicking the decoder, attach a `Flow` operator that emits `UdpFirstPacketReceived` on first packet:
-```kotlin
-val openInstantNanos = System.nanoTime()
-var firstReported = false
-val instrumentedFrames: Flow<EncodedFrame> = frames.onEach {
-    if (!firstReported) {
-        firstReported = true
-        val delay = (System.nanoTime() - openInstantNanos) / 1_000_000
-        Diagnostics.report(PipelineEvent.UdpFirstPacketReceived(streamId, delay))
-    }
-}
-Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
-Diagnostics.report(PipelineEvent.DecoderStarting(streamId, resolvedWidth, resolvedHeight))
-```
-
-Replace the rest of the body to use `instrumentedFrames` instead of `frames` for the `decoder.start(...)` call. Add the import: `import kotlinx.coroutines.flow.onEach`.
-
-After `decoder.start(...)`:
-```kotlin
-Diagnostics.report(PipelineEvent.DecoderStarted(streamId))
-```
-
-Wrap `decoder.start(...)` in a `try` that catches and emits `DecoderFailed`.
-
-- [x] **Step 5: Build + smoke install** *(build verified via koverVerify; device install deferred to next HMD session)*
-
-Run: `./gradlew :app:assemblePortableDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk`
-Expected: BUILD SUCCESSFUL. Launch viewer; run `adb logcat -s Pipeline:V` and exercise: open viewer → expect `DiscoveryStarted` then `DiscoveryResultReceived` or `DiscoveryTimedOut`.
-
-- [x] **Step 6: Commit** *(commit `7fdb757`)*
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt
-git commit -m "refactor(viewer): emit PipelineEvents from UnifiedStreamingActivity"
-```
-
-### Task 18: Refactor `XrDemoActivity` + GXR `MainActivity`
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt`
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt`
-
-- [x] **Step 1: `XrDemoActivity` — apply same patterns as Task 17**
-
-For each existing `Log.i(TAG, "...")` that maps to a pipeline stage:
-- "starting XR compositor path" → unchanged (free-form)
-- "SpatialExternalSurface created" → `SurfaceCreated(panelIndex = 0)`
-- "SpatialExternalSurface destroyed" → `SurfaceDestroyed(panelIndex = 0, "spatial-lifecycle")`
-- "TCP connected to" → `TcpConnected(durationMs = measuredMs)` (add timing)
-- "ServerHello: N window(s)" → `ServerHelloReceived(serverHello.windows.size, serverHello.udpPort)`
-- "opening windowId=$windowId" → `OpenStreamSent(windowId.toULong())`
-- "StreamStarted: ${stream.width}x${stream.height} streamId=${stream.streamId}" → `StreamOpened(stream.streamId, stream.width, stream.height)`
-- "UDP bound on port ${udpReceiver.boundPort}" → `UdpBound(udpReceiver.boundPort)`
-- "decoder started, rendering through XR compositor" → `DecoderStarted(stream.streamId)` (after a `DecoderStarting`)
-
-- [x] **Step 2: `MainActivity` (GXR picker)**
-
-Read the file in full first (`viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt`). Locate:
-1. The mDNS discovery start — wrap with `Diagnostics.report(PipelineEvent.DiscoveryStarted)` immediately before, and `Diagnostics.report(PipelineEvent.DiscoveryResultReceived(...))` on each server result.
-2. The discovery timeout branch — emit `DiscoveryTimedOut`.
-3. The window-selection handler (the picker handoff that fires the Intent to `XrDemoActivity`) — emit `Diagnostics.report(PipelineEvent.OpenStreamSent(windowId))` before `startActivity(intent)`.
-
-If `MainActivity` already delegates discovery to `NetworkServiceDiscoveryClient` shared with `UnifiedStreamingActivity`, the report sites are at the same call layer — copy the pattern from Task 17 Step 1 verbatim.
-
-Do NOT commit without showing concrete diffs of all three insertion points.
-
-- [x] **Step 3: Build all flavors**
-
-Run: `./gradlew :app:assembleDebug`
-Expected: BUILD SUCCESSFUL for both `portable` and `gxr`.
-
-- [x] **Step 4: Commit** *(commit `722941a`)*
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt \
-        viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt
-git commit -m "refactor(viewer): emit PipelineEvents from XrDemoActivity + GXR MainActivity"
-```
-
-### Task 19: `MediaCodecDecoder` + `MultiStreamControlClient` instrumentation
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt`
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/control/MultiStreamControlClient.kt`
-
-- [x] **Step 1: `MediaCodecDecoder` — wrap `start` and error paths**
-
-Where the decoder configures and starts, wrap any error path with:
-```kotlin
-Diagnostics.report(PipelineEvent.DecoderFailed(streamId = /* threaded in or default 0 */, cause = exception))
-```
-Note: `MediaCodecDecoder` currently doesn't take a stream id. Add a `streamId: Int` constructor parameter and thread it through from `UnifiedStreamingActivity.startDecoderLocked` and `XrDemoActivity`'s decoder creation. Update both callsites.
-
-- [x] **Step 2: `MultiStreamControlClient` — wrap connect failures** *(StreamRefused framing-failure sub-step skipped — no separate framing-failure path exists in parser; JSON decode failures propagate via outer catch + TRANSPORT_FAILURE)*
-
-When `connect()` throws, emit `TcpConnectFailed`. When `StreamLifecycleEvent.Refused` is parsed, emit `StreamRefused` from inside the parser too — currently the activity catches it but instrumentation inside the client provides defense-in-depth.
-
-Note: avoid double-emitting. Prefer single emission site per event; the activity-level `Refused` emit in Task 17 is canonical, so for the client, only emit if the connection-level error is distinct (e.g., framing parse failure).
-
-- [x] **Step 3: Build** *(replaced with koverVerify both flavors; 272 + 273 tests green)*
-
-Run: `./gradlew :app:assembleDebug`
-Expected: SUCCESS.
-
-- [x] **Step 4: Commit** *(commit `f3aa688`; included MultiStreamControlClientTest expansion for TcpConnectFailed coverage; no Kover exclusions added)*
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt \
-        viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/control/MultiStreamControlClient.kt
-git commit -m "refactor(viewer): instrument decoder + control client"
-```
-
-### Task 20: `UdpStalled` watchdog
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt`
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt`
-
-- [x] **Step 1: Watchdog implementation**
-
-Inside `startDecoderLocked` after instrumenting first-packet detection (Task 17 Step 4), launch a watchdog:
-```kotlin
-pipelineScope.launch {
-    delay(2000)
-    if (!firstReported) {
-        Diagnostics.report(PipelineEvent.UdpStalled(streamId, 2000))
-    }
-}
-```
-Note: `firstReported` is captured by lambda, must be `var` — adjust the declaration to `@Volatile var firstReported = false` or wrap in `AtomicBoolean`. Use `AtomicBoolean` for thread safety.
-
-Rewrite the watchdog + first-packet flag using `AtomicBoolean`:
-```kotlin
-val firstReportedFlag = java.util.concurrent.atomic.AtomicBoolean(false)
-val instrumentedFrames = frames.onEach {
-    if (firstReportedFlag.compareAndSet(false, true)) {
-        val delay = (System.nanoTime() - openInstantNanos) / 1_000_000
-        Diagnostics.report(PipelineEvent.UdpFirstPacketReceived(streamId, delay))
-    }
-}
-pipelineScope.launch {
-    delay(2000)
-    if (!firstReportedFlag.get()) {
-        Diagnostics.report(PipelineEvent.UdpStalled(streamId, 2000))
-    }
-}
-```
-
-- [x] **Step 2: Apply same pattern in `XrDemoActivity`** *(introduced `openInstantNanos` + `instrumentedFrames` fresh; watchdog launched on `lifecycleScope` matching `udpReceiver.start` scope)*
-
-Replicate near where `udpReceiver.start(...)` is invoked in `XrDemoActivity`.
-
-- [x] **Step 3: Build** *(replaced with koverVerify both flavors; BUILD SUCCESSFUL in 24s)*
-
-Run: `./gradlew :app:assembleDebug`
-Expected: SUCCESS.
-
-- [x] **Step 4: Commit** *(commit `84202b8`)*
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/
-git commit -m "feat(viewer): UdpStalled 2s watchdog"
-```
-
----
-
 ## Phase 6: Viewer observability UI
 
 ### Task 21: Viewer state reducer
@@ -272,7 +20,7 @@ git commit -m "feat(viewer): UdpStalled 2s watchdog"
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/ViewerStateReducer.kt`
 - Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/ViewerStateReducerTest.kt`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test** *(expanded from 3 cases to 29 to satisfy 100% Kover gate)*
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -306,12 +54,12 @@ class ViewerStateReducerTest {
 }
 ```
 
-- [ ] **Step 2: Run, verify FAIL**
+- [x] **Step 2: Run, verify FAIL**
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*ViewerStateReducerTest*"`
 Expected: FAIL.
 
-- [ ] **Step 3: Write `ViewerStateReducer.kt`**
+- [x] **Step 3: Write `ViewerStateReducer.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.observability
@@ -413,12 +161,12 @@ class ViewerStateReducer {
 }
 ```
 
-- [ ] **Step 4: Run, verify PASS**
+- [x] **Step 4: Run, verify PASS** *(29/29 passing)*
 
 Run: `./gradlew :app:testPortableDebugUnitTest --tests "*ViewerStateReducerTest*"`
 Expected: PASS 3/3.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** *(commit `b070999`)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/ViewerStateReducer.kt \
@@ -432,7 +180,7 @@ git commit -m "feat(viewer): state reducer for observability board"
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt`
 - Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/ObservabilityOverlay.kt`
 
-- [ ] **Step 1: Write `ObservabilityOverlay.kt`**
+- [x] **Step 1: Write `ObservabilityOverlay.kt`**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.demo
@@ -539,7 +287,7 @@ class ObservabilityOverlay(context: Context) {
 }
 ```
 
-- [ ] **Step 2: Wire into `UnifiedStreamingActivity`**
+- [x] **Step 2: Wire into `UnifiedStreamingActivity`** *(skipped the plan's LogEvent/InAppBufferTree refactor — already done in T13/T14; collector reads `event.pipelineEvent` directly. Toggle is a green "ℹ" TextView appended to the tab bar after the "+" button.)*
 
 In `UnifiedStreamingActivity.buildLayout`, instantiate `ObservabilityOverlay` and add its `rootView` to the root `FrameLayout`. Add an "🛈" button to the tab bar that toggles the overlay.
 
@@ -574,12 +322,12 @@ app.inAppBufferTree.events.collect { event ->
 
 Apply this refactor before building.
 
-- [ ] **Step 3: Build + install + smoke**
+- [x] **Step 3: Build + install + smoke** *(replaced with koverVerify both flavors green; device install deferred to next HMD session)*
 
 Run: `./gradlew :app:assemblePortableDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk`
 Expected: SUCCESS. Launch viewer, tap the "🛈" button — overlay opens with state board + event log populated.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** *(commit `18db576`; only the activity + new overlay + build.gradle.kts Kover exclusion were committed — LogEvent and InAppBufferTree were already correct from T13/T14)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt \
@@ -595,7 +343,7 @@ git commit -m "feat(viewer): observability overlay panel in UnifiedStreamingActi
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt`
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt`
 
-- [ ] **Step 1: GXR — add a 2D `SpatialPanel` next to the streaming panel**
+- [x] **Step 1: GXR — add a 2D `SpatialPanel` next to the streaming panel** *(no `SpatialPanel` composable in this project's Jetpack XR alpha04 surface; used AndroidView-in-setContent floating over the Subspace compositor instead, matching the existing 2D-overlay pattern. Overlay shown immediately on activity start — no toggle since `XrDemoActivity` has no tab bar to host one.)*
 
 In `XrDemoActivity`, after the existing scene composition, add a second `SpatialPanel` (Jetpack XR scenecore API) hosting an `AndroidView { ObservabilityOverlay(context).rootView.apply { show() } }`. Anchor the panel to the right of the streaming panel using `SubspaceModifier.offset(x = …)`.
 
@@ -603,16 +351,16 @@ If the Jetpack XR scenecore API differs from what `XrDemoActivity` already uses 
 
 Wire the `app.inAppBufferTree.events` collection identical to Task 22.
 
-- [ ] **Step 2: GXR `MainActivity` — overlay (2D, not spatial)**
+- [x] **Step 2: GXR `MainActivity` — overlay (2D, not spatial)** *(AndroidView-in-Compose wrapping the screen-state composables in a Box; "ℹ" TextButton anchored TopEnd toggles `observabilityOverlay`.)*
 
 For `MainActivity`, which is the 2D picker before immersive: add the same `ObservabilityOverlay` overlay used in Task 22.
 
-- [ ] **Step 3: Build + install GXR**
+- [x] **Step 3: Build + install GXR** *(replaced with koverVerifyGxrDebug + portable; both green. Device install deferred to next HMD session.)*
 
 Run: `./gradlew :app:assembleGxrDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/gxr/debug/app-gxr-debug.apk`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** *(commit `9c71a74`)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt \
