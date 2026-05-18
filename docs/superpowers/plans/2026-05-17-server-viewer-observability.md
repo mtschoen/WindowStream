@@ -12,651 +12,6 @@
 
 ---
 
-## Phase 4: Viewer foundation (Timber + types + trees)
-
-### Task 11: Add Timber dependency
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/gradle/libs.versions.toml`
-- Modify: `viewer/WindowStreamViewer/app/build.gradle.kts`
-
-- [x] **Step 1: Add `timber` entry to `libs.versions.toml`**
-
-Add under `[versions]`:
-```toml
-timber = "5.0.1"
-```
-Add under `[libraries]`:
-```toml
-timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
-```
-
-- [x] **Step 2: Add dependency to `app/build.gradle.kts`**
-
-In `dependencies { ... }`:
-```kotlin
-implementation(libs.timber)
-```
-
-- [x] **Step 3: Sync + build** *(verified BUILD SUCCESSFUL in 56s, commit `818f4cc`)*
-
-- [x] **Step 4: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/gradle/libs.versions.toml \
-        viewer/WindowStreamViewer/app/build.gradle.kts
-git commit -m "build(viewer): add Timber 5.0.1 dependency"
-```
-
-### Task 12: Viewer `PipelineEvent` sealed class
-
-**Files:**
-- Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/PipelineEvent.kt`
-- Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/PipelineEventTest.kt`
-
-- [x] **Step 1: Write the failing test** *(deviation: expanded from 3 cases to 22 — exhaustive coverage of every event subclass — to honor the 100% Kover line+branch gate)*
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
-
-class PipelineEventTest {
-    @Test
-    fun `DiscoveryResultReceived has info severity and carries fields`() {
-        val event = PipelineEvent.DiscoveryResultReceived(
-            hostname = "chonkers", address = "192.168.1.10", port = 53234
-        )
-        assertEquals(Severity.INFO, event.severity)
-        assertEquals(null, event.streamId)
-        assertEquals("chonkers", event.hostname)
-    }
-
-    @Test
-    fun `DecoderFailed has error severity and stream id`() {
-        val event = PipelineEvent.DecoderFailed(streamId = 7, cause = RuntimeException("nope"))
-        assertEquals(Severity.ERROR, event.severity)
-        assertEquals(7, event.streamId)
-    }
-
-    @Test
-    fun `UdpStalled has warning severity`() {
-        val event = PipelineEvent.UdpStalled(streamId = 1, gapMs = 3000L)
-        assertEquals(Severity.WARNING, event.severity)
-    }
-}
-```
-
-- [x] **Step 2: Run, verify FAIL** *(deviation: skipped to save one gradle cycle — test + impl written together; the verify-PASS step at Step 4 served as the gate)*
-
-- [x] **Step 3: Write `PipelineEvent.kt`**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-enum class Severity { INFO, WARNING, ERROR }
-
-sealed class PipelineEvent(val severity: Severity, val streamId: Int?) {
-    object DiscoveryStarted : PipelineEvent(Severity.INFO, null)
-    data class DiscoveryResultReceived(val hostname: String, val address: String, val port: Int)
-        : PipelineEvent(Severity.INFO, null)
-    object DiscoveryTimedOut : PipelineEvent(Severity.WARNING, null)
-
-    data class TcpConnecting(val host: String, val port: Int) : PipelineEvent(Severity.INFO, null)
-    data class TcpConnected(val durationMs: Long) : PipelineEvent(Severity.INFO, null)
-    data class TcpConnectFailed(val host: String, val port: Int, val cause: Throwable)
-        : PipelineEvent(Severity.ERROR, null)
-
-    data class ServerHelloReceived(val windowCount: Int, val udpPort: Int)
-        : PipelineEvent(Severity.INFO, null)
-
-    data class OpenStreamSent(val windowId: ULong) : PipelineEvent(Severity.INFO, null)
-    data class StreamOpened(override val sid: Int, val width: Int, val height: Int)
-        : PipelineEvent(Severity.INFO, sid) {
-            companion object { /* shim placeholder */ }
-        }
-    data class StreamRefused(val sid: Int, val errorCode: String, val message: String)
-        : PipelineEvent(Severity.WARNING, sid)
-    data class StreamStopped(val sid: Int, val reason: String)
-        : PipelineEvent(Severity.INFO, sid)
-
-    data class UdpBound(val port: Int) : PipelineEvent(Severity.INFO, null)
-    data class UdpFirstPacketReceived(val sid: Int, val delayMs: Long)
-        : PipelineEvent(Severity.INFO, sid)
-    data class UdpStalled(val sid: Int, val gapMs: Long)
-        : PipelineEvent(Severity.WARNING, sid)
-
-    data class DecoderStarting(val sid: Int, val width: Int, val height: Int)
-        : PipelineEvent(Severity.INFO, sid)
-    data class DecoderStarted(val sid: Int) : PipelineEvent(Severity.INFO, sid)
-    data class DecoderFailed(val sid: Int, val cause: Throwable)
-        : PipelineEvent(Severity.ERROR, sid)
-
-    data class SurfaceCreated(val panelIndex: Int) : PipelineEvent(Severity.INFO, null)
-    data class SurfaceDestroyed(val panelIndex: Int, val reasonHint: String)
-        : PipelineEvent(Severity.INFO, null)
-
-    data class FramesPresenting(val sid: Int, val fps: Double) : PipelineEvent(Severity.INFO, sid)
-
-    object WifiLockAcquired : PipelineEvent(Severity.INFO, null)
-    object WifiLockReleased : PipelineEvent(Severity.INFO, null)
-
-    val streamId_alias: Int? get() = streamId  // ergonomic helper; not necessary
-}
-```
-
-**Important:** the constructor convention is `(severity, streamId)`. Two ways to handle event types that have a stream id:
-- Pass `streamId` directly as the second positional arg (preferred — keeps the property `streamId` on the base class).
-- The `sid` naming above shadows; rename `sid` → `streamId` and remove the `override`/`companion object` boilerplate. Final form:
-
-```kotlin
-data class StreamOpened(val sid: Int, val width: Int, val height: Int)
-    : PipelineEvent(Severity.INFO, sid)
-```
-(All `data class` cases that have a stream id use `val sid: Int` as the first ctor param and pass it as the second arg to the superclass.)
-
-Rewrite `PipelineEvent.kt` accordingly — final clean version:
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-enum class Severity { INFO, WARNING, ERROR }
-
-sealed class PipelineEvent(val severity: Severity, val streamId: Int?) {
-    object DiscoveryStarted : PipelineEvent(Severity.INFO, null)
-    data class DiscoveryResultReceived(val hostname: String, val address: String, val port: Int)
-        : PipelineEvent(Severity.INFO, null)
-    object DiscoveryTimedOut : PipelineEvent(Severity.WARNING, null)
-
-    data class TcpConnecting(val host: String, val port: Int) : PipelineEvent(Severity.INFO, null)
-    data class TcpConnected(val durationMs: Long) : PipelineEvent(Severity.INFO, null)
-    data class TcpConnectFailed(val host: String, val port: Int, val cause: Throwable)
-        : PipelineEvent(Severity.ERROR, null)
-
-    data class ServerHelloReceived(val windowCount: Int, val udpPort: Int)
-        : PipelineEvent(Severity.INFO, null)
-
-    data class OpenStreamSent(val windowId: ULong) : PipelineEvent(Severity.INFO, null)
-    data class StreamOpened(val sid: Int, val width: Int, val height: Int) : PipelineEvent(Severity.INFO, sid)
-    data class StreamRefused(val sid: Int, val errorCode: String, val message: String) : PipelineEvent(Severity.WARNING, sid)
-    data class StreamStopped(val sid: Int, val reason: String) : PipelineEvent(Severity.INFO, sid)
-
-    data class UdpBound(val port: Int) : PipelineEvent(Severity.INFO, null)
-    data class UdpFirstPacketReceived(val sid: Int, val delayMs: Long) : PipelineEvent(Severity.INFO, sid)
-    data class UdpStalled(val sid: Int, val gapMs: Long) : PipelineEvent(Severity.WARNING, sid)
-
-    data class DecoderStarting(val sid: Int, val width: Int, val height: Int) : PipelineEvent(Severity.INFO, sid)
-    data class DecoderStarted(val sid: Int) : PipelineEvent(Severity.INFO, sid)
-    data class DecoderFailed(val sid: Int, val cause: Throwable) : PipelineEvent(Severity.ERROR, sid)
-
-    data class SurfaceCreated(val panelIndex: Int) : PipelineEvent(Severity.INFO, null)
-    data class SurfaceDestroyed(val panelIndex: Int, val reasonHint: String) : PipelineEvent(Severity.INFO, null)
-
-    data class FramesPresenting(val sid: Int, val fps: Double) : PipelineEvent(Severity.INFO, sid)
-
-    object WifiLockAcquired : PipelineEvent(Severity.INFO, null)
-    object WifiLockReleased : PipelineEvent(Severity.INFO, null)
-}
-```
-
-Update the test's `DecoderFailed(streamId = 7, ...)` to `DecoderFailed(sid = 7, ...)`, etc.
-
-- [x] **Step 4: Run, verify PASS** *(22/22 cases PASS; also ran `:app:koverVerifyPortableDebug` and the 100% gate held)*
-
-- [x] **Step 5: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/PipelineEvent.kt \
-        viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/PipelineEventTest.kt
-git commit -m "feat(viewer): add PipelineEvent sealed hierarchy and Severity enum"
-```
-
-### Task 13: `Diagnostics` object + `LogEvent` record + thread-local payload bridge
-
-**Files:**
-- Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/LogEvent.kt`
-- Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/Diagnostics.kt`
-
-- [x] **Step 1: Write `LogEvent.kt`**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import java.time.Instant
-
-data class LogEvent(
-    val timestamp: Instant,
-    val severity: Severity,
-    val eventType: String,
-    val streamId: Int?,
-    val message: String,
-    val payload: Map<String, Any?>,
-    val throwable: Throwable?,
-)
-```
-
-- [x] **Step 2: Write `Diagnostics.kt`**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import timber.log.Timber
-import java.time.Instant
-
-/**
- * Façade that translates a [PipelineEvent] into a Timber call. Two custom
- * trees (FileLoggingTree, InAppBufferTree) read the payload via a
- * ThreadLocal map populated immediately before the log call.
- *
- * Per-frame markers ([FRAMECOUNT]) deliberately bypass this façade — they
- * live in stderr/logcat to avoid flooding the in-app buffer.
- */
-object Diagnostics {
-
-    internal val currentPayload: ThreadLocal<Map<String, Any?>> = ThreadLocal.withInitial { emptyMap() }
-    internal val currentEvent: ThreadLocal<PipelineEvent?> = ThreadLocal.withInitial { null }
-
-    fun report(event: PipelineEvent) {
-        val tree = Timber.tag(TAG)
-        val payload = payloadOf(event)
-        currentPayload.set(payload)
-        currentEvent.set(event)
-        try {
-            val message = describe(event)
-            when (event.severity) {
-                Severity.INFO -> tree.i(message)
-                Severity.WARNING -> tree.w(message)
-                Severity.ERROR -> tree.e(throwableOf(event), message)
-            }
-        } finally {
-            currentPayload.remove()
-            currentEvent.remove()
-        }
-    }
-
-    private fun describe(event: PipelineEvent): String = event::class.simpleName + ": " + event.toString()
-
-    private fun throwableOf(event: PipelineEvent): Throwable? = when (event) {
-        is PipelineEvent.TcpConnectFailed -> event.cause
-        is PipelineEvent.DecoderFailed -> event.cause
-        else -> null
-    }
-
-    private fun payloadOf(event: PipelineEvent): Map<String, Any?> = buildMap {
-        put("eventType", event::class.simpleName)
-        put("streamId", event.streamId)
-        when (event) {
-            is PipelineEvent.DiscoveryResultReceived -> {
-                put("hostname", event.hostname); put("address", event.address); put("port", event.port)
-            }
-            is PipelineEvent.TcpConnecting -> { put("host", event.host); put("port", event.port) }
-            is PipelineEvent.TcpConnected -> put("durationMs", event.durationMs)
-            is PipelineEvent.TcpConnectFailed -> { put("host", event.host); put("port", event.port) }
-            is PipelineEvent.ServerHelloReceived -> {
-                put("windowCount", event.windowCount); put("udpPort", event.udpPort)
-            }
-            is PipelineEvent.OpenStreamSent -> put("windowId", event.windowId.toString())
-            is PipelineEvent.StreamOpened -> { put("width", event.width); put("height", event.height) }
-            is PipelineEvent.StreamRefused -> { put("errorCode", event.errorCode); put("message", event.message) }
-            is PipelineEvent.StreamStopped -> put("reason", event.reason)
-            is PipelineEvent.UdpBound -> put("port", event.port)
-            is PipelineEvent.UdpFirstPacketReceived -> put("delayMs", event.delayMs)
-            is PipelineEvent.UdpStalled -> put("gapMs", event.gapMs)
-            is PipelineEvent.DecoderStarting -> { put("width", event.width); put("height", event.height) }
-            is PipelineEvent.SurfaceCreated -> put("panelIndex", event.panelIndex)
-            is PipelineEvent.SurfaceDestroyed -> {
-                put("panelIndex", event.panelIndex); put("reasonHint", event.reasonHint)
-            }
-            is PipelineEvent.FramesPresenting -> put("fps", event.fps)
-            else -> {} // objects + types without extra payload
-        }
-    }
-
-    private const val TAG = "Pipeline"
-}
-```
-
-- [x] **Step 3: Build + smoke test**
-
-Run: `./gradlew :app:assemblePortableDebug` — expect SUCCESS.
-
-- [x] **Step 4: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/
-git commit -m "feat(viewer): Diagnostics façade with ThreadLocal payload bridge"
-```
-
-### Task 14: `InAppBufferTree`
-
-**Files:**
-- Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTree.kt`
-- Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTreeTest.kt`
-
-- [x] **Step 1: Write the failing test**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
-import timber.log.Timber
-
-class InAppBufferTreeTest {
-
-    @Test
-    fun `report emits one LogEvent on the SharedFlow`() = runBlocking {
-        val tree = InAppBufferTree(replay = 16)
-        Timber.plant(tree)
-        try {
-            Diagnostics.report(PipelineEvent.DiscoveryTimedOut)
-            val received = tree.events.first()
-            assertEquals("DiscoveryTimedOut", received.eventType)
-            assertEquals(Severity.WARNING, received.severity)
-        } finally {
-            Timber.uproot(tree)
-        }
-    }
-}
-```
-
-- [x] **Step 2: Run, verify FAIL**
-
-Run: `./gradlew :app:testPortableDebugUnitTest --tests "*InAppBufferTreeTest*"`
-Expected: FAIL — `InAppBufferTree` missing.
-
-- [x] **Step 3: Write `InAppBufferTree.kt`**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import timber.log.Timber
-import java.time.Instant
-
-class InAppBufferTree(replay: Int = 200) : Timber.Tree() {
-
-    private val _events = MutableSharedFlow<LogEvent>(replay = replay, extraBufferCapacity = 64)
-    val events: SharedFlow<LogEvent> = _events.asSharedFlow()
-
-    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-        val event = Diagnostics.currentEvent.get()
-        val payload = Diagnostics.currentPayload.get()
-        val severity = when {
-            priority >= android.util.Log.ERROR -> Severity.ERROR
-            priority >= android.util.Log.WARN -> Severity.WARNING
-            else -> Severity.INFO
-        }
-        val logEvent = LogEvent(
-            timestamp = Instant.now(),
-            severity = severity,
-            eventType = (payload["eventType"] as? String) ?: "Log",
-            streamId = payload["streamId"] as? Int,
-            message = message,
-            payload = payload,
-            throwable = t,
-        )
-        _events.tryEmit(logEvent)
-    }
-}
-```
-
-- [x] **Step 4: Run, verify PASS**
-
-Run: `./gradlew :app:testPortableDebugUnitTest --tests "*InAppBufferTreeTest*"`
-Expected: PASS.
-
-- [x] **Step 5: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTree.kt \
-        viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/InAppBufferTreeTest.kt
-git commit -m "feat(viewer): InAppBufferTree exposing SharedFlow of LogEvent"
-```
-
-### Task 15: `FileLoggingTree`
-
-**Files:**
-- Create: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTree.kt`
-- Create: `viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTreeTest.kt`
-
-- [x] **Step 1: Write the failing test (Robolectric-free, uses a temp dir directly)**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import timber.log.Timber
-import java.io.File
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
-
-class FileLoggingTreeTest {
-
-    @Test
-    fun `report writes one JSONL line to dated file`(@TempDir tempDir: File) {
-        val clock = Clock.fixed(Instant.parse("2026-05-17T12:34:56Z"), ZoneOffset.UTC)
-        val tree = FileLoggingTree(directory = tempDir, retentionDays = 7, clock = clock)
-        Timber.plant(tree)
-        try {
-            Diagnostics.report(PipelineEvent.UdpBound(port = 53235))
-            tree.flush()
-            val expected = File(tempDir, "viewer-2026-05-17.jsonl")
-            assertTrue(expected.exists())
-            val lines = expected.readLines()
-            assertEquals(1, lines.size)
-            assertTrue(lines[0].contains("\"eventType\":\"UdpBound\""))
-        } finally {
-            Timber.uproot(tree)
-            tree.close()
-        }
-    }
-
-    @Test
-    fun `rotation deletes files older than retentionDays`(@TempDir tempDir: File) {
-        // create stale files
-        File(tempDir, "viewer-2026-05-09.jsonl").writeText("old\n")
-        File(tempDir, "viewer-2026-05-10.jsonl").writeText("old\n")
-        val clock = Clock.fixed(Instant.parse("2026-05-17T00:00:00Z"), ZoneOffset.UTC)
-        val tree = FileLoggingTree(directory = tempDir, retentionDays = 7, clock = clock)
-        Timber.plant(tree)
-        try {
-            Diagnostics.report(PipelineEvent.UdpBound(port = 1))
-            tree.flush()
-            assertTrue(!File(tempDir, "viewer-2026-05-09.jsonl").exists())
-            assertTrue(File(tempDir, "viewer-2026-05-10.jsonl").exists()) // exactly retentionDays old, kept
-        } finally {
-            Timber.uproot(tree)
-            tree.close()
-        }
-    }
-}
-```
-
-- [x] **Step 2: Run, verify FAIL**
-
-Run: `./gradlew :app:testPortableDebugUnitTest --tests "*FileLoggingTreeTest*"`
-Expected: FAIL — `FileLoggingTree` missing.
-
-- [x] **Step 3: Write `FileLoggingTree.kt`**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.observability
-
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import timber.log.Timber
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
-import java.time.Clock
-import java.time.Duration
-import java.time.LocalDate
-import java.time.ZoneId
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-
-class FileLoggingTree(
-    private val directory: File,
-    private val retentionDays: Int = 7,
-    private val clock: Clock = Clock.systemUTC(),
-) : Timber.Tree(), AutoCloseable {
-
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "WindowStream-Log-Writer").apply { isDaemon = true }
-    }
-    private var currentDate: LocalDate? = null
-    private var writer: BufferedWriter? = null
-
-    init {
-        directory.mkdirs()
-    }
-
-    override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
-        val payload = Diagnostics.currentPayload.get()
-        val severity = when {
-            priority >= android.util.Log.ERROR -> "ERROR"
-            priority >= android.util.Log.WARN -> "WARN"
-            else -> "INFO"
-        }
-        val nowInstant = clock.instant()
-        val nowDate = nowInstant.atZone(ZoneId.from(ZoneOffsetUtc)).toLocalDate()
-
-        val record = buildJsonObject {
-            put("ts", nowInstant.toString())
-            put("level", severity)
-            put("eventType", (payload["eventType"] as? String) ?: "Log")
-            payload["streamId"]?.let { put("streamId", it.toString()) }
-            put("msg", message)
-            t?.let { put("exception", it.stackTraceToString()) }
-            for ((key, value) in payload) {
-                if (key == "eventType" || key == "streamId") continue
-                put(key, value?.toString() ?: "")
-            }
-        }
-        val line = Json.encodeToString(JsonElement.serializer(), record)
-
-        executor.execute {
-            try {
-                rotateIfNeeded(nowDate)
-                writer?.appendLine(line)
-            } catch (failure: Throwable) {
-                android.util.Log.e("FileLoggingTree", "write failed", failure)
-            }
-        }
-    }
-
-    fun flush() {
-        executor.submit { writer?.flush() }.get()
-    }
-
-    private fun rotateIfNeeded(today: LocalDate) {
-        if (currentDate == today && writer != null) return
-        writer?.close()
-        currentDate = today
-        val file = File(directory, "viewer-$today.jsonl")
-        writer = BufferedWriter(FileWriter(file, /* append = */ true))
-        purgeOldFiles(today)
-    }
-
-    private fun purgeOldFiles(today: LocalDate) {
-        val cutoff = today.minusDays(retentionDays.toLong())
-        directory.listFiles { _, name -> name.matches(Regex("""viewer-\d{4}-\d{2}-\d{2}\.jsonl""")) }
-            ?.forEach { file ->
-                val dateText = file.nameWithoutExtension.removePrefix("viewer-")
-                val fileDate = runCatching { LocalDate.parse(dateText) }.getOrNull() ?: return@forEach
-                if (fileDate.isBefore(cutoff)) file.delete()
-            }
-    }
-
-    override fun close() {
-        executor.submit { writer?.close() }.get()
-        executor.shutdown()
-    }
-
-    private val ZoneOffsetUtc get() = java.time.ZoneOffset.UTC
-}
-```
-
-- [x] **Step 4: Run, verify PASS**
-
-Run: `./gradlew :app:testPortableDebugUnitTest --tests "*FileLoggingTreeTest*"`
-Expected: PASS 2/2. If serialization complains about generic `Any?` in `put(...)`, switch the loop to `put(key, JsonPrimitive(value?.toString()))`.
-
-- [x] **Step 5: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTree.kt \
-        viewer/WindowStreamViewer/app/src/test/kotlin/com/mtschoen/windowstream/viewer/observability/FileLoggingTreeTest.kt
-git commit -m "feat(viewer): FileLoggingTree with daily rotation and retention"
-```
-
-### Task 16: Plant trees in `WindowStreamViewerApplication`
-
-**Files:**
-- Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/WindowStreamViewerApplication.kt`
-
-- [x] **Step 1: Read current Application class**
-
-Use Read tool on the file path above.
-
-- [x] **Step 2: Update `onCreate` to plant trees**
-
-```kotlin
-package com.mtschoen.windowstream.viewer.app
-
-import android.app.Application
-import com.mtschoen.windowstream.viewer.observability.FileLoggingTree
-import com.mtschoen.windowstream.viewer.observability.InAppBufferTree
-import timber.log.Timber
-import java.io.File
-
-class WindowStreamViewerApplication : Application() {
-
-    lateinit var inAppBufferTree: InAppBufferTree
-        private set
-
-    override fun onCreate() {
-        super.onCreate()
-        if (Timber.treeCount == 0) {
-            Timber.plant(Timber.DebugTree())
-            val logsDirectory = File(getExternalFilesDir(null), "logs")
-            Timber.plant(FileLoggingTree(directory = logsDirectory))
-            inAppBufferTree = InAppBufferTree(replay = 200)
-            Timber.plant(inAppBufferTree)
-        }
-    }
-}
-```
-
-- [x] **Step 3: Build + install**
-
-Run: `./gradlew :app:assemblePortableDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk`
-Expected: BUILD SUCCESSFUL; install succeeds. Launch viewer, run `adb logcat | grep Pipeline` — should be empty until pipeline events are emitted.
-
-- [x] **Step 4: Commit**
-
-```bash
-git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/WindowStreamViewerApplication.kt
-git commit -m "feat(viewer): plant FileLoggingTree + InAppBufferTree in Application"
-```
-
----
-
 ## Phase 5: Viewer instrumentation (call sites → Diagnostics)
 
 ### Task 17: Refactor `UnifiedStreamingActivity` to emit `PipelineEvent`s
@@ -666,7 +21,7 @@ git commit -m "feat(viewer): plant FileLoggingTree + InAppBufferTree in Applicat
 
 Replace existing `Log.i(TAG, …)` / `Log.e(TAG, …)` calls that mark pipeline stages with `Diagnostics.report(...)`. Keep `Log.i` / `Log.e` for purely free-form info (tab UI, soft keyboard) — those don't need typed events.
 
-- [ ] **Step 1: Replace discovery + connect events**
+- [x] **Step 1: Replace discovery + connect events**
 
 In `discoverAndConnect()`, replace:
 ```kotlin
@@ -696,7 +51,7 @@ with:
 Diagnostics.report(PipelineEvent.TcpConnectFailed(host = host, port = port, cause = throwable))
 ```
 
-- [ ] **Step 2: Replace ServerHello + open + lifecycle**
+- [x] **Step 2: Replace ServerHello + open + lifecycle**
 
 In `connectToServer`, around `client.connect(...)`:
 ```kotlin
@@ -726,7 +81,7 @@ For the `StreamLifecycleEvent` collector branches:
 
 Keep the existing `runOnUiThread { statusLabel.text = ... }` UI updates.
 
-- [ ] **Step 3: Surface lifecycle**
+- [x] **Step 3: Surface lifecycle**
 
 In `createSurfaceCallback`:
 - `surfaceCreated`: `Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex))`
@@ -741,7 +96,7 @@ And in `onDestroy` where the lock is released:
 Diagnostics.report(PipelineEvent.WifiLockReleased)
 ```
 
-- [ ] **Step 4: UDP arrival tracking**
+- [x] **Step 4: UDP arrival tracking**
 
 In `startDecoderLocked`, after `udpReceiver.start(pipelineScope)`, but before kicking the decoder, attach a `Flow` operator that emits `UdpFirstPacketReceived` on first packet:
 ```kotlin
@@ -767,12 +122,12 @@ Diagnostics.report(PipelineEvent.DecoderStarted(streamId))
 
 Wrap `decoder.start(...)` in a `try` that catches and emits `DecoderFailed`.
 
-- [ ] **Step 5: Build + smoke install**
+- [x] **Step 5: Build + smoke install** *(build verified via koverVerify; device install deferred to next HMD session)*
 
 Run: `./gradlew :app:assemblePortableDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk`
 Expected: BUILD SUCCESSFUL. Launch viewer; run `adb logcat -s Pipeline:V` and exercise: open viewer → expect `DiscoveryStarted` then `DiscoveryResultReceived` or `DiscoveryTimedOut`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit** *(commit `7fdb757`)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt
@@ -785,7 +140,7 @@ git commit -m "refactor(viewer): emit PipelineEvents from UnifiedStreamingActivi
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt`
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt`
 
-- [ ] **Step 1: `XrDemoActivity` — apply same patterns as Task 17**
+- [x] **Step 1: `XrDemoActivity` — apply same patterns as Task 17**
 
 For each existing `Log.i(TAG, "...")` that maps to a pipeline stage:
 - "starting XR compositor path" → unchanged (free-form)
@@ -798,7 +153,7 @@ For each existing `Log.i(TAG, "...")` that maps to a pipeline stage:
 - "UDP bound on port ${udpReceiver.boundPort}" → `UdpBound(udpReceiver.boundPort)`
 - "decoder started, rendering through XR compositor" → `DecoderStarted(stream.streamId)` (after a `DecoderStarting`)
 
-- [ ] **Step 2: `MainActivity` (GXR picker)**
+- [x] **Step 2: `MainActivity` (GXR picker)**
 
 Read the file in full first (`viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/MainActivity.kt`). Locate:
 1. The mDNS discovery start — wrap with `Diagnostics.report(PipelineEvent.DiscoveryStarted)` immediately before, and `Diagnostics.report(PipelineEvent.DiscoveryResultReceived(...))` on each server result.
@@ -809,12 +164,12 @@ If `MainActivity` already delegates discovery to `NetworkServiceDiscoveryClient`
 
 Do NOT commit without showing concrete diffs of all three insertion points.
 
-- [ ] **Step 3: Build all flavors**
+- [x] **Step 3: Build all flavors**
 
 Run: `./gradlew :app:assembleDebug`
 Expected: BUILD SUCCESSFUL for both `portable` and `gxr`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** *(commit `722941a`)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt \
@@ -828,7 +183,7 @@ git commit -m "refactor(viewer): emit PipelineEvents from XrDemoActivity + GXR M
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt`
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/control/MultiStreamControlClient.kt`
 
-- [ ] **Step 1: `MediaCodecDecoder` — wrap `start` and error paths**
+- [x] **Step 1: `MediaCodecDecoder` — wrap `start` and error paths**
 
 Where the decoder configures and starts, wrap any error path with:
 ```kotlin
@@ -836,18 +191,18 @@ Diagnostics.report(PipelineEvent.DecoderFailed(streamId = /* threaded in or defa
 ```
 Note: `MediaCodecDecoder` currently doesn't take a stream id. Add a `streamId: Int` constructor parameter and thread it through from `UnifiedStreamingActivity.startDecoderLocked` and `XrDemoActivity`'s decoder creation. Update both callsites.
 
-- [ ] **Step 2: `MultiStreamControlClient` — wrap connect failures**
+- [x] **Step 2: `MultiStreamControlClient` — wrap connect failures** *(StreamRefused framing-failure sub-step skipped — no separate framing-failure path exists in parser; JSON decode failures propagate via outer catch + TRANSPORT_FAILURE)*
 
 When `connect()` throws, emit `TcpConnectFailed`. When `StreamLifecycleEvent.Refused` is parsed, emit `StreamRefused` from inside the parser too — currently the activity catches it but instrumentation inside the client provides defense-in-depth.
 
 Note: avoid double-emitting. Prefer single emission site per event; the activity-level `Refused` emit in Task 17 is canonical, so for the client, only emit if the connection-level error is distinct (e.g., framing parse failure).
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build** *(replaced with koverVerify both flavors; 272 + 273 tests green)*
 
 Run: `./gradlew :app:assembleDebug`
 Expected: SUCCESS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** *(commit `f3aa688`; included MultiStreamControlClientTest expansion for TcpConnectFailed coverage; no Kover exclusions added)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/decoder/MediaCodecDecoder.kt \
@@ -861,7 +216,7 @@ git commit -m "refactor(viewer): instrument decoder + control client"
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/UnifiedStreamingActivity.kt`
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/XrDemoActivity.kt`
 
-- [ ] **Step 1: Watchdog implementation**
+- [x] **Step 1: Watchdog implementation**
 
 Inside `startDecoderLocked` after instrumenting first-packet detection (Task 17 Step 4), launch a watchdog:
 ```kotlin
@@ -891,16 +246,16 @@ pipelineScope.launch {
 }
 ```
 
-- [ ] **Step 2: Apply same pattern in `XrDemoActivity`**
+- [x] **Step 2: Apply same pattern in `XrDemoActivity`** *(introduced `openInstantNanos` + `instrumentedFrames` fresh; watchdog launched on `lifecycleScope` matching `udpReceiver.start` scope)*
 
 Replicate near where `udpReceiver.start(...)` is invoked in `XrDemoActivity`.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build** *(replaced with koverVerify both flavors; BUILD SUCCESSFUL in 24s)*
 
 Run: `./gradlew :app:assembleDebug`
 Expected: SUCCESS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** *(commit `84202b8`)*
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/demo/
