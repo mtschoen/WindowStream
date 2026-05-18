@@ -130,7 +130,15 @@ public sealed class WgcCapture : IWindowCapture
     /// </summary>
     private unsafe void EnsureNv12RingAndConverter(int width, int height)
     {
-        if (colorConverter is not null && ringWidth == width && ringHeight == height)
+        // NV12 requires both texture dimensions to be even (chroma plane is
+        // height/2 rows × width bytes; D3D11 CreateTexture2D rejects odd
+        // dimensions with E_INVALIDARG). WGC frame dimensions track the
+        // captured window's client area in physical pixels, which can be odd
+        // at non-integer DPI scales (e.g. 175% on a 600×500 window → 1050×875).
+        int evenWidth = RoundUpToEven(width);
+        int evenHeight = RoundUpToEven(height);
+
+        if (colorConverter is not null && ringWidth == evenWidth && ringHeight == evenHeight)
         {
             return;
         }
@@ -142,8 +150,8 @@ public sealed class WgcCapture : IWindowCapture
 
         Texture2DDesc description = new Texture2DDesc
         {
-            Width = (uint)width,
-            Height = (uint)height,
+            Width = (uint)evenWidth,
+            Height = (uint)evenHeight,
             MipLevels = 1,
             ArraySize = 1,
             Format = SilkDxgi.Format.FormatNV12,
@@ -176,11 +184,13 @@ public sealed class WgcCapture : IWindowCapture
             nativeNv12TexturePointers[slotIndex] = (nint)texture;
         }
 
-        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, width, height);
-        ringWidth = width;
-        ringHeight = height;
+        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, evenWidth, evenHeight);
+        ringWidth = evenWidth;
+        ringHeight = evenHeight;
         nextRingSlot = 0;
     }
+
+    private static int RoundUpToEven(int value) => (value + 1) & ~1;
 
     /// <summary>
     /// Disposes the NV12 ring textures and the colour converter, resetting ring state.
@@ -211,15 +221,21 @@ public sealed class WgcCapture : IWindowCapture
     /// </summary>
     private void EnsureColorConverter(int width, int height)
     {
-        if (colorConverter is not null && ringWidth == width && ringHeight == height)
+        // Round to even to mirror EnsureNv12RingAndConverter — the M4 path's
+        // pool textures are encoder-sized (already even in practice), but the
+        // converter's content desc should match the texture exactly.
+        int evenWidth = RoundUpToEven(width);
+        int evenHeight = RoundUpToEven(height);
+
+        if (colorConverter is not null && ringWidth == evenWidth && ringHeight == evenHeight)
         {
             return;
         }
 
         try { colorConverter?.Dispose(); } catch { }
-        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, width, height);
-        ringWidth = width;
-        ringHeight = height;
+        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, evenWidth, evenHeight);
+        ringWidth = evenWidth;
+        ringHeight = evenHeight;
     }
 
     /// <summary>
