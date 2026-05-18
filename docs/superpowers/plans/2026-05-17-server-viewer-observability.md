@@ -610,11 +610,11 @@ git commit -m "feat(viewer): FileLoggingTree with daily rotation and retention"
 **Files:**
 - Modify: `viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/WindowStreamViewerApplication.kt`
 
-- [ ] **Step 1: Read current Application class**
+- [x] **Step 1: Read current Application class**
 
 Use Read tool on the file path above.
 
-- [ ] **Step 2: Update `onCreate` to plant trees**
+- [x] **Step 2: Update `onCreate` to plant trees**
 
 ```kotlin
 package com.mtschoen.windowstream.viewer.app
@@ -643,12 +643,12 @@ class WindowStreamViewerApplication : Application() {
 }
 ```
 
-- [ ] **Step 3: Build + install**
+- [x] **Step 3: Build + install**
 
 Run: `./gradlew :app:assemblePortableDebug && adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk`
 Expected: BUILD SUCCESSFUL; install succeeds. Launch viewer, run `adb logcat | grep Pipeline` — should be empty until pipeline events are emitted.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add viewer/WindowStreamViewer/app/src/main/kotlin/com/mtschoen/windowstream/viewer/app/WindowStreamViewerApplication.kt
