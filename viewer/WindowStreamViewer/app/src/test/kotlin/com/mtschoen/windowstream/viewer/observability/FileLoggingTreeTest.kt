@@ -165,6 +165,28 @@ class FileLoggingTreeTest {
     }
 
     @Test
+    fun `event is durable on disk without an explicit flush or close call`(@TempDir tempDir: File) {
+        // Regression for the on-device bug where Application planted the tree but never called
+        // close/flush, so BufferedWriter's 8 KB internal buffer held writes in memory until the
+        // process died. Production code must persist each event without external help.
+        val tree = FileLoggingTree(directory = tempDir, retentionDays = 7, clock = clockAt("2026-05-17T00:00:00Z"))
+        try {
+            Timber.plant(tree)
+            Diagnostics.report(PipelineEvent.UdpBound(port = 1))
+            val file = File(tempDir, "viewer-2026-05-17.jsonl")
+            val deadline = System.currentTimeMillis() + 2_000
+            while (System.currentTimeMillis() < deadline && (!file.exists() || file.length() == 0L)) {
+                Thread.sleep(20)
+            }
+            assertTrue(file.exists(), "Expected log file to be created")
+            assertTrue(file.length() > 0L, "Expected per-line flush to make the event visible without explicit flush()")
+        } finally {
+            Timber.uproot(tree)
+            tree.close()
+        }
+    }
+
+    @Test
     fun `purgeOldFiles tolerates missing directory`(@TempDir tempDir: File) {
         val sub = File(tempDir, "sub")
         val tree = FileLoggingTree(directory = sub, retentionDays = 7, clock = clockAt("2026-05-17T00:00:00Z"))

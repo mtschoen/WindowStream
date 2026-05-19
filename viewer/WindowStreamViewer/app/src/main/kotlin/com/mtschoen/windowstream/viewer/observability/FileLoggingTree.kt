@@ -61,6 +61,11 @@ class FileLoggingTree(
             try {
                 rotateIfNeeded(nowDate)
                 writer.appendLine(line)
+                // Per-line flush: pipeline events are low-rate (human-ui scale) and process death
+                // shouldn't lose the very logs we'd want for postmortem. The 8 KB BufferedWriter
+                // default would otherwise hold writes in memory until close, which never gets
+                // called on Android lifecycle teardown.
+                writer.flush()
             } catch (failure: Throwable) {
                 System.err.println("FileLoggingTree: write failed: ${failure.message}")
                 failure.printStackTrace(System.err)
