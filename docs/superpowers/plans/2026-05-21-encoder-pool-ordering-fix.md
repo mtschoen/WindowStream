@@ -506,7 +506,7 @@ This is the regression test for the original multi-worker contention symptom in 
 **Files:**
 - Modify: `tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs`
 
-- [ ] **Step 1: Add the regression test**
+- [x] **Step 1: Add the regression test**
 
 Append to the same test class:
 
@@ -594,7 +594,7 @@ private static async Task RunEncoderForFrames(
 }
 ```
 
-- [ ] **Step 2: Run the regression test**
+- [x] **Step 2: Run the regression test**
 
 Run:
 ```
@@ -605,7 +605,7 @@ Expected: PASS within ~30-40 seconds.
 
 If it fails with an `EncoderException`, the dictionary fix is incomplete — re-investigate which code path is still tripping the contract. Do not paper over the failure.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs

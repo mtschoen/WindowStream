@@ -137,6 +137,88 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
         }
     }
 
+    /// <summary>
+    /// Regression test for Gitea #6. Spawns three concurrent FFmpegNvencEncoder
+    /// instances pumping synthetic captured frames in parallel on the same GPU,
+    /// each encoding for ~30s at 30fps (~900 frames per encoder). Pre-fix this
+    /// would surface the FIFO assertion within ~10s on multi-worker contention.
+    /// Post-fix all three must survive without EncoderException.
+    /// </summary>
+    [NvidiaDriverFact]
+    [Trait("Category", "Integration")]
+    [Trait("Category", "LongRunning")]
+    public async Task ThreeConcurrentEncoders_SurviveThirtySeconds()
+    {
+        const int DurationSeconds = 30;
+        const int FramesPerSecond = 30;
+        const int TotalFrames = DurationSeconds * FramesPerSecond;
+
+        using CancellationTokenSource overallTimeout =
+            new CancellationTokenSource(System.TimeSpan.FromSeconds(DurationSeconds + 10));
+
+        Task[] encoderTasks = new Task[3];
+        for (int encoderIndex = 0; encoderIndex < 3; encoderIndex++)
+        {
+            int capturedEncoderIndex = encoderIndex;
+            encoderTasks[encoderIndex] = Task.Run(
+                () => RunEncoderForFrames(TotalFrames, FramesPerSecond, capturedEncoderIndex, overallTimeout.Token),
+                overallTimeout.Token);
+        }
+
+        await Task.WhenAll(encoderTasks).ConfigureAwait(false);
+    }
+
+    private static async Task RunEncoderForFrames(
+        int totalFrames,
+        int framesPerSecond,
+        int encoderIndex,
+        CancellationToken cancellationToken)
+    {
+        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        encoder.Configure(
+            new EncoderOptions(
+                widthPixels: WidthPixels,
+                heightPixels: HeightPixels,
+                framesPerSecond: framesPerSecond,
+                bitrateBitsPerSecond: 4_000_000,
+                groupOfPicturesLength: 30,
+                safetyKeyframeIntervalSeconds: 2),
+            deviceManager);
+
+        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+            deviceManager, WidthPixels, HeightPixels);
+        try
+        {
+            long frameDurationMicroseconds = 1_000_000L / framesPerSecond;
+            encoder.RequestKeyframe();
+            for (int frameIndex = 0; frameIndex < totalFrames; frameIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                encoder.AcquireFrameTexture(out nint poolTexturePointer, out int poolSubresourceIndex);
+                CopyPatternInto(deviceManager, patternTexturePointer, poolTexturePointer, poolSubresourceIndex);
+                CapturedFrame textureFrame = CapturedFrame.FromTexture(
+                    widthPixels: WidthPixels,
+                    heightPixels: HeightPixels,
+                    rowStrideBytes: WidthPixels,
+                    pixelFormat: PixelFormat.Nv12,
+                    presentationTimestampMicroseconds: frameIndex * frameDurationMicroseconds,
+                    nativeTexturePointer: poolTexturePointer,
+                    textureArrayIndex: poolSubresourceIndex);
+                await encoder.EncodeAsync(textureFrame, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            unsafe
+            {
+                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                patternTexture->Release();
+            }
+        }
+    }
+
     private static void CopyPatternInto(
         Direct3D11DeviceManager deviceManager,
         nint patternTexturePointer,
