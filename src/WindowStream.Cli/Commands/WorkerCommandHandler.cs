@@ -92,7 +92,16 @@ public sealed class WorkerCommandHandler
                 {
                     bool currentlyPaused;
                     lock (pauseLock) currentlyPaused = paused;
-                    if (currentlyPaused) continue;
+                    if (currentlyPaused)
+                    {
+                        // Return the acquired pool frame so the encoder doesn't leak
+                        // its AVFrame across the pause window. Without this the
+                        // pool slot stays held until the worker exits and a
+                        // subsequent resume's EncodeAsync would fail to find a
+                        // matching dictionary entry (Gitea #6).
+                        encoder.ReleaseFrameTexture(captured.nativeTexturePointer, captured.textureArrayIndex);
+                        continue;
+                    }
                     await encoder.EncodeAsync(captured, lifecycle.Token).ConfigureAwait(false);
                 }
             }

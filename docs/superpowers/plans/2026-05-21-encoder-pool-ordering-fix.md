@@ -451,7 +451,7 @@ git commit -m "test(encode): verify ReleaseFrameTexture returns slot to pool (T4
 **Files:**
 - Modify: `src/WindowStream.Cli/Commands/WorkerCommandHandler.cs:91-97`
 
-- [ ] **Step 1: Update the encode loop**
+- [x] **Step 1: Update the encode loop**
 
 Modify `src/WindowStream.Cli/Commands/WorkerCommandHandler.cs:91-97`. Replace the existing `await foreach` body:
 
@@ -474,12 +474,12 @@ Modify `src/WindowStream.Cli/Commands/WorkerCommandHandler.cs:91-97`. Replace th
                 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 3: Run the full Core + Integration suite to verify no regression**
+- [x] **Step 3: Run the full Core + Integration suite to verify no regression**
 
 Run:
 ```
@@ -488,7 +488,7 @@ dotnet test
 
 Expected: all existing tests pass, plus the two new `FFmpegNvencEncoderPoolOrderingTests`. 100% line + branch coverage gate satisfied.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/WindowStream.Cli/Commands/WorkerCommandHandler.cs
