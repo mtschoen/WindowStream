@@ -20,7 +20,7 @@
 - Modify: `src/WindowStream.Core/Encode/IFrameTexturePool.cs`
 - Modify: `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs` (add stub)
 
-- [ ] **Step 1: Add the interface method**
+- [x] **Step 1: Add the interface method**
 
 Modify `src/WindowStream.Core/Encode/IFrameTexturePool.cs` — append a `ReleaseFrameTexture` method after the existing `AcquireFrameTexture`:
 
@@ -69,7 +69,7 @@ public interface IFrameTexturePool
 }
 ```
 
-- [ ] **Step 2: Add a NotImplementedException stub on `FFmpegNvencEncoder`**
+- [x] **Step 2: Add a NotImplementedException stub on `FFmpegNvencEncoder`**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs`. Add this method right after `AcquireFrameTexture` (after line 263):
 
@@ -81,12 +81,12 @@ public void ReleaseFrameTexture(nint texturePointer, int textureSubresourceIndex
 }
 ```
 
-- [ ] **Step 3: Build to verify no compile errors**
+- [x] **Step 3: Build to verify no compile errors**
 
 Run: `dotnet build`
 Expected: BUILD SUCCEEDED, 0 errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/WindowStream.Core/Encode/IFrameTexturePool.cs src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs

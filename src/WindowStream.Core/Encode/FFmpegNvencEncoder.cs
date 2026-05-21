@@ -262,6 +262,13 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         pendingPoolFramePointers.Enqueue((nint)frame);
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Stub pending Task 3; native FFmpeg path exercised by Phase 12 integration tests.")]
+    public void ReleaseFrameTexture(nint texturePointer, int textureSubresourceIndex)
+    {
+        throw new NotImplementedException(
+            "ReleaseFrameTexture is not yet implemented; tracked in Gitea #6.");
+    }
+
     public void RequestKeyframe()
     {
         if (options is null) throw new InvalidOperationException("Configure must be called first.");
