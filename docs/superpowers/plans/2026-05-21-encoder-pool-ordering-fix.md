@@ -365,7 +365,7 @@ git commit -m "fix(encode): replace FIFO queue with texture-keyed dictionary (T3
 **Files:**
 - Modify: `tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs`
 
-- [ ] **Step 1: Add the test method**
+- [x] **Step 1: Add the test method**
 
 Append this test to `FFmpegNvencEncoderPoolOrderingTests` after `OutOfOrderEncode_Succeeds`:
 
@@ -426,7 +426,7 @@ public async Task AcquireReleaseAcquireEncode_Succeeds()
 }
 ```
 
-- [ ] **Step 2: Run test, verify it passes**
+- [x] **Step 2: Run test, verify it passes**
 
 Run:
 ```
@@ -435,7 +435,7 @@ dotnet test tests/WindowStream.Integration.Tests/WindowStream.Integration.Tests.
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs

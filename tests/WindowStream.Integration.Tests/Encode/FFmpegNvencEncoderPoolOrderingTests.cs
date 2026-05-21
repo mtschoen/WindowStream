@@ -82,6 +82,61 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
         }
     }
 
+    /// <summary>
+    /// Acquires a pool frame, releases it without encoding (simulating the
+    /// worker pause-skip path), acquires another, and encodes successfully.
+    /// Verifies that ReleaseFrameTexture returns the AVFrame to the pool
+    /// cleanly and the subsequent EncodeAsync finds its own matching frame.
+    /// </summary>
+    [NvidiaDriverFact]
+    [Trait("Category", "Integration")]
+    public async Task AcquireReleaseAcquireEncode_Succeeds()
+    {
+        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        encoder.Configure(
+            new EncoderOptions(
+                widthPixels: WidthPixels,
+                heightPixels: HeightPixels,
+                framesPerSecond: 30,
+                bitrateBitsPerSecond: 4_000_000,
+                groupOfPicturesLength: 30,
+                safetyKeyframeIntervalSeconds: 2),
+            deviceManager);
+
+        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+            deviceManager, WidthPixels, HeightPixels);
+        try
+        {
+            // Acquire frame A and immediately release it (simulating pause-skip).
+            encoder.AcquireFrameTexture(out nint texturePointerA, out int subresourceIndexA);
+            encoder.ReleaseFrameTexture(texturePointerA, subresourceIndexA);
+
+            // Acquire frame B and encode normally.
+            encoder.AcquireFrameTexture(out nint texturePointerB, out int subresourceIndexB);
+            CopyPatternInto(deviceManager, patternTexturePointer, texturePointerB, subresourceIndexB);
+            CapturedFrame frameB = CapturedFrame.FromTexture(
+                widthPixels: WidthPixels,
+                heightPixels: HeightPixels,
+                rowStrideBytes: WidthPixels,
+                pixelFormat: PixelFormat.Nv12,
+                presentationTimestampMicroseconds: 0,
+                nativeTexturePointer: texturePointerB,
+                textureArrayIndex: subresourceIndexB);
+
+            encoder.RequestKeyframe();
+            await encoder.EncodeAsync(frameB, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            unsafe
+            {
+                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                patternTexture->Release();
+            }
+        }
+    }
+
     private static void CopyPatternInto(
         Direct3D11DeviceManager deviceManager,
         nint patternTexturePointer,
