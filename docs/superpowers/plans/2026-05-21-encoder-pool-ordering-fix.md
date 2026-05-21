@@ -100,7 +100,7 @@ Demonstrates the FIFO bug. Run on current code: trips the `EncoderException("Poo
 **Files:**
 - Create: `tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs`:
 
@@ -212,7 +212,7 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
 #endif
 ```
 
-- [ ] **Step 2: Run test and verify it fails with the FIFO assertion**
+- [x] **Step 2: Run test and verify it fails with the FIFO assertion**
 
 Run:
 ```
@@ -221,7 +221,7 @@ dotnet test tests/WindowStream.Integration.Tests/WindowStream.Integration.Tests.
 
 Expected: FAIL with `EncoderException: EncodeAsync received a CapturedFrame whose texture pointer + array index do not match the next queued pool frame. Pool / encode ordering is broken.` originating at `FFmpegNvencEncoder.cs:305`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/WindowStream.Integration.Tests/Encode/FFmpegNvencEncoderPoolOrderingTests.cs
