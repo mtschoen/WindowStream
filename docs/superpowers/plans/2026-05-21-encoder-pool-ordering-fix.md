@@ -237,7 +237,7 @@ git commit -m "test(encode): failing out-of-order encode reproduction (T2, Gitea
 **Files:**
 - Modify: `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs`
 
-- [ ] **Step 1: Swap the field declaration**
+- [x] **Step 1: Swap the field declaration**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:34`:
 
@@ -252,7 +252,7 @@ With:
         new ConcurrentDictionary<(nint, int), nint>();
 ```
 
-- [ ] **Step 2: Update `AcquireFrameTexture` to insert by key**
+- [x] **Step 2: Update `AcquireFrameTexture` to insert by key**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:262`. Replace the existing `Enqueue` line with a `TryAdd` + defensive throw:
 
@@ -272,7 +272,7 @@ Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:262`. Replace the exi
         }
 ```
 
-- [ ] **Step 3: Update `EncodeOnThread` to look up by key**
+- [x] **Step 3: Update `EncodeOnThread` to look up by key**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:294-308`. Replace the `TryDequeue` block + the equality assert with a single dictionary `TryRemove`:
 
@@ -293,7 +293,7 @@ Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:294-308`. Replace the
 
 Note: the old equality assert is gone — the dictionary lookup makes it structurally impossible to mismatch.
 
-- [ ] **Step 4: Update `FreeNativeResources` to drain the dictionary**
+- [x] **Step 4: Update `FreeNativeResources` to drain the dictionary**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:390-395`. Replace the `while (TryDequeue)` block:
 
@@ -312,7 +312,7 @@ Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs:390-395`. Replace the
         pendingPoolFramesByKey.Clear();
 ```
 
-- [ ] **Step 5: Implement `ReleaseFrameTexture`**
+- [x] **Step 5: Implement `ReleaseFrameTexture`**
 
 Modify `src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs`. Replace the stub `ReleaseFrameTexture` (added in T1) with a real implementation. Mark `[ExcludeFromCodeCoverage]` to match the surrounding native paths:
 
@@ -339,12 +339,12 @@ public unsafe void ReleaseFrameTexture(nint texturePointer, int textureSubresour
 }
 ```
 
-- [ ] **Step 6: Verify build**
+- [x] **Step 6: Verify build**
 
 Run: `dotnet build`
 Expected: BUILD SUCCEEDED, 0 errors. `using System.Linq;` may be required at the top of the file if `.Values.ToArray()` doesn't already resolve — add it to the existing `using` block if so.
 
-- [ ] **Step 7: Run T2 test and verify it passes**
+- [x] **Step 7: Run T2 test and verify it passes**
 
 Run:
 ```
@@ -353,7 +353,7 @@ dotnet test tests/WindowStream.Integration.Tests/WindowStream.Integration.Tests.
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/WindowStream.Core/Encode/FFmpegNvencEncoder.cs

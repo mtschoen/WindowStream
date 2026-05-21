@@ -31,7 +31,8 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
     private nint hardwareFramesContextReference;     // AVBufferRef* for the AVHWFramesContext (NV12 pool)
     private Direct3D11DeviceManager? sharedDeviceManager;
     private bool ownsSharedDeviceManager;
-    private readonly ConcurrentQueue<nint> pendingPoolFramePointers = new ConcurrentQueue<nint>();
+    private readonly ConcurrentDictionary<(nint texturePointer, int subresourceIndex), nint> pendingPoolFramesByKey =
+        new ConcurrentDictionary<(nint texturePointer, int subresourceIndex), nint>();
 
     public IAsyncEnumerable<EncodedChunk> EncodedChunks { get; }
 
@@ -259,14 +260,36 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         texturePointer = (nint)frame->data[0];
         textureSubresourceIndex = (int)(long)frame->data[1];
 
-        pendingPoolFramePointers.Enqueue((nint)frame);
+        if (!pendingPoolFramesByKey.TryAdd((texturePointer, textureSubresourceIndex), (nint)frame))
+        {
+            ffmpeg.av_frame_free(&frame);
+            throw new EncoderException(
+                "Duplicate pool key: FFmpeg pool returned ("
+                + "texP=0x" + texturePointer.ToString("X")
+                + ", idx=" + textureSubresourceIndex
+                + ") while a prior acquisition is still in flight. "
+                + "Indicates FFmpeg pool corruption or a missing Release.");
+        }
     }
 
-    [ExcludeFromCodeCoverage(Justification = "Stub pending Task 3; native FFmpeg path exercised by Phase 12 integration tests.")]
-    public void ReleaseFrameTexture(nint texturePointer, int textureSubresourceIndex)
+    [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
+    public unsafe void ReleaseFrameTexture(nint texturePointer, int textureSubresourceIndex)
     {
-        throw new NotImplementedException(
-            "ReleaseFrameTexture is not yet implemented; tracked in Gitea #6.");
+        if (options is null)
+        {
+            throw new InvalidOperationException("Configure must be called before ReleaseFrameTexture.");
+        }
+        if (!pendingPoolFramesByKey.TryRemove((texturePointer, textureSubresourceIndex), out nint pendingFramePointer))
+        {
+            throw new EncoderException(
+                "No pool AVFrame matches released ("
+                + "texP=0x" + texturePointer.ToString("X")
+                + ", idx=" + textureSubresourceIndex
+                + ") — either release was called without a matching acquire, "
+                + "or the texture was already consumed by EncodeAsync.");
+        }
+        AVFrame* poolFrame = (AVFrame*)pendingFramePointer;
+        ffmpeg.av_frame_free(&poolFrame);
     }
 
     public void RequestKeyframe()
@@ -298,21 +321,17 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
                 + "Bytes-bearing frames are no longer supported.");
         }
 
-        if (!pendingPoolFramePointers.TryDequeue(out nint pendingFramePointer))
+        if (!pendingPoolFramesByKey.TryRemove((frame.nativeTexturePointer, frame.textureArrayIndex), out nint pendingFramePointer))
         {
             throw new EncoderException(
-                "EncodeAsync called without a matching AcquireFrameTexture — pool queue is empty.");
+                "No pool AVFrame matches captured ("
+                + "texP=0x" + frame.nativeTexturePointer.ToString("X")
+                + ", idx=" + frame.textureArrayIndex
+                + ") — caller violated the IFrameTexturePool contract "
+                + "(EncodeAsync or ReleaseFrameTexture must follow each AcquireFrameTexture exactly once).");
         }
 
         AVFrame* poolFrame = (AVFrame*)pendingFramePointer;
-        if ((nint)poolFrame->data[0] != frame.nativeTexturePointer
-            || (int)(long)poolFrame->data[1] != frame.textureArrayIndex)
-        {
-            ffmpeg.av_frame_free(&poolFrame);
-            throw new EncoderException(
-                "EncodeAsync received a CapturedFrame whose texture pointer + array index "
-                + "do not match the next queued pool frame. Pool / encode ordering is broken.");
-        }
 
         AVCodecContext* context = (AVCodecContext*)codecContextPointer;
         AVPacket* packet = (AVPacket*)reusablePacketPointer;
@@ -394,12 +413,17 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
     [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
     private unsafe void FreeNativeResources()
     {
-        // Drain any unconsumed pool frames first.
-        while (pendingPoolFramePointers.TryDequeue(out nint pendingFramePointer))
+        // Drain any unconsumed pool frames. Safe to iterate without copying:
+        // DisposeAsync sets `disposed = true` and completes the channel writer
+        // before reaching here, so no concurrent AcquireFrameTexture can be
+        // mutating the dictionary by this point. Clear() afterward removes the
+        // dangling nint entries so a hypothetical re-entry is a no-op.
+        foreach (var entry in pendingPoolFramesByKey)
         {
-            AVFrame* pendingFrame = (AVFrame*)pendingFramePointer;
+            AVFrame* pendingFrame = (AVFrame*)entry.Value;
             ffmpeg.av_frame_free(&pendingFrame);
         }
+        pendingPoolFramesByKey.Clear();
 
         if (reusablePacketPointer != 0)
         {
