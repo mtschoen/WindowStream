@@ -70,6 +70,12 @@ $ConfigFile = Join-Path $PSScriptRoot '.latency-test-config.json'
 function Fail($message) {
     Write-Host ""
     Write-Host "FAIL: $message" -ForegroundColor Red
+    # Reap stranded latency-clock browser instances so they don't accumulate
+    # across failed runs (Get-Command guards the early-init failure cases
+    # where Stop-LatencyClockBrowsers isn't yet defined).
+    if (Get-Command Stop-LatencyClockBrowsers -ErrorAction SilentlyContinue) {
+        try { Stop-LatencyClockBrowsers | Out-Null } catch { }
+    }
     exit 1
 }
 
@@ -212,29 +218,39 @@ function Stop-LatencyClockBrowsers {
     # latency-clock.html. Filtered by CommandLine, NEVER by title
     # (memory: feedback_never_kill_by_window_title). The user's other
     # browser tabs (latency-clock not in their CommandLine) are untouched.
+    # `taskkill /F /T` recurses into the process tree so renderer/helper
+    # children die with the parent -- `Stop-Process -Id` does not.
     $procs = Get-CimInstance Win32_Process |
         Where-Object {
             ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe') -and
             $_.CommandLine -and $_.CommandLine -match 'latency-clock\.html'
         }
     foreach ($p in $procs) {
-        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        & taskkill /F /T /PID $p.ProcessId *> $null
     }
     if ($procs) { Start-Sleep -Milliseconds 800 }
     return ($procs | Measure-Object).Count
 }
 
 function Start-LatencyClockBrowser($ClockUrl) {
-    # Chrome --kiosk first (matches the 2026-05-11 baseline measurement command);
-    # Edge --app= fallback (chromeless without Fullscreen Optimizations).
-    # Both keep the page foregrounded with no browser chrome --
-    # "fullscreen-but-not-fullscreen" from the prior session.
-    # Chrome --kiosk disabled due to WGC conversion bug.
-    # Fall through to Edge --app=
-
+    # Chrome --kiosk first (matches the 2026-05-11 baseline measurement
+    # command, true fullscreen). Edge --app= fallback for machines without
+    # Chrome -- chromeless but NOT fullscreen.
+    # Chrome --kiosk was disabled in e00a607 due to a WGC conversion bug
+    # (project_chrome_kiosk_wgc_conversion_fail, 2026-05-11). The 84514c7
+    # NV12-dimension-rounding capture fix landed later; possible it
+    # incidentally addressed the WGC bug. Re-enabling Chrome here with the
+    # existing WGC-bust retry as safety net; falls through to Edge --app
+    # if Chrome isn't installed or the WGC retry path exhausts.
+    $chromePath = Resolve-ChromePath
+    if ($chromePath) {
+        Info "  Launching Chrome --kiosk..."
+        Start-Process -FilePath $chromePath -ArgumentList '--kiosk', $ClockUrl | Out-Null
+        return
+    }
     $edgePath = Resolve-EdgePath
     if ($edgePath) {
-        Info "  Using Edge --app (Chrome --kiosk disabled; WGC conversion bug)..."
+        Info "  Chrome not found; launching Edge --app (chromeless, not fullscreen)..."
         Start-Process -FilePath $edgePath -ArgumentList "--app=$ClockUrl" | Out-Null
         return
     }
