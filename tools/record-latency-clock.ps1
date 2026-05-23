@@ -59,7 +59,7 @@ $ErrorActionPreference = 'Continue'
 
 # Hardcoded per project memory; update site below if PC IP or GXR change.
 $HostIp     = '192.168.50.75'
-$GxrSerial  = 'RFCRB0G5DLW'
+$GxrSerial  = 'R3GYB04E2WB'
 $ViewerPkg  = 'com.mtschoen.windowstream.viewer'
 $DemoActivity = "$ViewerPkg/.demo.DemoActivity"
 
@@ -234,7 +234,7 @@ function Start-LatencyClockBrowser($ClockUrl) {
 
     $edgePath = Resolve-EdgePath
     if ($edgePath) {
-        Info "  Chrome not found; launching Edge --app..."
+        Info "  Using Edge --app (Chrome --kiosk disabled; WGC conversion bug)..."
         Start-Process -FilePath $edgePath -ArgumentList "--app=$ClockUrl" | Out-Null
         return
     }
