@@ -6,5 +6,10 @@
       "mcp__unity-mcp__Unity_SerializeHierarchy",
       "mcp__unity-mcp__Unity_SerializeSceneOverrides"
     ]
+  },
+  "enabledPlugins": {
+    "csharp-lsp@claude-plugins-official": true,
+    "microsoft-docs@claude-plugins-official": true,
+    "kotlin-lsp@claude-plugins-official": true
   }
 }

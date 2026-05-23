@@ -109,3 +109,6 @@ tools/.latency-test-config.json
 .server-stdout.log
 .server-stderr.log
 .viewer-framecount.log
+
+.claude/*
+!.claude/settings.json
