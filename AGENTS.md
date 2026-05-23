@@ -36,7 +36,9 @@ path — both are deliberately gone post-M4.
 
 `[FRAMECOUNT]` instrumentation: the server emits `stage=convert` (in
 `WgcFrameConverter`) and `stage=enc` (in `FFmpegNvencEncoder`); the viewer
-emits `stage=reasm` and `stage=dec`. All four share the same `ptsUs` axis
+emits `stage=reasm`, `stage=dec`, and `stage=present` (the last via a
+`Choreographer.postFrameCallback` in `MediaCodecDecoder`, timestamping
+actual scanout rather than buffer-release). All five share the same `ptsUs` axis
 (microseconds since capture start, threaded through `CapturedFrame`,
 encoder pts, and the H.264 frame PTS) and `wallMs` axis (Unix-epoch ms),
 so end-to-end cap → present joins are exact per-frame.
