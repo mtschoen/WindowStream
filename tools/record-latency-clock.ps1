@@ -233,25 +233,39 @@ function Stop-LatencyClockBrowsers {
 }
 
 function Start-LatencyClockBrowser($ClockUrl) {
-    # Chrome --kiosk first (matches the 2026-05-11 baseline measurement
-    # command, true fullscreen). Edge --app= fallback for machines without
-    # Chrome -- chromeless but NOT fullscreen.
-    # Chrome --kiosk was disabled in e00a607 due to a WGC conversion bug
-    # (project_chrome_kiosk_wgc_conversion_fail, 2026-05-11). The 84514c7
-    # NV12-dimension-rounding capture fix landed later; possible it
-    # incidentally addressed the WGC bug. Re-enabling Chrome here with the
-    # existing WGC-bust retry as safety net; falls through to Edge --app
-    # if Chrome isn't installed or the WGC retry path exhausts.
+    # Chrome --app (chromeless) sized to fill the primary screen; Edge --app=
+    # fallback for machines without Chrome.
+    #
+    # WGC captures the WINDOW by HWND, not the display -- the taskbar and
+    # other windows are never in the captured frame. So a screen-sized
+    # chromeless --app window streams IDENTICALLY to OS-fullscreen (clock
+    # edge-to-edge, no browser chrome) while staying WGC-clean.
+    #
+    # We deliberately do NOT use true fullscreen (--kiosk / --start-fullscreen).
+    # Truly-fullscreen browser windows get promoted to an independent-flip /
+    # "Fullscreen Optimizations" present path that bypasses DWM composition,
+    # leaving WGC's CreateForWindow with no composed surface -> the black /
+    # "frame conversion failed" bust (project_chrome_kiosk_wgc_conversion_fail;
+    # the kiosk window appeared then vanished mid-transition in the 184408 log).
+    # A normal screen-sized window stays in DWM, so capture is reliable.
+    #
+    # --window-size is used over --start-maximized because Chromium --app
+    # windows historically ignore --start-maximized.
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+    $bounds  = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $sizeArg = "--window-size=$($bounds.Width),$($bounds.Height)"
+    $posArg  = '--window-position=0,0'
+
     $chromePath = Resolve-ChromePath
     if ($chromePath) {
-        Info "  Launching Chrome --kiosk..."
-        Start-Process -FilePath $chromePath -ArgumentList '--kiosk', $ClockUrl | Out-Null
+        Info "  Launching Chrome --app (screen-filling $($bounds.Width)x$($bounds.Height), WGC-clean)..."
+        Start-Process -FilePath $chromePath -ArgumentList "--app=$ClockUrl", $posArg, $sizeArg | Out-Null
         return
     }
     $edgePath = Resolve-EdgePath
     if ($edgePath) {
-        Info "  Chrome not found; launching Edge --app (chromeless, not fullscreen)..."
-        Start-Process -FilePath $edgePath -ArgumentList "--app=$ClockUrl" | Out-Null
+        Info "  Chrome not found; launching Edge --app (screen-filling, WGC-clean)..."
+        Start-Process -FilePath $edgePath -ArgumentList "--app=$ClockUrl", $posArg, $sizeArg | Out-Null
         return
     }
     Fail "Neither Chrome nor Edge found on this machine. Install one or open tools/latency-clock.html manually and re-run with -Hwnd."
@@ -338,15 +352,24 @@ $ServerProcess = Start-Process -FilePath $CliExe `
     -WindowStyle Hidden `
     -PassThru
 
-# Banner is written to stdout (confirmed via CoordinatorLauncher.cs:154):
+# The coordinator logs a structured "Listening" event to stdout via the
+# .NET ILogger (CoordinatorLauncher). Current main format:
+#   Listening { ... TcpPort = 54452, UdpPort = 59724 }
+# Builds up to 2026-05-14 emitted a plaintext
 #   windowstream: serving on TCP <port>, UDP <port>
-# Poll up to 10 seconds.
+# banner; the observability work replaced it. Match either so the script
+# survives across server versions. Poll up to 10 seconds.
 $TcpPort = $null
 $deadline = (Get-Date).AddSeconds(10)
 while ((Get-Date) -lt $deadline) {
     if (Test-Path $ServerStdoutLog) {
         $content = Get-Content $ServerStdoutLog -Raw -ErrorAction SilentlyContinue
-        if ($content -match 'windowstream: serving on TCP (\d+), UDP (\d+)') {
+        if ($content -match 'TcpPort = (\d+), UdpPort = (\d+)') {
+            $TcpPort = [int]$matches[1]
+            $UdpPort = [int]$matches[2]
+            break
+        }
+        elseif ($content -match 'windowstream: serving on TCP (\d+), UDP (\d+)') {
             $TcpPort = [int]$matches[1]
             $UdpPort = [int]$matches[2]
             break
