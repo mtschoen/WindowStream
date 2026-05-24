@@ -42,3 +42,20 @@ jobs:
         run: |
           dotnet test tests/WindowStream.Core.Tests/WindowStream.Core.Tests.csproj -c Release --no-build -v normal
           dotnet test tests/WindowStream.Server.Tests/WindowStream.Server.Tests.csproj -c Release --no-build -v normal
+      - name: Post coverage status
+        if: always()
+        shell: pwsh
+        run: |
+          $pct = python ci/coverage-percent.py "tests/**/coverage.cobertura.xml"
+          if ($LASTEXITCODE -ne 0) { $state = "error"; $desc = "coverage measurement failed" }
+          else { $state = "success"; $desc = "$pct% line coverage" }
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $body = @{ context = "pr-crew/coverage"; state = $state; description = $desc; target_url = $runUrl } | ConvertTo-Json -Compress
+          Write-Host "posting status: $body"
+          curl.exe -sk -X POST `
+            -H "Authorization: token $env:GITHUB_TOKEN" `
+            -H "Content-Type: application/json" `
+            -d $body `
+            "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/statuses/$env:GITHUB_SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
