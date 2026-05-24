@@ -45,10 +45,38 @@ jobs:
       - name: Post coverage status
         if: always()
         shell: pwsh
+        # Parse Cobertura natively in PowerShell: the Windows runner has no
+        # python/python3/py (see local-ci project-ci-setup.md). Merges across
+        # test projects at the line level (covered if any report hits it),
+        # matching ci/coverage-percent.py used by the Linux repos.
         run: |
-          $pct = python ci/coverage-percent.py "tests/**/coverage.cobertura.xml"
-          if ($LASTEXITCODE -ne 0) { $state = "error"; $desc = "coverage measurement failed" }
-          else { $state = "success"; $desc = "$pct% line coverage" }
+          $state = "error"; $desc = "coverage measurement failed"
+          try {
+            $files = Get-ChildItem -Path tests -Recurse -Filter coverage.cobertura.xml |
+              Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
+            if (-not $files) { throw "no Cobertura XML matched" }
+            $lines = @{}
+            foreach ($file in $files) {
+              [xml]$report = Get-Content -LiteralPath $file.FullName
+              foreach ($class in $report.SelectNodes('//class')) {
+                $filename = $class.filename
+                foreach ($line in $class.SelectNodes('.//line')) {
+                  $key = "${filename}:$($line.number)"
+                  $hit = ([int]$line.hits) -gt 0
+                  if ($lines.ContainsKey($key)) { $lines[$key] = $lines[$key] -or $hit }
+                  else { $lines[$key] = $hit }
+                }
+              }
+            }
+            $total = $lines.Count
+            if ($total -eq 0) { throw "no source lines in Cobertura XML" }
+            $covered = ($lines.Values | Where-Object { $_ }).Count
+            $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+            $pct = ([math]::Round(100.0 * $covered / $total, 2)).ToString($invariant)
+            $state = "success"; $desc = "$pct% line coverage"
+          } catch {
+            Write-Host "coverage parse failed: $_"
+          }
           $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $body = @{ context = "pr-crew/coverage"; state = $state; description = $desc; target_url = $runUrl } | ConvertTo-Json -Compress
           Write-Host "posting status: $body"
