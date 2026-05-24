@@ -22,9 +22,9 @@ fun WindowStreamScene(panelSink: XrPanelSink) {
         SpatialExternalSurface(
             stereoMode = StereoMode.Mono,
             modifier = SubspaceModifier
-                .width(panelWidthMeters.dp)
-                .height(panelHeightMeters.dp)
-                .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS).dp)
+                .width((panelWidthMeters * 1000f).dp)
+                .height((panelHeightMeters * 1000f).dp)
+                .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS * 1000f).dp)
                 .movable()
         ) {
             onSurfaceCreated { providedSurface ->

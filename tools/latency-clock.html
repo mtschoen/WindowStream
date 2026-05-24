@@ -15,7 +15,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    gap: 6vh;
+    gap: 4vh;
   }
   #clock {
     font-size: 20vh;
@@ -56,20 +56,48 @@
     font-size: 1.6vh;
     letter-spacing: 0.18em;
   }
+  #diagnostics {
+    color: #aaa;
+    font-size: 3vh;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+  #frame-container {
+    color: #888;
+    font-size: 8vh;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  #frame-count {
+    color: #0f0;
+    font-size: 15vh;
+    font-weight: bold;
+    text-shadow: 0 0 16px rgba(0, 255, 0, 0.4);
+  }
 </style>
 </head>
 <body>
   <div id="clock">--:--:--.---</div>
+  <div id="frame-container">
+    FRAME: <span id="frame-count">0</span>
+  </div>
   <div id="sweep">
     <div id="ticks"></div>
     <div id="marker"></div>
   </div>
   <div id="legend">SWEEP WRAPS EVERY 1000 ms &middot; MAJOR TICK = 100 ms</div>
+  <div id="diagnostics">
+    RENDER: <span id="actual-fps">0.0</span> FPS (<span id="actual-interval">0.0</span> ms)
+  </div>
   <script>
     const clock = document.getElementById('clock');
     const marker = document.getElementById('marker');
     const sweep = document.getElementById('sweep');
     const ticksContainer = document.getElementById('ticks');
+    const frameCountEl = document.getElementById('frame-count');
+    const actualFpsEl = document.getElementById('actual-fps');
+    const actualIntervalEl = document.getElementById('actual-interval');
 
     // Optional ?cap=N query param: rate-limit DOM updates to ~N fps using a
     // time-quantized RAF (RAF runs every vsync, repaint only when interval
@@ -98,6 +126,11 @@
     const pad = (n, w) => String(n).padStart(w, '0');
 
     let lastDraw = 0;
+    let frameCount = 0;
+    let lastFrameTime = performance.now();
+    const fpsHistory = [];
+    const maxHistory = 60;
+
     function update(now) {
       if (targetInterval === 0 || now - lastDraw >= targetInterval) {
         const d = new Date();
@@ -111,6 +144,24 @@
         lastDraw = targetInterval === 0
           ? now
           : (lastDraw === 0 ? now : lastDraw + targetInterval);
+
+        frameCount++;
+        const frameTime = performance.now();
+        const delta = frameTime - lastFrameTime;
+        lastFrameTime = frameTime;
+
+        if (delta > 0) {
+          fpsHistory.push(delta);
+          if (fpsHistory.length > maxHistory) fpsHistory.shift();
+          const avgDelta = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+          const avgFps = 1000 / avgDelta;
+
+          frameCountEl.textContent = frameCount;
+          actualFpsEl.textContent = avgFps.toFixed(1);
+          actualIntervalEl.textContent = avgDelta.toFixed(1);
+        } else {
+          frameCountEl.textContent = frameCount;
+        }
       }
       requestAnimationFrame(update);
     }

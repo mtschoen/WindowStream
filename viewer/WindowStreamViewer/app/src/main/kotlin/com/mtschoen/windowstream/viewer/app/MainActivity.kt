@@ -270,7 +270,8 @@ class MainActivity : ComponentActivity() {
 
         // A small 2D overlay panel for the "Pick another window" affordance,
         // rendered alongside the spatial panel as the activity's main 2D panel.
-        Surface(color = MaterialTheme.colorScheme.background) {
+        // We use a transparent Surface so that it doesn't occlude the spatial video panel.
+        Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
             Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopStart) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilledTonalButton(onClick = {
@@ -292,9 +293,9 @@ class MainActivity : ComponentActivity() {
             SpatialExternalSurface(
                 stereoMode = StereoMode.Mono,
                 modifier = SubspaceModifier
-                    .width(panelWidthMeters.dp)
-                    .height(panelHeightMeters.dp)
-                    .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS).dp)
+                    .width((panelWidthMeters * 1000f).dp)
+                    .height((panelHeightMeters * 1000f).dp)
+                    .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS * 1000f).dp)
                     .movable()
             ) {
                 onSurfaceCreated { providedSurface ->
@@ -339,6 +340,16 @@ class MainActivity : ComponentActivity() {
                     liveConnection.serverHello.udpPort
                 )
             )
+            val selectedWindowHwnds: LongArray? = intent.getLongArrayExtra("selectedWindowHwnds")
+            val targetHwnd: Long? = selectedWindowHwnds?.firstOrNull() ?: intent.getLongExtra("selectedWindowHwnd", -1L).takeIf { it != -1L }
+            if (targetHwnd != null) {
+                val targetWindow = liveConnection.serverHello.windows.firstOrNull { it.hwnd == targetHwnd }
+                if (targetWindow != null) {
+                    Log.i(TAG, "found matching target window for HWND=$targetHwnd, auto-streaming windowId=${targetWindow.windowId}")
+                    beginStreaming(targetWindow.windowId)
+                    return
+                }
+            }
             showPicker(liveConnection)
         } catch (throwable: Throwable) {
             Log.e(TAG, "startup connect failed", throwable)

@@ -16,7 +16,7 @@ class WindowStreamViewerApplication : Application() {
         if (Timber.treeCount == 0) {
             Timber.plant(Timber.DebugTree())
             val logsDirectory = File(getExternalFilesDir(null), "logs")
-            Timber.plant(FileLoggingTree(directory = logsDirectory))
+            Timber.plant(FileLoggingTree(directory = logsDirectory, enablePerWriteFlush = false))
             inAppBufferTree = InAppBufferTree(replay = 200)
             Timber.plant(inAppBufferTree)
         }

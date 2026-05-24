@@ -1,0 +1,8 @@
+{
+  "MSBuild": {
+    "UseLegacySdkResolver": false,
+    "EnablePackageAutoRestoration": true,
+    "LoadProjectsOnDemand": false,
+    "AnalyzeOpenFilesOnly": false
+  }
+}

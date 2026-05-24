@@ -19,6 +19,7 @@ class FileLoggingTree(
     private val directory: File,
     private val retentionDays: Int = 7,
     private val clock: Clock = Clock.systemUTC(),
+    private val enablePerWriteFlush: Boolean = true,
 ) : Timber.Tree(), AutoCloseable {
 
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
@@ -65,7 +66,9 @@ class FileLoggingTree(
                 // shouldn't lose the very logs we'd want for postmortem. The 8 KB BufferedWriter
                 // default would otherwise hold writes in memory until close, which never gets
                 // called on Android lifecycle teardown.
-                writer.flush()
+                if (enablePerWriteFlush) {
+                    writer.flush()
+                }
             } catch (failure: Throwable) {
                 System.err.println("FileLoggingTree: write failed: ${failure.message}")
                 failure.printStackTrace(System.err)
