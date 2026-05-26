@@ -22,6 +22,8 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
     private EncoderOptions? options;
     private bool forceNextKeyframe;
     private bool disposed;
+    private static readonly bool IsFrameCountLogEnabled =
+        Environment.GetEnvironmentVariable("WINDOWSTREAM_FRAMECOUNT") == "1";
 
     // Native context pointers stored as nint to avoid unsafe class-level field declarations
     private nint codecContextPointer;
@@ -381,8 +383,11 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
             // time_base is {1, 1_000_000}, so packet->pts already is microseconds.
             long timestampMicroseconds = packet->pts;
             long wallClockMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            System.Console.Error.WriteLine(
-                $"[FRAMECOUNT] stage=enc ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
+            if (IsFrameCountLogEnabled)
+            {
+                System.Console.Error.WriteLine(
+                    $"[FRAMECOUNT] stage=enc ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
+            }
             chunkChannel.Writer.TryWrite(new EncodedChunk(managed, isKeyframe, timestampMicroseconds));
             ffmpeg.av_packet_unref(packet);
         }

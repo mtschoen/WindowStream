@@ -33,6 +33,9 @@ internal sealed class WgcFrameConverter
     internal delegate (nint texturePointer, int arrayIndex, D3D11VideoProcessorColorConverter converter)
         AcquireNv12SlotDelegate(int width, int height);
 
+    private static readonly bool IsFrameCountLogEnabled =
+        Environment.GetEnvironmentVariable("WINDOWSTREAM_FRAMECOUNT") == "1";
+
     private readonly AcquireNv12SlotDelegate acquireNv12Slot;
 
     internal WgcFrameConverter(AcquireNv12SlotDelegate acquireNv12Slot)
@@ -66,8 +69,11 @@ internal sealed class WgcFrameConverter
                 long timestampMicroseconds = (long)(elapsedTicks * 1_000_000.0 / Stopwatch.Frequency);
                 long wallClockMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-                Console.Error.WriteLine(
-                    $"[FRAMECOUNT] stage=convert ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
+                if (IsFrameCountLogEnabled)
+                {
+                    Console.Error.WriteLine(
+                        $"[FRAMECOUNT] stage=convert ptsUs={timestampMicroseconds} wallMs={wallClockMilliseconds}");
+                }
 
                 return CapturedFrame.FromTexture(
                     widthPixels: width,

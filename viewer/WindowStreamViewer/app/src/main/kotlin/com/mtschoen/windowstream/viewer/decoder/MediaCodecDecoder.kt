@@ -86,10 +86,12 @@ class MediaCodecDecoder(
                 mediaCodec: MediaCodec, outputBufferIndex: Int, bufferInformation: MediaCodec.BufferInfo
             ) {
                 val capturedPtsUs: Long = bufferInformation.presentationTimeUs
-                Log.d(
-                    "FRAMECOUNT",
-                    "stage=dec ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
-                )
+                if (isFrameCountLogEnabled) {
+                    Log.d(
+                        "FRAMECOUNT",
+                        "stage=dec ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
+                    )
+                }
                 if (surface != null) {
                     mediaCodec.releaseOutputBuffer(outputBufferIndex, System.nanoTime())
                 } else {
@@ -100,12 +102,14 @@ class MediaCodecDecoder(
                 // it fires at the next vsync, which is when SurfaceFlinger
                 // typically latches our just-queued buffer. Wall ms at fire is a
                 // lower-bound estimate of when the frame hit the panel.
-                mainHandler.post {
-                    Choreographer.getInstance().postFrameCallback {
-                        Log.d(
-                            "FRAMECOUNT",
-                            "stage=present ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
-                        )
+                if (isFrameCountLogEnabled) {
+                    mainHandler.post {
+                        Choreographer.getInstance().postFrameCallback {
+                            Log.d(
+                                "FRAMECOUNT",
+                                "stage=present ptsUs=$capturedPtsUs wallMs=${System.currentTimeMillis()}"
+                            )
+                        }
                     }
                 }
                 frameSink.onFrameRendered(capturedPtsUs)
@@ -134,10 +138,12 @@ class MediaCodecDecoder(
 
         decodeJob = scope.launch(Dispatchers.IO) {
             frameFlow.collect { encodedFrame ->
-                Log.d(
-                    "FRAMECOUNT",
-                    "stage=reasm ptsUs=${encodedFrame.presentationTimestampMicroseconds} wallMs=${System.currentTimeMillis()}"
-                )
+                if (isFrameCountLogEnabled) {
+                    Log.d(
+                        "FRAMECOUNT",
+                        "stage=reasm ptsUs=${encodedFrame.presentationTimestampMicroseconds} wallMs=${System.currentTimeMillis()}"
+                    )
+                }
                 val parsedParameterSets: ParameterSets = ParameterSetParser.extract(encodedFrame.payload)
                 if (parsedParameterSets.sequenceParameterSet != null && parsedParameterSets.pictureParameterSet != null) {
                     cachedParameterSets = parsedParameterSets
@@ -165,5 +171,9 @@ class MediaCodecDecoder(
         }
         codec = null
         if (outputToSurface) frameSink.releaseSurface()
+    }
+
+    companion object {
+        private val isFrameCountLogEnabled = Log.isLoggable("FRAMECOUNT", Log.DEBUG)
     }
 }
