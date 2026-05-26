@@ -48,7 +48,8 @@ param(
     [int]$ProbeDuration = 4,
     [int]$DecThreshold = 20,
     [int]$Cap = 165,
-    [int]$ProbeMaxAttempts = 3
+    [int]$ProbeMaxAttempts = 3,
+    [switch]$Gxr
 )
 
 # Continue (not Stop): PS 5.1 wraps native-exe stderr as NativeCommandError
@@ -61,7 +62,7 @@ $ErrorActionPreference = 'Continue'
 $HostIp     = '192.168.50.75'
 $GxrSerial  = 'R3GYB04E2WB'
 $ViewerPkg  = 'com.mtschoen.windowstream.viewer'
-$DemoActivity = "$ViewerPkg/.demo.DemoActivity"
+$DemoActivity = if ($Gxr) { "$ViewerPkg/.demo.XrDemoActivity" } else { "$ViewerPkg/.demo.DemoActivity" }
 
 $RepoRoot   = Resolve-Path (Join-Path $PSScriptRoot '..')
 $CliExe     = Join-Path $RepoRoot 'src\WindowStream.Cli\bin\Release\net8.0-windows10.0.19041.0\windowstream.exe'
@@ -345,12 +346,14 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $ServerStdoutLog = Join-Path $env:TEMP "windowstream-serve-$stamp.out.log"
 $ServerStderrLog = Join-Path $env:TEMP "windowstream-serve-$stamp.err.log"
 
+$env:WINDOWSTREAM_FRAMECOUNT = '1'
 $ServerProcess = Start-Process -FilePath $CliExe `
     -ArgumentList 'serve' `
     -RedirectStandardOutput $ServerStdoutLog `
     -RedirectStandardError  $ServerStderrLog `
     -WindowStyle Hidden `
     -PassThru
+Remove-Item env:WINDOWSTREAM_FRAMECOUNT
 
 # The coordinator logs a structured "Listening" event to stdout via the
 # .NET ILogger (CoordinatorLauncher). Current main format:
@@ -395,6 +398,7 @@ Info "[5/8] Frame-flow probe ($ProbeDuration s, HMD off-head OK)"
 function Invoke-FrameFlowProbe {
     & adb -s $DeviceId shell am force-stop $ViewerPkg *> $null
     & adb -s $DeviceId logcat -c *> $null
+    & adb -s $DeviceId shell setprop log.tag.FRAMECOUNT DEBUG *> $null
 
     & adb -s $DeviceId shell am start -n $DemoActivity `
         --es streamHost $HostIp `
@@ -504,11 +508,27 @@ namespace WindowStream {
     public static class Focus {
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        public static void ForceForeground(IntPtr hWnd) {
+            // Simulate ALT key tap to bypass Windows focus stealing prevention
+            keybd_event(0x12, 0, 0, 0);
+            keybd_event(0x12, 0, 0x0002, 0);
+            
+            // Bring window to front
+            SetForegroundWindow(hWnd);
+            ShowWindow(hWnd, 9); // SW_RESTORE (ensures it is not minimized)
+        }
     }
 }
 "@
 }
-[void][WindowStream.Focus]::SetForegroundWindow([IntPtr]$TargetHwnd)
+[WindowStream.Focus]::ForceForeground([IntPtr]$TargetHwnd)
 
 # === Step 7: real record =====================================================
 Info "[7/8] Recording ${Duration}s"
@@ -556,11 +576,18 @@ $tearDown = Read-Host "  Tear down server + firewall rules? [y/N]"
 
 if ($tearDown -match '^[Yy]') {
     Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
-    Get-NetFirewallRule -DisplayName 'WindowStream-Session-*' -ErrorAction SilentlyContinue |
-        Remove-NetFirewallRule -ErrorAction SilentlyContinue
     $reaped = Stop-LatencyClockBrowsers
-    Ok "Server stopped, firewall rules removed, $reaped browser process(es) closed."
+    $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($isElevated) {
+        Get-NetFirewallRule -DisplayName 'WindowStream-Session-*' -ErrorAction SilentlyContinue |
+            Remove-NetFirewallRule -ErrorAction SilentlyContinue
+        Ok "Server stopped, firewall rules removed, $reaped browser process(es) closed."
+    } else {
+        Ok "Server stopped, $reaped browser process(es) closed (firewall cleanup skipped; not running as Admin)."
+    }
+    & adb -s $DeviceId shell setprop log.tag.FRAMECOUNT INFO *> $null
 } else {
+    & adb -s $DeviceId shell setprop log.tag.FRAMECOUNT INFO *> $null
     Write-Host ""
     Write-Host "  Server PID: $($ServerProcess.Id) left running." -ForegroundColor Yellow
     Write-Host "  To stop later:  Stop-Process -Id $($ServerProcess.Id)" -ForegroundColor Yellow

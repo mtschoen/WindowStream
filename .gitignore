@@ -110,5 +110,11 @@ tools/.latency-test-config.json
 .server-stderr.log
 .viewer-framecount.log
 
+# ---------- Scratch/test files in tools/ ----------
+tools/*.jpg
+tools/debug_*.py
+tools/inspect_*.py
+tools/test_*.py
+
 .claude/*
 !.claude/settings.json
