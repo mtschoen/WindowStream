@@ -4,9 +4,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.DatagramPacket
@@ -31,9 +31,12 @@ class UdpTransportReceiver(
     fun start(scope: CoroutineScope): Flow<EncodedFrame> {
         val datagramSocket = socketFactory(InetSocketAddress(bindAddress, requestedPort))
         socket = datagramSocket
-        val emissionFlow = MutableSharedFlow<EncodedFrame>(
-            replay = 0,
-            extraBufferCapacity = 64,
+        // Tier 1c: capacity=1 with DROP_OLDEST ensures the decoder always
+        // picks up the freshest reassembled frame after any transient stall,
+        // rather than processing a queue of up to 64 stale frames. This
+        // tightens the enc→reasm tail-latency jitter.
+        val emissionChannel = Channel<EncodedFrame>(
+            capacity = 1,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
 
@@ -45,7 +48,7 @@ class UdpTransportReceiver(
                     datagramSocket.receive(datagramPacket)
                     val parsed: PacketHeader = PacketHeader.parse(receiveBuffer, datagramPacket.length)
                     val frame: EncodedFrame? = reassembler.offer(parsed)
-                    if (frame != null) emissionFlow.emit(frame)
+                    if (frame != null) emissionChannel.trySend(frame)
                 } catch (exception: MalformedPacketException) {
                     // Drop malformed packet and continue.
                 } catch (throwable: Throwable) {
@@ -61,7 +64,7 @@ class UdpTransportReceiver(
                 kotlinx.coroutines.delay(100)
             }
         }
-        return emissionFlow.asSharedFlow()
+        return emissionChannel.receiveAsFlow()
     }
 
     fun close() {
