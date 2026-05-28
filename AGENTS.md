@@ -149,14 +149,14 @@ no source window, WGC capture failed, network blocked).
 Below is the durable ground truth and software-level end-to-end latency baseline for the GPU-resident pipeline (established on Quest 3 / Galaxy XR):
 
 * **Ground Truth Photon-to-Photon Latency** (Camera-based ground truth via `SpatialExternalSurface` / XR compositor):
-  * **p0 (Min)**: **13 ms** (~2 frames at 165 Hz)
+  * **p0 (Min)**: **12 ms** (~2 frames at 165 Hz; OCR shows 1-frame delta but shutter catches mid-digit-transition so true floor is ~2 frames)
   * **p50 (Median)**: **17 ms** (~1 frame at 60 fps / ~2.8 frames at 165 Hz)
   * **p95**: **34 ms**
-  * **Steady-State Range**: 13–17 ms
+  * **Steady-State Range**: 12–17 ms
 * **Software-Level End-to-End Latency** (`convert` to `present` timestamps):
-  * **p0 (Min)**: **15 ms**
-  * **p50 (Median)**: **28 ms**
-  * **p95**: **40 ms**
+  * **p0 (Min)**: **12 ms** (≈2 frames at 165 Hz)
+  * **p50 (Median)**: **24 ms** (4 frames at 165 Hz; improved from 28 ms after UDP transport fix, 2026-05-28)
+  * **p95**: **73 ms** (occasional compositor hitches; steady-state p95 clusters near 40 ms)
 
 The manual recipe below is the fallback when the script itself is
 broken or you want to test something the script doesn't cover.
