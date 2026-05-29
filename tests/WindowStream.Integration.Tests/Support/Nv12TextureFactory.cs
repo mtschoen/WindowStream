@@ -54,9 +54,9 @@ internal static class Nv12TextureFactory
                 bool left = col < widthPixels / 2;
                 byte yValue = (top, left) switch
                 {
-                    (true, true)   => 81,  // BT.601 Y for pure red
-                    (true, false)  => 145, // green
-                    (false, true)  => 41,  // blue
+                    (true, true) => 81,  // BT.601 Y for pure red
+                    (true, false) => 145, // green
+                    (false, true) => 41,  // blue
                     (false, false) => 128, // mid grey
                 };
                 nv12Buffer[row * widthPixels + col] = yValue;
@@ -72,13 +72,13 @@ internal static class Nv12TextureFactory
                 bool left = chromaCol < widthPixels / 4;
                 (byte uValue, byte vValue) = (top, left) switch
                 {
-                    (true, true)   => ((byte)90,  (byte)240), // red
-                    (true, false)  => ((byte)54,  (byte)34),  // green
-                    (false, true)  => ((byte)240, (byte)110), // blue
+                    (true, true) => ((byte)90, (byte)240), // red
+                    (true, false) => ((byte)54, (byte)34),  // green
+                    (false, true) => ((byte)240, (byte)110), // blue
                     (false, false) => ((byte)128, (byte)128), // grey
                 };
                 int uvOffset = yPlaneBytes + chromaRow * widthPixels + chromaCol * 2;
-                nv12Buffer[uvOffset]     = uValue;
+                nv12Buffer[uvOffset] = uValue;
                 nv12Buffer[uvOffset + 1] = vValue;
             }
         }
