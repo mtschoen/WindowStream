@@ -209,12 +209,33 @@ adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --esa streamHosts "<ip1>,<ip2>" --eia streamPorts "<port1>,<port2>"
 ```
 
-**GXR flavor** (Samsung Galaxy XR immersive spatial panel):
+**GXR flavor** (Samsung Galaxy XR / Android XR — immersive **spatial window
+manager**):
 ```bash
 ./gradlew :app:assembleGxrDebug
 adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/gxr/debug/app-gxr-debug.apk
+# Launch the immersive window manager (icon-tap, or via adb):
+adb shell am start -n com.mtschoen.windowstream.viewer/.app.MainActivity
+# Optional: skip discovery / auto-spawn windows by HWND:
+adb shell am start -n com.mtschoen.windowstream.viewer/.app.MainActivity \
+    --es streamHost <pc-lan-ip> --ei streamPort <tcpPort> \
+    --ela selectedWindowHwnds <hwnd1>,<hwnd2>
 ```
-⚠ Icon-tap currently crashes on Galaxy XR's current OS — Jetpack XR alpha04 × system `XrExtensions` ABI mismatch (`NoSuchMethodError: createSplitEngineBridge`). Use the portable-flavor `DemoActivity` adb-launch pattern above as a workaround until the Jetpack XR dependency is bumped. See memory `project_gxr_jetpack_xr_alpha04_broken` and `docs/superpowers/specs/2026-04-20-multi-window-followups.md`.
+`MainActivity` (gxr launcher) is a spatial window manager: it auto-discovers
+the server, shows a persistent **drawer** panel listing capturable windows,
+and spawns each picked window as its own movable `SpatialExternalSurface`
+panel with a **chrome bar** (close ×, minimize/restore, resize –/+). Multiple
+windows stream concurrently. Minimize pauses the stream and shrinks the panel
+(the surface stays mounted — no decoder churn); restore resumes it; resize is
+viewer-side panel scaling (not source-window resize). Architecture:
+`SpatialWindowManager` holds pure panel state (unit-tested); the Activity owns
+per-window runtime resources; `SpatialWindowManagerScene` renders the
+Compose-for-XR scene (coverage-excluded). Dep is now Jetpack XR
+`1.0.0-alpha13` — the old alpha04 `createSplitEngineBridge` icon-crash no
+longer applies. **HMD behaviour is unverified as of 2026-05-29** (built +
+unit-tested only); see `docs/HANDOFF-xr-window-manager.md` for the on-head
+verification checklist and the plan at
+`docs/superpowers/plans/2026-05-29-xr-spatial-window-manager.md`.
 
 Force-stop any flavor with:
 ```bash
