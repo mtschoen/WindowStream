@@ -269,6 +269,18 @@ kover {
                     "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt",
                     "com.mtschoen.windowstream.viewer.xr.WindowStreamSceneKt\$*"
                 )
+                // SpatialWindowManagerScene is the multi-panel spatial window-manager
+                // scene (drawer + per-window movable SpatialColumn of chrome panel +
+                // SpatialExternalSurface). Pure Compose-for-XR rendering driven by
+                // SpatialWindowManager state (which IS unit-tested); requires the
+                // Jetpack XR runtime, same rationale as WindowStreamSceneKt. The
+                // wildcard captures the Compose lambda inner classes.
+                classes(
+                    "com.mtschoen.windowstream.viewer.xr.SpatialWindowManagerSceneKt",
+                    "com.mtschoen.windowstream.viewer.xr.SpatialWindowManagerSceneKt\$*",
+                    "com.mtschoen.windowstream.viewer.xr.ComposableSingletons\$SpatialWindowManagerSceneKt",
+                    "com.mtschoen.windowstream.viewer.xr.ComposableSingletons\$SpatialWindowManagerSceneKt\$*"
+                )
                 // WindowPickerViewModel launches three coroutines (one per event type) via
                 // scope.launch. The Kotlin compiler generates a $1/$2/$3 state-machine class per
                 // launch site and inlines filterIsInstance into a separate continuation class per

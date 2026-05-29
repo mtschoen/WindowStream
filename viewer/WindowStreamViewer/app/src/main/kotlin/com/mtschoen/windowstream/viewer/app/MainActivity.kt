@@ -1,5 +1,7 @@
 package com.mtschoen.windowstream.viewer.app
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -7,14 +9,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,70 +29,63 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.xr.compose.spatial.Subspace
-import androidx.xr.compose.subspace.SpatialExternalSurface
-import androidx.xr.compose.subspace.StereoMode
-import androidx.xr.compose.subspace.layout.SubspaceModifier
-import androidx.xr.compose.subspace.layout.height
-import androidx.xr.compose.subspace.layout.movable
-import androidx.xr.compose.subspace.layout.offset
-import androidx.xr.compose.subspace.layout.width
-import com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreen
-import com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel
 import com.mtschoen.windowstream.viewer.control.ControlMessage
-import com.mtschoen.windowstream.viewer.demo.ObservabilityOverlay
-import com.mtschoen.windowstream.viewer.observability.ViewerStateReducer
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection
 import com.mtschoen.windowstream.viewer.control.StreamLifecycleEvent
+import com.mtschoen.windowstream.viewer.control.WindowDescriptor
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
+import com.mtschoen.windowstream.viewer.demo.ObservabilityOverlay
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
 import com.mtschoen.windowstream.viewer.observability.Diagnostics
 import com.mtschoen.windowstream.viewer.observability.PipelineEvent
+import com.mtschoen.windowstream.viewer.observability.ViewerStateReducer
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
-import com.mtschoen.windowstream.viewer.xr.PanelPlacement
+import com.mtschoen.windowstream.viewer.xr.SpatialWindowManager
+import com.mtschoen.windowstream.viewer.xr.SpatialWindowManagerScene
 import com.mtschoen.windowstream.viewer.xr.XrPanelSink
-import com.mtschoen.windowstream.viewer.xr.computePanelDimensionsMeters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.net.InetAddress
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Galaxy XR (gxr-flavor) launcher activity.
+ * Galaxy XR (gxr-flavor) launcher activity — a spatial window manager.
  *
  * Flow:
  * 1. Auto-discover an mDNS-advertised server (or use --es streamHost / --ei streamPort).
- * 2. Open a [MultiStreamControlConnection] and show [WindowPickerScreen] as a 2D
- *    Compose panel — the same picker the portable flavor uses, with live
- *    WINDOW_ADDED / REMOVED / UPDATED push events.
- * 3. On Connect, tear down the picker and render a single [SpatialExternalSurface]
- *    streaming the selected window through the XR compositor path.
- * 4. A "Pick another window" button on the streaming view closes the current
- *    stream and returns to the picker so the user can re-select without
- *    restarting the activity.
+ * 2. Render [SpatialWindowManagerScene]: a persistent drawer listing the server's
+ *    window catalogue plus one movable spatial panel per open window, each with a
+ *    chrome bar (close / minimize / resize).
+ * 3. Tapping "Open" in the drawer spawns a window as its own [SpatialExternalSurface]
+ *    panel via [MultiStreamControlConnection.openStream]; multiple panels stream
+ *    concurrently. Close tears the stream down; minimize pauses it (and shrinks the
+ *    panel); resize scales the panel.
  *
- * Multi-panel (several SpatialExternalSurface panels at once) is a follow-up;
- * this MVP unblocks "I can't pick which window to see" while keeping the same
- * one-stream-at-a-time semantics as the existing XrDemoActivity path.
+ * The [SpatialWindowManager] holds the pure panel state; this Activity owns each
+ * window's runtime resources ([WindowRuntime]). Resize is viewer-side panel
+ * scaling, not source-window resizing (which would need new protocol messages).
  */
 class MainActivity : ComponentActivity() {
 
     private sealed class UiState {
         data object Connecting : UiState()
-        data class Picking(val viewModel: WindowPickerViewModel) : UiState()
-        data class Streaming(val sink: XrPanelSink) : UiState()
+        data object Connected : UiState()
         data class Failed(val message: String) : UiState()
     }
 
@@ -102,33 +93,39 @@ class MainActivity : ComponentActivity() {
         val host: String,
         val port: Int,
         val label: String,
-        val source: ServerInformation?
+        val source: ServerInformation?,
     )
 
+    /** Per-window runtime resources, parallel to the manager's pure panel state. */
+    private class WindowRuntime(
+        val sink: XrPanelSink,
+        val pipelineScope: CoroutineScope,
+    ) {
+        @Volatile var streamId: Int? = null
+        @Volatile var decoder: MediaCodecDecoder? = null
+        @Volatile var udpReceiver: UdpTransportReceiver? = null
+    }
+
     private var uiState by mutableStateOf<UiState>(UiState.Connecting)
-    private var pickerErrorBanner by mutableStateOf<String?>(null)
-    private var resolvedServer: ResolvedServer? = null
+    private var statusBanner by mutableStateOf<String?>(null)
     private var connection: MultiStreamControlConnection? = null
-    private var pickerScope: CoroutineScope? = null
-    private var streamingJob: Job? = null
-    private var activeStreamId: Int? = null
-    private var activeDecoder: MediaCodecDecoder? = null
+    private var lowLatencyWifiLock: WifiManager.WifiLock? = null
     private lateinit var observabilityOverlay: ObservabilityOverlay
 
-    // Pipeline + multi-stream openStream coroutines must NOT run on Main.
-    // SpatialExternalSurface.onSurfaceCreated fires on Main and calls
-    // XrPanelSink.provideSurfaceFromXrSystem, which blocks Main on a rendezvous
-    // channel send until decoder.start() calls acquireSurface. If openStream's
-    // mailbox-await coroutine sits on Main waiting for STREAM_STARTED, it
-    // deadlocks: the mailbox-await never resumes, decoder never starts,
-    // acquireSurface never runs, the rendezvous send never completes.
-    // UnifiedStreamingActivity uses the same pattern.
+    private val windowManager = SpatialWindowManager()
+    private val windowCatalogue = MutableStateFlow<Map<ULong, WindowDescriptor>>(emptyMap())
+    private val runtimes = ConcurrentHashMap<ULong, WindowRuntime>()
+
+    // Pipeline coroutines must NOT run on Main: the scene's onSurfaceCreated fires
+    // on Main and calls XrPanelSink.provideSurfaceFromXrSystem, while the decoder
+    // (on IO) blocks in acquireSurface until that provide happens. Running the
+    // openStream/decoder work on IO keeps Main free to recompose + provide.
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        acquireWifiLock()
 
-        // Wire observability overlay + event collector.
         observabilityOverlay = ObservabilityOverlay(this)
         val app = applicationContext as WindowStreamViewerApplication
         val reducer = ViewerStateReducer()
@@ -147,28 +144,39 @@ class MainActivity : ComponentActivity() {
                 Box(modifier = Modifier.fillMaxSize()) {
                     when (val state = uiState) {
                         UiState.Connecting -> ConnectingScreen()
-                        is UiState.Picking -> PickerScreen(state.viewModel)
-                        is UiState.Streaming -> StreamingScene(state.sink)
+                        UiState.Connected -> WindowManagerScene()
                         is UiState.Failed -> FailedScreen(state.message)
                     }
-                    // Observability overlay floats above all screens; toggle with ℹ button.
+                    // GONE by default, so it does not occlude the spatial panels;
+                    // the ℹ button toggles it for diagnostics.
                     AndroidView(
                         factory = { observabilityOverlay.rootView },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
                     )
                     TextButton(
                         onClick = { observabilityOverlay.toggle() },
-                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
                     ) {
                         Text("ℹ", fontSize = 18.sp)
+                    }
+                    statusBanner?.let { banner ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
+                        ) {
+                            Text(
+                                text = banner,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
                     }
                 }
             }
         }
 
-        activityScope.launch {
-            startupConnect()
-        }
+        activityScope.launch { startupConnect() }
     }
 
     // ─── Compose screens ─────────────────────────────────────────────────────
@@ -179,64 +187,17 @@ class MainActivity : ComponentActivity() {
             Column(
                 modifier = Modifier.fillMaxSize().padding(32.dp),
                 verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer16()
                 Text(
                     text = "Searching for WindowStream server…",
                     fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             }
         }
-    }
-
-    @Composable
-    private fun PickerScreen(viewModel: WindowPickerViewModel) {
-        val currentServer: ServerInformation = resolvedServer?.source
-            ?: syntheticServerInformation(resolvedServer)
-            ?: return
-        val banner: String? = pickerErrorBanner
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (banner != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = banner,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
-                    )
-                }
-            }
-            WindowPickerScreen(
-                server = currentServer,
-                viewModel = viewModel,
-                onConnect = { selectedWindowIds ->
-                    if (selectedWindowIds.isNotEmpty()) {
-                        val firstWindowId: ULong = selectedWindowIds[0].toULong()
-                        pickerErrorBanner = null
-                        activityScope.launch {
-                            beginStreaming(firstWindowId)
-                        }
-                    }
-                }
-            )
-        }
-    }
-
-    private fun syntheticServerInformation(server: ResolvedServer?): ServerInformation? {
-        val resolved = server ?: return null
-        return ServerInformation(
-            hostname = resolved.label,
-            host = InetAddress.getByName(resolved.host),
-            controlPort = resolved.port,
-            protocolMajorVersion = 2,
-            protocolMinorRevision = 0
-        )
     }
 
     @Composable
@@ -245,78 +206,54 @@ class MainActivity : ComponentActivity() {
             Column(
                 modifier = Modifier.fillMaxSize().padding(32.dp),
                 verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
                     text = "Connection failed",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer16()
                 Text(
                     text = message,
                     fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
     }
 
     @Composable
-    private fun StreamingScene(sink: XrPanelSink) {
-        val dimensions by sink.dimensions.collectAsState()
-        val (panelWidthMeters, panelHeightMeters) = computePanelDimensionsMeters(dimensions)
-
-        // A small 2D overlay panel for the "Pick another window" affordance,
-        // rendered alongside the spatial panel as the activity's main 2D panel.
-        // We use a transparent Surface so that it doesn't occlude the spatial video panel.
-        Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopStart) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilledTonalButton(onClick = {
-                        activityScope.launch { returnToPicker() }
-                    }) {
-                        Text("Pick another window", fontSize = 16.sp)
-                    }
-                    Spacer(modifier = Modifier.padding(horizontal = 8.dp))
-                    Text(
-                        text = "Streaming via XR compositor",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-
-        Subspace {
-            SpatialExternalSurface(
-                stereoMode = StereoMode.Mono,
-                modifier = SubspaceModifier
-                    .width((panelWidthMeters * 1000f).dp)
-                    .height((panelHeightMeters * 1000f).dp)
-                    .offset(z = (-PanelPlacement.DEFAULT_DISTANCE_METERS * 1000f).dp)
-                    .movable()
-            ) {
-                onSurfaceCreated { providedSurface ->
-                    Log.i(TAG, "SpatialExternalSurface created: $providedSurface")
-                    Diagnostics.report(PipelineEvent.SurfaceCreated(panelIndex = 0))
-                    sink.provideSurfaceFromXrSystem(providedSurface)
-                }
-                onSurfaceDestroyed {
-                    Log.i(TAG, "SpatialExternalSurface destroyed")
-                    Diagnostics.report(PipelineEvent.SurfaceDestroyed(panelIndex = 0, "spatial-lifecycle"))
-                }
-            }
-        }
+    private fun Spacer16() {
+        Column(modifier = Modifier.height(16.dp)) {}
     }
 
-    // ─── Connection + lifecycle ──────────────────────────────────────────────
+    @Composable
+    private fun WindowManagerScene() {
+        val catalogue by windowCatalogue.collectAsState()
+        val panels by windowManager.panels.collectAsState()
+        SpatialWindowManagerScene(
+            windowCatalogue = catalogue,
+            panels = panels,
+            onSpawn = { windowId -> spawnWindow(windowId) },
+            onClose = { windowId -> closeWindow(windowId) },
+            onToggleMinimize = { windowId -> toggleMinimize(windowId) },
+            onAdjustScale = { windowId, delta -> windowManager.adjustScale(windowId, delta) },
+            onSurfaceProvided = { windowId, surface ->
+                runtimes[windowId]?.sink?.provideSurfaceFromXrSystem(surface)
+            },
+            onSurfaceDestroyed = { windowId ->
+                runtimes[windowId]?.sink?.releaseSurface()
+            },
+        )
+    }
+
+    // ─── Connection ──────────────────────────────────────────────────────────
 
     private suspend fun startupConnect() {
         try {
             val resolved: ResolvedServer = resolveServer()
-            resolvedServer = resolved
             Log.i(TAG, "connecting to ${resolved.label} at ${resolved.host}:${resolved.port}")
 
             val client = MultiStreamControlClient(
@@ -325,32 +262,33 @@ class MainActivity : ComponentActivity() {
                 displayCapabilities = DisplayCapabilities(
                     maximumWidth = 3840,
                     maximumHeight = 2160,
-                    supportedCodecs = listOf("h264")
-                )
+                    supportedCodecs = listOf("h264"),
+                ),
             )
             val connectStartNanos: Long = System.nanoTime()
             val liveConnection: MultiStreamControlConnection = client.connect(activityScope)
             val connectDurationMs: Long = (System.nanoTime() - connectStartNanos) / 1_000_000L
             connection = liveConnection
-            Log.i(TAG, "connected: ${liveConnection.serverHello.windows.size} window(s) advertised")
             Diagnostics.report(PipelineEvent.TcpConnected(durationMs = connectDurationMs))
+
+            windowCatalogue.value = liveConnection.serverHello.windows.associateBy { it.windowId }
             Diagnostics.report(
                 PipelineEvent.ServerHelloReceived(
                     liveConnection.serverHello.windows.size,
-                    liveConnection.serverHello.udpPort
-                )
+                    liveConnection.serverHello.udpPort,
+                ),
             )
-            val selectedWindowHwnds: LongArray? = intent.getLongArrayExtra("selectedWindowHwnds")
-            val targetHwnd: Long? = selectedWindowHwnds?.firstOrNull() ?: intent.getLongExtra("selectedWindowHwnd", -1L).takeIf { it != -1L }
-            if (targetHwnd != null) {
-                val targetWindow = liveConnection.serverHello.windows.firstOrNull { it.hwnd == targetHwnd }
-                if (targetWindow != null) {
-                    Log.i(TAG, "found matching target window for HWND=$targetHwnd, auto-streaming windowId=${targetWindow.windowId}")
-                    beginStreaming(targetWindow.windowId)
-                    return
+            activityScope.launch { collectWindowEvents(liveConnection) }
+
+            uiState = UiState.Connected
+
+            // Optional adb auto-spawn: --ela selectedWindowHwnds <hwnd,…>.
+            val targetHwnds: LongArray = intent.getLongArrayExtra("selectedWindowHwnds") ?: LongArray(0)
+            for (hwnd in targetHwnds) {
+                liveConnection.serverHello.windows.firstOrNull { it.hwnd == hwnd }?.let { window ->
+                    spawnWindow(window.windowId)
                 }
             }
-            showPicker(liveConnection)
         } catch (throwable: Throwable) {
             Log.e(TAG, "startup connect failed", throwable)
             uiState = UiState.Failed(throwable.message ?: throwable.javaClass.simpleName)
@@ -361,19 +299,12 @@ class MainActivity : ComponentActivity() {
         val intentHost: String? = intent.getStringExtra("streamHost")
         val intentPort: Int = intent.getIntExtra("streamPort", -1)
         if (intentHost != null && intentPort > 0) {
-            return ResolvedServer(
-                host = intentHost,
-                port = intentPort,
-                label = intentHost,
-                source = null
-            )
+            return ResolvedServer(host = intentHost, port = intentPort, label = intentHost, source = null)
         }
         val discoveryClient = NetworkServiceDiscoveryClient(applicationContext)
         Diagnostics.report(PipelineEvent.DiscoveryStarted)
         val discovered: ServerInformation = try {
-            withTimeout(30_000) {
-                discoveryClient.discover(activityScope).first()
-            }
+            withTimeout(30_000) { discoveryClient.discover(activityScope).first() }
         } catch (timeout: TimeoutCancellationException) {
             Diagnostics.report(PipelineEvent.DiscoveryTimedOut)
             throw timeout
@@ -382,147 +313,175 @@ class MainActivity : ComponentActivity() {
             PipelineEvent.DiscoveryResultReceived(
                 hostname = discovered.hostname,
                 address = discovered.host.hostAddress ?: discovered.hostname,
-                port = discovered.controlPort
-            )
+                port = discovered.controlPort,
+            ),
         )
         return ResolvedServer(
             host = discovered.host.hostAddress ?: discovered.hostname,
             port = discovered.controlPort,
             label = discovered.hostname,
-            source = discovered
+            source = discovered,
         )
     }
 
-    private fun showPicker(liveConnection: MultiStreamControlConnection) {
-        // A scope tied to the picker so the WindowPickerViewModel collectors are
-        // cancelled when we move out of the Picking state. Parented under
-        // activityScope so it dies with the activity.
-        val scope = CoroutineScope(SupervisorJob(activityScope.coroutineContext.job) + Dispatchers.IO)
-        pickerScope = scope
-        val viewModel = WindowPickerViewModel(
-            initialWindows = liveConnection.serverHello.windows,
-            incomingMessages = liveConnection.incoming,
-            scope = scope
-        )
-        uiState = UiState.Picking(viewModel)
-    }
-
-    private suspend fun beginStreaming(windowId: ULong) {
-        val liveConnection = connection ?: return
-        pickerScope?.cancel()
-        pickerScope = null
-
-        val sink = XrPanelSink()
-        uiState = UiState.Streaming(sink)
-
-        Diagnostics.report(PipelineEvent.OpenStreamSent(windowId))
-        val pipelineJob = activityScope.launch {
-            try {
-                runPipeline(liveConnection, windowId, sink)
-            } catch (throwable: Throwable) {
-                Log.e(TAG, "stream pipeline failed", throwable)
-                uiState = UiState.Failed(throwable.message ?: throwable.javaClass.simpleName)
+    private suspend fun collectWindowEvents(liveConnection: MultiStreamControlConnection) {
+        activityScope.launch {
+            liveConnection.incoming.filterIsInstance<ControlMessage.WindowAdded>().collect { event ->
+                windowCatalogue.value = windowCatalogue.value + (event.window.windowId to event.window)
             }
         }
-        streamingJob = pipelineJob
+        activityScope.launch {
+            liveConnection.incoming.filterIsInstance<ControlMessage.WindowRemoved>().collect { event ->
+                windowCatalogue.value = windowCatalogue.value - event.windowId
+            }
+        }
+        activityScope.launch {
+            liveConnection.incoming.filterIsInstance<ControlMessage.WindowUpdated>().collect { event ->
+                val existing: WindowDescriptor = windowCatalogue.value[event.windowId] ?: return@collect
+                val updated: WindowDescriptor = existing.copy(
+                    title = event.title ?: existing.title,
+                    physicalWidth = event.physicalWidth ?: existing.physicalWidth,
+                    physicalHeight = event.physicalHeight ?: existing.physicalHeight,
+                )
+                windowCatalogue.value = windowCatalogue.value + (event.windowId to updated)
+                if (event.physicalWidth != null && event.physicalHeight != null) {
+                    windowManager.updateDimensions(event.windowId, event.physicalWidth!!, event.physicalHeight!!)
+                }
+            }
+        }
     }
 
-    private suspend fun runPipeline(
-        liveConnection: MultiStreamControlConnection,
-        windowId: ULong,
-        sink: XrPanelSink
-    ) {
-        Log.i(TAG, "opening stream for windowId=$windowId")
-        val openFlow: Flow<StreamLifecycleEvent> = liveConnection.openStream(windowId, activityScope)
+    // ─── Spawn / close / minimize ──────────────────────────────────────────────
 
-        var opened: StreamLifecycleEvent.Opened? = null
-        openFlow.collect { event ->
+    private fun spawnWindow(windowId: ULong) {
+        if (runtimes.containsKey(windowId)) return
+        val sink = XrPanelSink()
+        val pipelineScope = CoroutineScope(SupervisorJob(activityScope.coroutineContext.job) + Dispatchers.IO)
+        runtimes[windowId] = WindowRuntime(sink = sink, pipelineScope = pipelineScope)
+        statusBanner = null
+        activityScope.launch { runStreamPipeline(windowId) }
+    }
+
+    private suspend fun runStreamPipeline(windowId: ULong) {
+        val liveConnection = connection ?: return
+        val runtime = runtimes[windowId] ?: return
+        Diagnostics.report(PipelineEvent.OpenStreamSent(windowId))
+        liveConnection.openStream(windowId, activityScope).collect { event ->
             when (event) {
                 is StreamLifecycleEvent.Opened -> {
                     Log.i(TAG, "stream opened: streamId=${event.streamId} ${event.width}x${event.height}")
                     Diagnostics.report(PipelineEvent.StreamOpened(event.streamId, event.width, event.height))
-                    opened = event
-                    activeStreamId = event.streamId
-                    startDecoderForStream(liveConnection, event, sink)
+                    runtime.streamId = event.streamId
+                    val title: String = windowCatalogue.value[windowId]?.let { it.title.ifBlank { it.processName } }
+                        ?: "Window $windowId"
+                    runOnUiThread {
+                        windowManager.addPanel(
+                            windowId = windowId,
+                            streamId = event.streamId,
+                            title = title,
+                            contentWidthPixels = event.width,
+                            contentHeightPixels = event.height,
+                        )
+                    }
+                    startDecoder(windowId, event)
                 }
                 is StreamLifecycleEvent.Refused -> {
                     Log.e(TAG, "stream refused: ${event.errorCode} — ${event.message}")
                     Diagnostics.report(PipelineEvent.StreamRefused(0, event.errorCode, event.message))
-                    pickerErrorBanner = "Couldn't open that window: ${event.message}"
-                    val liveConnection = connection
-                    if (liveConnection != null) showPicker(liveConnection)
+                    statusBanner = "Couldn't open that window: ${event.message}"
+                    teardownRuntime(windowId)
                 }
                 is StreamLifecycleEvent.Stopped -> {
                     Log.i(TAG, "stream stopped: ${event.reason.reason}")
-                    Diagnostics.report(PipelineEvent.StreamStopped(activeStreamId ?: 0, event.reason.reason.name))
-                    activeDecoder?.runCatching { stop() }
-                    activeDecoder = null
-                    activeStreamId = null
+                    Diagnostics.report(PipelineEvent.StreamStopped(runtime.streamId ?: 0, event.reason.reason.name))
+                    runOnUiThread { windowManager.removePanel(windowId) }
+                    teardownRuntime(windowId)
                 }
             }
         }
-        // Suppress unused — keeps the resolved stream descriptor in scope for
-        // future log lines / multi-panel work without changing the control flow.
-        opened?.let { Log.i(TAG, "pipeline collector ending for streamId=${it.streamId}") }
     }
 
-    private suspend fun startDecoderForStream(
-        liveConnection: MultiStreamControlConnection,
-        opened: StreamLifecycleEvent.Opened,
-        sink: XrPanelSink
-    ) {
+    private suspend fun startDecoder(windowId: ULong, opened: StreamLifecycleEvent.Opened) {
+        val liveConnection = connection ?: return
+        val runtime = runtimes[windowId] ?: return
+
         val udpReceiver = UdpTransportReceiver(
             bindAddress = InetAddress.getByName("0.0.0.0"),
-            requestedPort = 0
+            requestedPort = 0,
         )
-        val frames: Flow<EncodedFrame> = udpReceiver.start(activityScope)
-        Log.i(TAG, "UDP bound on port ${udpReceiver.boundPort}")
+        runtime.udpReceiver = udpReceiver
+        val frames: Flow<EncodedFrame> = udpReceiver.start(runtime.pipelineScope)
         Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
 
         liveConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
         liveConnection.requestKeyframe(opened.streamId)
 
         val decoder = MediaCodecDecoder(
-            frameSink = sink,
-            onKeyframeRequested = {
-                runCatching { liveConnection.requestKeyframe(opened.streamId) }
-            }
+            frameSink = runtime.sink,
+            onKeyframeRequested = { runCatching { liveConnection.requestKeyframe(opened.streamId) } },
+            streamId = opened.streamId,
         )
-        activeDecoder = decoder
+        runtime.decoder = decoder
         Diagnostics.report(PipelineEvent.DecoderStarting(opened.streamId, opened.width, opened.height))
-        decoder.start(activityScope, frames, opened.width, opened.height)
-        Log.i(TAG, "decoder started, rendering through XR compositor")
+        decoder.start(runtime.pipelineScope, frames, opened.width, opened.height)
         Diagnostics.report(PipelineEvent.DecoderStarted(opened.streamId))
     }
 
-    private suspend fun returnToPicker() {
-        val streamId: Int? = activeStreamId
-        val liveConnection: MultiStreamControlConnection? = connection
-        activeDecoder?.runCatching { stop() }
-        activeDecoder = null
-        if (streamId != null && liveConnection != null) {
-            runCatching { liveConnection.closeStream(streamId) }
-        }
-        activeStreamId = null
-        streamingJob?.cancel()
-        streamingJob = null
-        if (liveConnection != null) {
-            showPicker(liveConnection)
+    private fun closeWindow(windowId: ULong) {
+        val runtime = runtimes[windowId] ?: return
+        val streamId: Int? = runtime.streamId
+        runOnUiThread { windowManager.removePanel(windowId) }
+        activityScope.launch {
+            if (streamId != null) {
+                runCatching { connection?.closeStream(streamId) }
+            }
+            teardownRuntime(windowId)
         }
     }
 
+    private fun toggleMinimize(windowId: ULong) {
+        val nowMinimized: Boolean = windowManager.toggleMinimize(windowId) ?: return
+        val streamId: Int = runtimes[windowId]?.streamId ?: return
+        activityScope.launch {
+            if (nowMinimized) {
+                runCatching { connection?.pauseStream(streamId) }
+            } else {
+                runCatching { connection?.resumeStream(streamId) }
+            }
+        }
+    }
+
+    private suspend fun teardownRuntime(windowId: ULong) {
+        val runtime = runtimes.remove(windowId) ?: return
+        runtime.decoder?.runCatching { stop() }
+        runCatching { runtime.pipelineScope.coroutineContext.job.cancelAndJoin() }
+    }
+
+    // ─── Wifi lock + lifecycle ─────────────────────────────────────────────────
+
+    private fun acquireWifiLock() {
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "XrWindowManager")
+        lock.acquire()
+        lowLatencyWifiLock = lock
+        Diagnostics.report(PipelineEvent.WifiLockAcquired)
+    }
+
     override fun onDestroy() {
-        activeDecoder?.runCatching { stop() }
-        activeDecoder = null
-        pickerScope?.cancel()
-        pickerScope = null
-        streamingJob?.cancel()
-        streamingJob = null
+        lowLatencyWifiLock?.runCatching {
+            if (isHeld) {
+                release()
+                Diagnostics.report(PipelineEvent.WifiLockReleased)
+            }
+        }
+        lowLatencyWifiLock = null
+        runtimes.values.forEach { it.decoder?.runCatching { stop() } }
+        runtimes.clear()
         val liveConnection: MultiStreamControlConnection? = connection
         connection = null
         if (liveConnection != null) {
-            // Use a detached scope: activityScope is about to be cancelled,
-            // and close() needs to finish flushing the socket teardown.
+            // Detached scope: activityScope is about to be cancelled but close()
+            // must finish flushing the socket teardown.
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 runCatching { liveConnection.close() }
             }
