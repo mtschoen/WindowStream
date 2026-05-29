@@ -46,6 +46,14 @@ android {
     }
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
+        // Return Android-framework default values (instead of throwing
+        // "Method ... not mocked") for unmocked android.jar calls in JVM unit
+        // tests. Required because MediaCodecDecoder's companion object evaluates
+        // Log.isLoggable("FRAMECOUNT", …) at class-load (added in 2b6b595); any
+        // test that loads that class (e.g. mockk in ViewerPipelineTest) would
+        // otherwise hit ExceptionInInitializerError. This is the Android-
+        // recommended setting from the not-mocked error message.
+        unitTests.isReturnDefaultValues = true
         managedDevices {
             devices {
                 create<com.android.build.api.dsl.ManagedVirtualDevice>("pixel6api36") {

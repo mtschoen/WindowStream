@@ -187,6 +187,25 @@ class FileLoggingTreeTest {
     }
 
     @Test
+    fun `per-write flush disabled still persists after explicit flush`(@TempDir tempDir: File) {
+        // Exercises the enablePerWriteFlush=false branch in log(): the inline
+        // writer.flush() is skipped, so durability relies on the explicit
+        // flush()/close() drain instead of the per-line flush.
+        val tree = FileLoggingTree(
+            directory = tempDir,
+            retentionDays = 7,
+            clock = clockAt("2026-05-17T00:00:00Z"),
+            enablePerWriteFlush = false
+        )
+        withPlanted(tree) {
+            Diagnostics.report(PipelineEvent.UdpBound(port = 7))
+            tree.flush()
+        }
+        val line = File(tempDir, "viewer-2026-05-17.jsonl").readLines().single()
+        assertTrue(line.contains("\"eventType\":\"UdpBound\""))
+    }
+
+    @Test
     fun `purgeOldFiles tolerates missing directory`(@TempDir tempDir: File) {
         val sub = File(tempDir, "sub")
         val tree = FileLoggingTree(directory = sub, retentionDays = 7, clock = clockAt("2026-05-17T00:00:00Z"))
