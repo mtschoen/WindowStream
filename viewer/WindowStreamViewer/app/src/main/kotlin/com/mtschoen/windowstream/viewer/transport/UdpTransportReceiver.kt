@@ -17,6 +17,7 @@ import java.net.InetSocketAddress
 class UdpTransportReceiver(
     private val bindAddress: InetAddress,
     private val requestedPort: Int,
+    private val emissionCapacity: Int = 1,
     private val socketFactory: (InetSocketAddress) -> DatagramSocket = { address ->
         DatagramSocket(address).also { it.receiveBufferSize = 2 * 1024 * 1024 }
     }
@@ -31,12 +32,15 @@ class UdpTransportReceiver(
     fun start(scope: CoroutineScope): Flow<EncodedFrame> {
         val datagramSocket = socketFactory(InetSocketAddress(bindAddress, requestedPort))
         socket = datagramSocket
-        // Tier 1c: capacity=1 with DROP_OLDEST ensures the decoder always
-        // picks up the freshest reassembled frame after any transient stall,
-        // rather than processing a queue of up to 64 stale frames. This
-        // tightens the enc→reasm tail-latency jitter.
+        // Tier 1c: the default capacity=1 with DROP_OLDEST ensures the decoder
+        // always picks up the freshest reassembled frame after any transient
+        // stall, rather than processing a queue of up to 64 stale frames — this
+        // tightens the enc→reasm tail-latency jitter for the single-stream case.
+        // A shared multi-stream receiver (one socket feeding a StreamMultiplexer)
+        // passes a larger emissionCapacity so frames for one stream are not
+        // dropped by the arrival of a frame for a different stream.
         val emissionChannel = Channel<EncodedFrame>(
-            capacity = 1,
+            capacity = emissionCapacity,
             onBufferOverflow = BufferOverflow.DROP_OLDEST
         )
 

@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.xr.compose.spatial.Subspace
@@ -194,14 +195,18 @@ private fun WindowDrawerContent(
                 val label: String = descriptor.title.ifBlank { descriptor.processName }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = label,
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(end = 12.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // weight(1f) lets the title take remaining space and ellipsize
+                        // instead of pushing the Open/Close button off the row.
+                        modifier = Modifier.weight(1f),
                     )
                     if (isOpen) {
                         FilledTonalButton(onClick = { onClose(windowId) }) {
@@ -238,7 +243,11 @@ private fun WindowChromeBar(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // weight(1f) keeps the chrome buttons (–/+/minimize/×) on-row even
+                // when the window title is long.
+                modifier = Modifier.weight(1f),
             )
             if (!panel.minimized) {
                 FilledTonalButton(onClick = { onAdjustScale(panel.windowId, -SpatialPanelLayout.SCALE_STEP) }) {

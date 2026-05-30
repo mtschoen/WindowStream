@@ -2,7 +2,9 @@
 
 **Branch:** `xr-spatial-window-manager`
 **Built + unit-tested:** 2026-05-29 (overnight autonomous session)
-**On-head verified:** ❌ not yet — this is the morning checklist.
+**On-head verified:** ✅ 2026-05-29 — 2 concurrent windows stream live,
+responsive video in movable chrome panels. Verification surfaced and fixed a
+multi-stream UDP delivery bug (see "Verification results" below).
 
 ## What was built
 
@@ -19,6 +21,35 @@ The gxr (Android XR / OpenXR) flavor's launcher (`MainActivity`) is now a
 - Minimize pauses the stream (`PAUSE_STREAM`) and shrinks the panel; restore
   resumes (`RESUME_STREAM`). Close sends `CLOSE_STREAM` and tears the panel down.
 - Grab a panel's column to **move** it (`.movable()`).
+
+## Verification results (2026-05-29, Galaxy XR `R3GYB04E2WB`)
+
+✅ **Works.** Launch → drawer → open windows → **live, responsive video** in
+movable spatial panels with chrome. Verified against a freshly-restarted server.
+
+**Bug found + fixed during verification — multi-stream UDP delivery.** The
+manager bound a *separate* `UdpTransportReceiver` per window, so each stream's
+`VIEWER_READY` overwrote the server's single per-connection endpoint — only the
+last-opened stream received frames; every other panel was transparent. The v2
+protocol multiplexes all streams onto one viewer endpoint (see
+`ViewerReadyMessage`), so the fix routes all streams through one shared
+`UdpTransportReceiver` + `StreamMultiplexer` (demux by `streamId`), announcing
+the endpoint once. Also fixed long-title chrome/drawer button squish
+(`weight(1f)` + ellipsis). Server-side `WINDOWSTREAM_FRAMECOUNT=1` confirmed
+capture+encode were never the issue.
+
+**Open follow-ups (not blocking the milestone):**
+- **3rd concurrent panel renders transparent** (1–2 stream fine). Suspect NVENC
+  session limit, multiplexer/emission backpressure, or a per-stream resource cap
+  — needs isolation.
+- **Movable-grab affordance is finicky** — the grab edge is hard to target and
+  the panel snaps on first grab.
+- **Pre-existing server bug (out of scope for this branch):** on viewer
+  disconnect the coordinator nulls the viewer endpoint but does NOT stop the
+  worker process → the orphan holds its WGC capture session and starves later
+  captures of the same window; killing a worker directly also crashes the
+  coordinator. This contaminated earlier test cycles — restart the whole server
+  for a clean slate. Worth its own Gitea issue.
 
 ## Commits on the branch
 

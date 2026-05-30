@@ -43,6 +43,7 @@ import com.mtschoen.windowstream.viewer.observability.Diagnostics
 import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.observability.ViewerStateReducer
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
+import com.mtschoen.windowstream.viewer.transport.StreamMultiplexer
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import com.mtschoen.windowstream.viewer.xr.SpatialWindowManager
 import com.mtschoen.windowstream.viewer.xr.SpatialWindowManagerScene
@@ -103,7 +104,6 @@ class MainActivity : ComponentActivity() {
     ) {
         @Volatile var streamId: Int? = null
         @Volatile var decoder: MediaCodecDecoder? = null
-        @Volatile var udpReceiver: UdpTransportReceiver? = null
     }
 
     private var uiState by mutableStateOf<UiState>(UiState.Connecting)
@@ -115,6 +115,15 @@ class MainActivity : ComponentActivity() {
     private val windowManager = SpatialWindowManager()
     private val windowCatalogue = MutableStateFlow<Map<ULong, WindowDescriptor>>(emptyMap())
     private val runtimes = ConcurrentHashMap<ULong, WindowRuntime>()
+
+    // The v2 protocol multiplexes EVERY stream onto the single viewer UDP endpoint
+    // announced once via VIEWER_READY (see ViewerReadyMessage on the server). So we
+    // bind ONE receiver for the whole connection and fan frames out to per-window
+    // decoders by streamId. Binding a socket per window instead made each new
+    // VIEWER_READY overwrite the server's single endpoint, starving every stream but
+    // the last one opened (black panels).
+    private val multiplexer = StreamMultiplexer()
+    private var sharedUdpReceiver: UdpTransportReceiver? = null
 
     // Pipeline coroutines must NOT run on Main: the scene's onSurfaceCreated fires
     // on Main and calls XrPanelSink.provideSurfaceFromXrSystem, while the decoder
@@ -278,6 +287,7 @@ class MainActivity : ComponentActivity() {
                     liveConnection.serverHello.udpPort,
                 ),
             )
+            startSharedTransport(liveConnection)
             activityScope.launch { collectWindowEvents(liveConnection) }
 
             uiState = UiState.Connected
@@ -401,19 +411,33 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Binds the single UDP receiver for this connection and announces its port via
+     * VIEWER_READY exactly once, then pumps every reassembled frame into the
+     * [StreamMultiplexer] which fans them out to per-window decoders by streamId.
+     */
+    private suspend fun startSharedTransport(liveConnection: MultiStreamControlConnection) {
+        val receiver = UdpTransportReceiver(
+            bindAddress = InetAddress.getByName("0.0.0.0"),
+            requestedPort = 0,
+            emissionCapacity = MULTIPLEX_EMISSION_CAPACITY,
+        )
+        sharedUdpReceiver = receiver
+        val frames: Flow<EncodedFrame> = receiver.start(activityScope)
+        Diagnostics.report(PipelineEvent.UdpBound(receiver.boundPort))
+        liveConnection.send(ControlMessage.ViewerReady(viewerUdpPort = receiver.boundPort))
+        activityScope.launch {
+            frames.collect { frame -> multiplexer.route(frame) }
+        }
+    }
+
     private suspend fun startDecoder(windowId: ULong, opened: StreamLifecycleEvent.Opened) {
         val liveConnection = connection ?: return
         val runtime = runtimes[windowId] ?: return
 
-        val udpReceiver = UdpTransportReceiver(
-            bindAddress = InetAddress.getByName("0.0.0.0"),
-            requestedPort = 0,
-        )
-        runtime.udpReceiver = udpReceiver
-        val frames: Flow<EncodedFrame> = udpReceiver.start(runtime.pipelineScope)
-        Diagnostics.report(PipelineEvent.UdpBound(udpReceiver.boundPort))
-
-        liveConnection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
+        // The shared receiver is already bound and VIEWER_READY already sent; this
+        // stream's frames arrive multiplexed and are demultiplexed here by streamId.
+        val frames: Flow<EncodedFrame> = multiplexer.flowFor(opened.streamId)
         liveConnection.requestKeyframe(opened.streamId)
 
         val decoder = MediaCodecDecoder(
@@ -453,6 +477,7 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun teardownRuntime(windowId: ULong) {
         val runtime = runtimes.remove(windowId) ?: return
+        runtime.streamId?.let { multiplexer.closeStream(it) }
         runtime.decoder?.runCatching { stop() }
         runCatching { runtime.pipelineScope.coroutineContext.job.cancelAndJoin() }
     }
@@ -477,6 +502,8 @@ class MainActivity : ComponentActivity() {
         lowLatencyWifiLock = null
         runtimes.values.forEach { it.decoder?.runCatching { stop() } }
         runtimes.clear()
+        sharedUdpReceiver?.runCatching { close() }
+        sharedUdpReceiver = null
         val liveConnection: MultiStreamControlConnection? = connection
         connection = null
         if (liveConnection != null) {
@@ -492,5 +519,10 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "XrMain"
+
+        // The shared receiver feeds frames for all streams through one emission
+        // channel before demux; a generous buffer keeps one stream's frames from
+        // being dropped by another stream's arrival under concurrent load.
+        const val MULTIPLEX_EMISSION_CAPACITY = 256
     }
 }
