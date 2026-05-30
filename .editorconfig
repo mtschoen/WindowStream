@@ -1,3 +1,7 @@
+# Canonical C# fleet .editorconfig — naming + style standard.
+# Source of truth: ~/.claude/notes/idioms_csharp_naming.md (copied from ~/git-wizard).
+# Naming severity is `warning`; it becomes a build error via <TreatWarningsAsErrors>
+# in Directory.Build.props (WindowStream is already at that gate).
 root = true
 
 [*]
@@ -6,9 +10,6 @@ end_of_line = crlf
 insert_final_newline = true
 trim_trailing_whitespace = true
 indent_style = space
-indent_size = 4
-
-[*.{cs,csproj,xaml,axaml}]
 indent_size = 4
 
 [*.{json,yml,yaml}]
@@ -20,57 +21,174 @@ trim_trailing_whitespace = false
 [*.sln]
 indent_style = tab
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Roslyn analyzer policy (AnalysisLevel=latest-All in Directory.Build.props).
-# The bar is 0 findings, enforced as build errors via TreatWarningsAsErrors.
-# Everything that fires is FIXED in code, except the four rules below, which are
-# opted out because "fixing" them is either inapplicable, harmful, or fights
-# another gate. Each carries its rationale so the opt-out is reviewable.
-# ─────────────────────────────────────────────────────────────────────────────
+[*.{cs,csproj,xaml,axaml}]
+indent_size = 4
+
 [*.cs]
+tab_width = 4
+
+#### .NET style ####
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+dotnet_style_require_accessibility_modifiers = omit_if_default:suggestion
+dotnet_style_readonly_field = true:suggestion
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_prefer_auto_properties = true:suggestion
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:suggestion
+
+#### C# style ####
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:suggestion
+csharp_prefer_braces = true:suggestion
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_expression_bodied_accessors = true:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+
+#### Naming ####
+# Convention: PascalCase types/methods/properties/events/namespaces/enums;
+# IPascalCase interfaces; TPascalCase type parameters; camelCase parameters/locals;
+# PascalCase const & static readonly; _camelCase ALL private/internal fields
+# (instance AND mutable static). No m_/k_/s_/t_ anywhere.
+
+# --- Symbol groups ---
+dotnet_naming_symbols.types.applicable_kinds = class, struct, enum, delegate
+dotnet_naming_symbols.types.applicable_accessibilities = *
+
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_symbols.interfaces.applicable_accessibilities = *
+
+dotnet_naming_symbols.type_parameters.applicable_kinds = type_parameter
+
+dotnet_naming_symbols.members.applicable_kinds = method, property, event
+dotnet_naming_symbols.members.applicable_accessibilities = *
+
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+dotnet_naming_symbols.public_fields.applicable_kinds = field
+dotnet_naming_symbols.public_fields.applicable_accessibilities = public, protected, protected_internal
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, internal, private_protected
+
+dotnet_naming_symbols.parameters_locals.applicable_kinds = parameter, local
+
+# --- Styles ---
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_style.i_pascal.capitalization = pascal_case
+dotnet_naming_style.i_pascal.required_prefix = I
+dotnet_naming_style.t_pascal.capitalization = pascal_case
+dotnet_naming_style.t_pascal.required_prefix = T
+dotnet_naming_style.camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_style.underscore_camel.required_prefix = _
+
+# --- Rules (most-specific symbol groups first; const/static-readonly take
+#     precedence over the general private-field rule) ---
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal_case
+dotnet_naming_rule.constants_pascal.severity = warning
+
+dotnet_naming_rule.static_readonly_pascal.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_pascal.style = pascal_case
+dotnet_naming_rule.static_readonly_pascal.severity = warning
+
+dotnet_naming_rule.public_fields_pascal.symbols = public_fields
+dotnet_naming_rule.public_fields_pascal.style = pascal_case
+dotnet_naming_rule.public_fields_pascal.severity = warning
+
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = warning
+
+dotnet_naming_rule.interfaces_i.symbols = interfaces
+dotnet_naming_rule.interfaces_i.style = i_pascal
+dotnet_naming_rule.interfaces_i.severity = warning
+
+dotnet_naming_rule.type_parameters_t.symbols = type_parameters
+dotnet_naming_rule.type_parameters_t.style = t_pascal
+dotnet_naming_rule.type_parameters_t.severity = warning
+
+dotnet_naming_rule.types_pascal.symbols = types
+dotnet_naming_rule.types_pascal.style = pascal_case
+dotnet_naming_rule.types_pascal.severity = warning
+
+dotnet_naming_rule.members_pascal.symbols = members
+dotnet_naming_rule.members_pascal.style = pascal_case
+dotnet_naming_rule.members_pascal.severity = warning
+
+dotnet_naming_rule.parameters_locals_camel.symbols = parameters_locals
+dotnet_naming_rule.parameters_locals_camel.style = camel_case
+dotnet_naming_rule.parameters_locals_camel.severity = warning
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WindowStream-specific Roslyn analyzer policy (AnalysisLevel=latest-All in
+# Directory.Build.props — a superset of the fleet's latest-Recommended baseline).
+# The bar is 0 findings, enforced as build errors via TreatWarningsAsErrors.
+# Everything that fires is FIXED in code, except the rules below, which are opted
+# out because "fixing" them is inapplicable, harmful, or fights another gate.
+# Each carries its rationale so the opt-out is reviewable.
+# ─────────────────────────────────────────────────────────────────────────────
 
 # CA2007 — "consider ConfigureAwait(false)". Applies to general-purpose
-# *libraries* that must not capture a SynchronizationContext. WindowStream is
-# two apps (CLI, MAUI server) plus an app-internal library with no external
-# consumers; there is no context to deadlock on, so ConfigureAwait(false) is
-# pure noise. The SDK fixer also mis-rewrites `await using var x = …`
-# declarations into `ConfiguredAsyncDisposable` (CS0029), i.e. it cannot even
-# apply this rule correctly here.
+# *libraries* that must not capture a SynchronizationContext. WindowStream is two
+# apps (CLI, MAUI server) plus an app-internal library with no external consumers;
+# there is no context to deadlock on, so ConfigureAwait(false) is pure noise. The
+# SDK fixer also mis-rewrites `await using var x = …` into ConfiguredAsyncDisposable
+# (CS0029) — it cannot even apply this rule correctly here.
 dotnet_diagnostic.CA2007.severity = none
 
 # CA1062 — "validate public method arguments for null". Redundant under
-# `Nullable=enable` (the compiler enforces non-null reference parameters), and
-# adding runtime guards injects a throw branch that is unreachable for
-# non-nullable params — which would break this repo's 100% branch-coverage gate
-# (see AGENTS.md "Coverage gate configuration"). Nullable annotations are the
-# enforcement mechanism here.
+# Nullable=enable (the compiler enforces non-null reference parameters), and a
+# runtime guard injects a throw branch unreachable for non-nullable params, which
+# would break this repo's 100% branch-coverage gate (AGENTS.md "Coverage gate
+# configuration"). Nullable annotations are the enforcement mechanism here.
 dotnet_diagnostic.CA1062.severity = none
 
 # CA1515 — "consider making public types internal" (new in .NET 9, app-oriented).
-# The public types are the deliberate composition/test surface (e.g.
-# ICliServices is consumed by the test assembly). Honouring it requires either
-# leaving them public or sprinkling [InternalsVisibleTo] across every project —
-# churn with no runtime benefit for a library that ships nowhere.
+# The public types are the deliberate composition/test surface (e.g. ICliServices
+# is consumed by the test assembly). Honouring it requires either leaving them
+# public or sprinkling [InternalsVisibleTo] across every project — churn with no
+# runtime benefit for a library that ships nowhere.
 dotnet_diagnostic.CA1515.severity = none
 
 # CA1028 / CA1008 — "enum storage should be Int32" / "enums should have a zero
 # value". WorkerCommandTag and PacketFlags are WIRE-PROTOCOL enums, deliberately
-# `byte`-backed (one byte on the wire, per AGENTS.md) and a command tag has no
-# meaningful zero. "Fixing" them silently changes the binary protocol. The SDK
+# byte-backed (one byte on the wire, per AGENTS.md) and a command tag has no
+# meaningful zero. "Fixing" them silently changes the binary protocol; the SDK
 # fixer already proved this by stripping `: byte`.
 dotnet_diagnostic.CA1028.severity = none
 dotnet_diagnostic.CA1008.severity = none
 
 # CA1032 — "implement standard exception constructors". The custom exceptions are
 # internal, thrown from exactly one place each with one intentional constructor.
-# Adding the (), (string), (string, Exception) ctors creates UNUSED public
-# members that no test can exercise — directly breaking this repo's 100%
-# coverage gate. Add a standard ctor if and when a caller actually needs it.
+# Adding the (), (string), (string, Exception) ctors creates UNUSED public members
+# no test can exercise — directly breaking the 100% coverage gate. Add a standard
+# ctor if and when a caller actually needs it.
 dotnet_diagnostic.CA1032.severity = none
 
-# tests/ only: CA1707 — "identifiers should not contain underscores". The xUnit
-# Method_Scenario_Result naming convention is intentional and universal across
-# the suite (291 sites, all in tests/, zero in src/). Production code keeps the
-# rule enforced.
+#### Per-project relaxations ####
+# Test projects: CA1707 (underscores in member names) is the xUnit
+# Method_Scenario_Expected convention, and CA1861 (constant-array-arg perf) is
+# irrelevant in one-shot test calls — both are noise here (matches the fleet
+# standard). All other analyzers (incl. naming) still apply to tests.
 [tests/**/*.cs]
 dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1861.severity = none
