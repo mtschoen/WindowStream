@@ -1,9 +1,11 @@
 WindowStream test report — 2026-05-17
 ═══════════════════════════════════════════
 
-Status:   PASS
+Status:   PASS (coverage) · IN PROGRESS (lint gate — see "Lint rollout" below)
+Mode:     close-the-gap (establishing the superset lint gate is the active task)
 Tests:    663 passed, 3 skipped (total 666)
 Git:      ead4fc8 (main, post T12 PipelineEvent landing)
+          lint rollout on branch linter-rollout (worktree off main @ 17687d2)
 
 .NET (Coverlet — line + branch + method, 100% gate)
   WindowStream.Core      — 100% line, 100% branch, 100% method
@@ -38,3 +40,28 @@ Coverage commands
   Optional reporting:
   ./gradlew :app:koverXmlReportPortableDebug             # XML report
   ./gradlew :app:koverHtmlReportPortableDebug            # HTML report
+
+═══════════════════════════════════════════
+Lint rollout (branch linter-rollout) — target: 0 findings, superset of all linters
+═══════════════════════════════════════════
+
+Configured (Directory.Build.props + .editorconfig + WindowStream.sln.DotSettings):
+  - SDK Roslyn analyzers: EnableNETAnalyzers, AnalysisLevel=latest-All
+  - Roslynator.Analyzers 4.15.0 (RCS rules)
+  - EnforceCodeStyleInBuild + TreatWarningsAsErrors → findings are build errors
+  - Canonical fleet naming/style .editorconfig (IDE1006 _camelCase, etc.)
+  - jb inspectcode — planned CI deep/naming gate (not yet wired)
+
+Opt-outs (.editorconfig, each with rationale):
+  CA2007, CA1062, CA1515, CA1028, CA1008, CA1032 ; tests-only: CA1707, CA1861
+
+Lint:     295 findings (build -p:TreatWarningsAsErrors=false, deduped by file:line)
+            284 CA + 11 RCS + 0 IDE
+          NOTE: IDE1006 _camelCase is NOT enforced by `dotnet build` (Rider/jb
+          only) → naming rename is a separate jb cleanupcode step.
+          0 per-case suppressions · 8 documented rule opt-outs
+
+Done (committed): format sweep · enable analyzers+policy · adopt fleet conventions+Roslynator
+Remaining: _camelCase rename (jb cleanupcode) · fix 295 findings → 0 (hold 100%
+  coverage) · jb inspectcode → 0 · CI lint job · PostToolUse hook · aislop
+  (config + hook + gate, DISABLED until aislop ships a C# engine) · open PR
