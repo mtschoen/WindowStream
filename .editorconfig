@@ -19,3 +19,58 @@ trim_trailing_whitespace = false
 
 [*.sln]
 indent_style = tab
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Roslyn analyzer policy (AnalysisLevel=latest-All in Directory.Build.props).
+# The bar is 0 findings, enforced as build errors via TreatWarningsAsErrors.
+# Everything that fires is FIXED in code, except the four rules below, which are
+# opted out because "fixing" them is either inapplicable, harmful, or fights
+# another gate. Each carries its rationale so the opt-out is reviewable.
+# ─────────────────────────────────────────────────────────────────────────────
+[*.cs]
+
+# CA2007 — "consider ConfigureAwait(false)". Applies to general-purpose
+# *libraries* that must not capture a SynchronizationContext. WindowStream is
+# two apps (CLI, MAUI server) plus an app-internal library with no external
+# consumers; there is no context to deadlock on, so ConfigureAwait(false) is
+# pure noise. The SDK fixer also mis-rewrites `await using var x = …`
+# declarations into `ConfiguredAsyncDisposable` (CS0029), i.e. it cannot even
+# apply this rule correctly here.
+dotnet_diagnostic.CA2007.severity = none
+
+# CA1062 — "validate public method arguments for null". Redundant under
+# `Nullable=enable` (the compiler enforces non-null reference parameters), and
+# adding runtime guards injects a throw branch that is unreachable for
+# non-nullable params — which would break this repo's 100% branch-coverage gate
+# (see AGENTS.md "Coverage gate configuration"). Nullable annotations are the
+# enforcement mechanism here.
+dotnet_diagnostic.CA1062.severity = none
+
+# CA1515 — "consider making public types internal" (new in .NET 9, app-oriented).
+# The public types are the deliberate composition/test surface (e.g.
+# ICliServices is consumed by the test assembly). Honouring it requires either
+# leaving them public or sprinkling [InternalsVisibleTo] across every project —
+# churn with no runtime benefit for a library that ships nowhere.
+dotnet_diagnostic.CA1515.severity = none
+
+# CA1028 / CA1008 — "enum storage should be Int32" / "enums should have a zero
+# value". WorkerCommandTag and PacketFlags are WIRE-PROTOCOL enums, deliberately
+# `byte`-backed (one byte on the wire, per AGENTS.md) and a command tag has no
+# meaningful zero. "Fixing" them silently changes the binary protocol. The SDK
+# fixer already proved this by stripping `: byte`.
+dotnet_diagnostic.CA1028.severity = none
+dotnet_diagnostic.CA1008.severity = none
+
+# CA1032 — "implement standard exception constructors". The custom exceptions are
+# internal, thrown from exactly one place each with one intentional constructor.
+# Adding the (), (string), (string, Exception) ctors creates UNUSED public
+# members that no test can exercise — directly breaking this repo's 100%
+# coverage gate. Add a standard ctor if and when a caller actually needs it.
+dotnet_diagnostic.CA1032.severity = none
+
+# tests/ only: CA1707 — "identifiers should not contain underscores". The xUnit
+# Method_Scenario_Result naming convention is intentional and universal across
+# the suite (291 sites, all in tests/, zero in src/). Production code keeps the
+# rule enforced.
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
