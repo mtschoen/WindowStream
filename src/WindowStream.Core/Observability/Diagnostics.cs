@@ -23,10 +23,7 @@ public sealed class Diagnostics
 
     public void Report(PipelineEvent pipelineEvent)
     {
-        if (pipelineEvent is null)
-        {
-            throw new ArgumentNullException(nameof(pipelineEvent));
-        }
+        ArgumentNullException.ThrowIfNull(pipelineEvent);
 
         LogLevel logLevel = pipelineEvent.Severity switch
         {

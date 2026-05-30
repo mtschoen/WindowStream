@@ -53,12 +53,14 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         {
             // normal shutdown
         }
+#pragma warning disable CA1031 // MAUI UI boundary: prevents unhandled task exception on the page; launcher details already logged by diagnostics façade
         catch (Exception exception)
         {
             // The diagnostics façade should already have logged details; this catch
             // exists so the page doesn't see an unhandled task exception.
             System.Diagnostics.Debug.WriteLine($"launcher faulted: {exception}");
         }
+#pragma warning restore CA1031
     }
 
     private void OnSinkEvent(LogEntry entry) =>

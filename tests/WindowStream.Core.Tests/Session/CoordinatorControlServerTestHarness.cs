@@ -136,7 +136,7 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
     {
         if (disposed) return;
         disposed = true;
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Server.DisposeAsync().ConfigureAwait(false);
         await Supervisor.DisposeAsync().ConfigureAwait(false);
         cancellation.Dispose();

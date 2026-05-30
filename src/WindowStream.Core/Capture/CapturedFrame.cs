@@ -140,14 +140,8 @@ public sealed class CapturedFrame
         PixelFormat pixelFormat,
         long presentationTimestampMicroseconds)
     {
-        if (widthPixels <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(widthPixels));
-        }
-        if (heightPixels <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(heightPixels));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthPixels);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightPixels);
 
         int minimumStride = pixelFormat switch
         {
@@ -155,13 +149,7 @@ public sealed class CapturedFrame
             PixelFormat.Nv12 => widthPixels,
             _ => throw new ArgumentOutOfRangeException(nameof(pixelFormat)),
         };
-        if (rowStrideBytes < minimumStride)
-        {
-            throw new ArgumentOutOfRangeException(nameof(rowStrideBytes));
-        }
-        if (presentationTimestampMicroseconds < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(presentationTimestampMicroseconds));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(rowStrideBytes, minimumStride);
+        ArgumentOutOfRangeException.ThrowIfNegative(presentationTimestampMicroseconds);
     }
 }

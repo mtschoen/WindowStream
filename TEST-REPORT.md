@@ -55,13 +55,19 @@ Configured (Directory.Build.props + .editorconfig + WindowStream.sln.DotSettings
 Opt-outs (.editorconfig, each with rationale):
   CA2007, CA1062, CA1515, CA1028, CA1008, CA1032 ; tests-only: CA1707, CA1861
 
-Lint:     295 findings (build -p:TreatWarningsAsErrors=false, deduped by file:line)
-            284 CA + 11 RCS + 0 IDE
+Lint:     0 findings — `dotnet build WindowStream.sln` (warn-as-error) is GREEN
+          across SDK latest-All + Roslynator 4.15.0 + EnforceCodeStyleInBuild.
+          ~230 findings fixed in code; ~15 documented rule opt-outs (.editorconfig,
+          each with rationale); ~14 per-site #pragma suppressions (FPs / framework
+          / interop, each with rationale); 1 project NoWarn (CA5392 — vendor-
+          generated WindowsAppSDK file in WindowStreamServer).
           NOTE: IDE1006 _camelCase is NOT enforced by `dotnet build` (Rider/jb
-          only) → naming rename is a separate jb cleanupcode step.
-          0 per-case suppressions · 8 documented rule opt-outs
+          only) → naming rename is a separate jb cleanupcode step (below).
+Coverage: 100% line / 100% branch / 100% method held after all fixes
+          (Core.Tests 338 pass, Server.Tests 44 pass).
 
-Done (committed): format sweep · enable analyzers+policy · adopt fleet conventions+Roslynator
-Remaining: _camelCase rename (jb cleanupcode) · fix 295 findings → 0 (hold 100%
-  coverage) · jb inspectcode → 0 · CI lint job · PostToolUse hook · aislop
-  (config + hook + gate, DISABLED until aislop ships a C# engine) · open PR
+Done (committed): format sweep · enable analyzers+policy · adopt fleet conventions
+  +Roslynator · fix all CA/RCS findings → 0 (coverage held at 100%)
+Remaining: _camelCase rename (jb cleanupcode) · jb inspectcode → 0 · CI lint job
+  · PostToolUse hook · aislop (config + hook + gate, DISABLED until aislop ships a
+  C# engine) · open PR

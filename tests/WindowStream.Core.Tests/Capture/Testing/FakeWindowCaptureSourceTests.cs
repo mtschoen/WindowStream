@@ -65,7 +65,7 @@ public sealed class FakeWindowCaptureSourceTests
         using CancellationTokenSource cancellation = new CancellationTokenSource();
         await using IWindowCapture capture = source.Start(
             window.handle, new CaptureOptions(60, false), cancellation.Token);
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {

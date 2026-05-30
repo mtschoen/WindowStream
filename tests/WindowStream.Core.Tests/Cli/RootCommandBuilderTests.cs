@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Parsing;
@@ -46,7 +47,7 @@ public sealed class RootCommandBuilderTests
         var exitCode = await root.InvokeAsync(new[] { "list" });
 
         Assert.Equal(0, exitCode);
-        Assert.Contains("100", output.ToString());
+        Assert.Contains("100", output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

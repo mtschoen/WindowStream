@@ -19,12 +19,12 @@ public sealed class EncoderOptions
         int groupOfPicturesLength,
         int safetyKeyframeIntervalSeconds)
     {
-        if (widthPixels <= 0) throw new ArgumentOutOfRangeException(nameof(widthPixels));
-        if (heightPixels <= 0) throw new ArgumentOutOfRangeException(nameof(heightPixels));
-        if (framesPerSecond <= 0) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
-        if (bitrateBitsPerSecond <= 0) throw new ArgumentOutOfRangeException(nameof(bitrateBitsPerSecond));
-        if (groupOfPicturesLength <= 0) throw new ArgumentOutOfRangeException(nameof(groupOfPicturesLength));
-        if (safetyKeyframeIntervalSeconds <= 0) throw new ArgumentOutOfRangeException(nameof(safetyKeyframeIntervalSeconds));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthPixels);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightPixels);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(framesPerSecond);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bitrateBitsPerSecond);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(groupOfPicturesLength);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(safetyKeyframeIntervalSeconds);
 
         this.widthPixels = widthPixels;
         this.heightPixels = heightPixels;

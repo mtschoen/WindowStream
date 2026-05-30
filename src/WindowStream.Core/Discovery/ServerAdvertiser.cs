@@ -24,10 +24,7 @@ public sealed class ServerAdvertiser : IAsyncDisposable
         int controlPort,
         CancellationToken cancellationToken)
     {
-        if (options is null)
-        {
-            throw new ArgumentNullException(nameof(options));
-        }
+        ArgumentNullException.ThrowIfNull(options);
         if (controlPort < 1 || controlPort > 65535)
         {
             throw new ArgumentOutOfRangeException(

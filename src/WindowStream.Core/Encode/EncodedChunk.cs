@@ -17,10 +17,7 @@ public sealed class EncodedChunk
         {
             throw new ArgumentException("payload must not be empty.", nameof(payload));
         }
-        if (presentationTimestampMicroseconds < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(presentationTimestampMicroseconds));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(presentationTimestampMicroseconds);
         this.payload = payload;
         this.isKeyframe = isKeyframe;
         this.presentationTimestampMicroseconds = presentationTimestampMicroseconds;

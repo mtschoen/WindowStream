@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -189,7 +190,7 @@ public sealed class WorkerProcessIntegrationTests
                         new WorkerCommandFrame(WorkerCommandTag.Shutdown),
                         CancellationToken.None);
 
-                    bool exited = worker.WaitForExit(5000);
+                    bool exited = await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(5000)).ContinueWith(t => t.IsCompletedSuccessfully, TaskScheduler.Default);
                     if (!exited)
                     {
                         throw new Xunit.Sdk.XunitException(
@@ -209,19 +210,23 @@ public sealed class WorkerProcessIntegrationTests
                     throw new Xunit.Sdk.XunitException(
                         "worker pipe operation timed out. "
                         + $"workerHasExited={worker.HasExited} "
-                        + $"workerExitCode={(worker.HasExited ? worker.ExitCode.ToString() : "n/a")}\n"
+                        + $"workerExitCode={(worker.HasExited ? worker.ExitCode.ToString(CultureInfo.InvariantCulture) : "n/a")}\n"
                         + $"stderr:\n{workerStandardError}\nstdout:\n{workerStandardOutput}",
                         operationCanceledException);
                 }
             }
             finally
             {
-                frameNudgerCancellation.Cancel();
+                await frameNudgerCancellation.CancelAsync();
+                #pragma warning disable CA1031 // best-effort: frameNudger may have already faulted
                 try { await frameNudgerTask; } catch { /* best-effort */ }
+                #pragma warning restore CA1031
                 if (!worker.HasExited)
                 {
+                    #pragma warning disable CA1031 // best-effort cleanup — Kill can throw on already-exited process
                     try { worker.Kill(entireProcessTree: true); } catch { /* best-effort cleanup */ }
-                    worker.WaitForExit(2000);
+                    #pragma warning restore CA1031
+                    await worker.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
                 }
             }
         }
@@ -240,9 +245,11 @@ public sealed class WorkerProcessIntegrationTests
                 try
                 {
                     candidate.Kill(entireProcessTree: true);
-                    candidate.WaitForExit(2000);
+                    await candidate.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
                 }
+                #pragma warning disable CA1031 // best-effort notepad cleanup — Kill can throw on already-exited process
                 catch
+                #pragma warning restore CA1031
                 {
                     // best-effort cleanup
                 }
@@ -262,7 +269,7 @@ public sealed class WorkerProcessIntegrationTests
         // backslashes that need special handling. Backslashes immediately
         // preceding the closing quote would also need doubling, but JSON
         // EncoderOptions never end that way.
-        return "\"" + value.Replace("\"", "\\\"") + "\"";
+        return "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -281,10 +288,12 @@ public sealed class WorkerProcessIntegrationTests
         public const uint RDW_ALLCHILDREN = 0x0080;
 
         [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetWindowRect(IntPtr hWnd, out Win32Rect lpRect);
 
         [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool MoveWindow(
             IntPtr hWnd,
@@ -295,6 +304,7 @@ public sealed class WorkerProcessIntegrationTests
             [MarshalAs(UnmanagedType.Bool)] bool bRepaint);
 
         [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool RedrawWindow(
             IntPtr hWnd,

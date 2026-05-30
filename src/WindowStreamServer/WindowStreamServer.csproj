@@ -12,6 +12,8 @@
     <ApplicationIcon>Resources\AppIcon\windowstream.ico</ApplicationIcon>
     <WindowsPackageType>None</WindowsPackageType>
     <SkipValidateMauiImplicitPackageReferences>true</SkipValidateMauiImplicitPackageReferences>
+    <!-- CA5392: the only site is UndockedRegFreeWinRT-AutoInitializer.cs, a vendor file inside the WindowsAppSDK NuGet package that cannot be edited or per-site-suppressed from our .editorconfig -->
+    <NoWarn>$(NoWarn);CA5392</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

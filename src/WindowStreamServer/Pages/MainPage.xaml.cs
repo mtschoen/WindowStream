@@ -7,6 +7,7 @@ using WindowStream.Server.ViewModels;
 
 namespace WindowStream.Server.Pages;
 
+#pragma warning disable CA1001 // CA1001: MAUI ContentPage; servingCancellation is disposed in OnDisappearing (page lifecycle), not via IDisposable
 public partial class MainPage : ContentPage
 {
     private readonly ServerDashboardViewModel dashboardViewModel;
@@ -52,3 +53,4 @@ public partial class MainPage : ContentPage
         });
     }
 }
+#pragma warning restore CA1001

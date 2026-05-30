@@ -20,20 +20,25 @@ public sealed class ForegroundWindowApi : IForegroundWindowApi
     public uint CurrentThreadId() => GetCurrentThreadIdNative();
 
     [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern IntPtr GetForegroundWindowNative();
 
     [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint GetWindowThreadProcessIdNative(IntPtr hwnd, out uint processId);
 
     [DllImport("user32.dll", EntryPoint = "AttachThreadInput")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachThreadInputNative(uint sourceThreadId, uint targetThreadId, [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [DllImport("user32.dll", EntryPoint = "SetForegroundWindow")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindowNative(IntPtr hwnd);
 
     [DllImport("kernel32.dll", EntryPoint = "GetCurrentThreadId")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint GetCurrentThreadIdNative();
 }
 #endif

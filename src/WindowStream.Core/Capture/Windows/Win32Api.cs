@@ -12,24 +12,31 @@ public sealed class Win32Api : IWin32Api
     private delegate bool EnumWindowsProcedure(IntPtr windowHandle, IntPtr parameter);
 
     [DllImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern bool EnumWindows(EnumWindowsProcedure procedure, IntPtr parameter);
 
     [DllImport("user32.dll", EntryPoint = "IsWindowVisible")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern bool IsWindowVisibleExtern(IntPtr windowHandle);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int GetWindowTextLength(IntPtr windowHandle);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int GetWindowText(IntPtr windowHandle, StringBuilder builder, int maximumCount);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int GetClassName(IntPtr windowHandle, StringBuilder builder, int maximumCount);
 
     [DllImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint GetWindowThreadProcessId(IntPtr windowHandle, out uint processIdentifier);
 
     [DllImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern bool GetWindowRect(IntPtr windowHandle, out NativeRect rect);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -49,29 +56,31 @@ public sealed class Win32Api : IWin32Api
         int length = GetWindowTextLength(handle);
         if (length <= 0) return string.Empty;
         StringBuilder buffer = new StringBuilder(length + 1);
-        GetWindowText(handle, buffer, buffer.Capacity);
+        _ = GetWindowText(handle, buffer, buffer.Capacity);
         return buffer.ToString();
     }
 
     public string GetWindowClassName(IntPtr handle)
     {
         StringBuilder buffer = new StringBuilder(256);
-        GetClassName(handle, buffer, buffer.Capacity);
+        _ = GetClassName(handle, buffer, buffer.Capacity);
         return buffer.ToString();
     }
 
     public (int processIdentifier, string processName) GetWindowProcess(IntPtr handle)
     {
-        GetWindowThreadProcessId(handle, out uint processIdentifier);
+        _ = GetWindowThreadProcessId(handle, out uint processIdentifier);
         try
         {
             using Process process = Process.GetProcessById((int)processIdentifier);
             return ((int)processIdentifier, process.ProcessName);
         }
+#pragma warning disable CA1031 // best-effort process-name lookup; process may have exited between enumeration and query
         catch
         {
             return ((int)processIdentifier, string.Empty);
         }
+#pragma warning restore CA1031
     }
 
     public (int widthPixels, int heightPixels) GetWindowSize(IntPtr handle)

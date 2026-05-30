@@ -16,7 +16,7 @@ public static class Win32InputInjector
         if (!isDown) input.U.keyboard.dwFlags |= KEYEVENTF_KEYUP;
         input.U.keyboard.time = 0;
         input.U.keyboard.dwExtraInfo = UIntPtr.Zero;
-        SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+        _ = SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
     }
 
     private const uint INPUT_KEYBOARD = 1;
@@ -24,6 +24,7 @@ public static class Win32InputInjector
     private const uint KEYEVENTF_UNICODE = 0x0004;
 
     [DllImport("user32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint SendInput(uint cInputs, INPUT[] pInputs, int cbSize);
 
     [StructLayout(LayoutKind.Sequential)]

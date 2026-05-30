@@ -40,7 +40,9 @@ public static class MauiProgram
             .WriteTo.Sink(inAppSink)
             .CreateLogger();
 
+#pragma warning disable CA2000 // CA2000: SerilogLoggerFactory(dispose:true) owns the logger lifetime; the MAUI DI container controls disposal
         SerilogLoggerFactory loggerFactory = new(serilogLogger, dispose: true);
+#pragma warning restore CA2000
         ILogger<CoordinatorLauncher> launcherLogger = loggerFactory.CreateLogger<CoordinatorLauncher>();
 
         Diagnostics diagnostics = new(launcherLogger);

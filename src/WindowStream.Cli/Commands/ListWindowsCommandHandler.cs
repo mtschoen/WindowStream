@@ -16,13 +16,13 @@ public sealed class ListWindowsCommandHandler
         this.writer = writer;
     }
 
-    public Task<int> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<int> ExecuteAsync(CancellationToken cancellationToken)
     {
-        writer.WriteLine($"{"HANDLE",-12} {"PROCESS",-20} TITLE");
+        await writer.WriteLineAsync($"{"HANDLE",-12} {"PROCESS",-20} TITLE").ConfigureAwait(false);
         foreach (var window in captureSource.ListWindows())
         {
-            writer.WriteLine($"{window.handle.value,-12} {window.processName,-20} {window.title}");
+            await writer.WriteLineAsync($"{window.handle.value,-12} {window.processName,-20} {window.title}").ConfigureAwait(false);
         }
-        return Task.FromResult(0);
+        return 0;
     }
 }

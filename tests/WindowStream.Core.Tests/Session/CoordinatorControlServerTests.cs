@@ -647,17 +647,17 @@ public sealed class CoordinatorControlServerTests
     }
 
     [Fact]
-    public void TcpPort_DelegatesToAcceptor()
+    public async Task TcpPort_DelegatesToAcceptor()
     {
-        FakeTcpConnectionAcceptor tcpAcceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor tcpAcceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         tcpAcceptor.StartListening(7777);
-        WorkerSupervisor supervisor = new WorkerSupervisor(
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(
             new CoordinatorControlServerTestHarness.FakeWorkerLauncher(), 1);
         WindowStream.Core.Session.Input.FocusRelay focusRelay =
             new WindowStream.Core.Session.Input.FocusRelay(new CoordinatorControlServerTestHarness.FakeForegroundApi());
         CoordinatorOptions options = new CoordinatorOptions(2000, 6000, 2, 4);
 
-        CoordinatorControlServer server = new CoordinatorControlServer(
+        await using CoordinatorControlServer server = new CoordinatorControlServer(
             options,
             tcpAcceptor,
             supervisor,

@@ -16,7 +16,7 @@ public sealed class MalformedMessageExceptionTests
     [Fact]
     public void TwoArgumentConstructorSetsMessageAndInnerException()
     {
-        System.Exception inner = new System.Exception("inner");
+        System.InvalidOperationException inner = new System.InvalidOperationException("inner");
         MalformedMessageException exception = new MalformedMessageException("outer", inner);
         Assert.Equal("outer", exception.Message);
         Assert.Same(inner, exception.InnerException);

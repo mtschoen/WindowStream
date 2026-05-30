@@ -59,11 +59,10 @@ public static class RootCommandBuilder
                 new WindowHandle(hwnd), streamId, pipeName, encoderOptions);
 
 #if WINDOWS
-            WorkerCommandHandler handler = new WorkerCommandHandler();
-            invocationContext.ExitCode = await handler.ExecuteAsync(arguments, invocationContext.GetCancellationToken());
+            invocationContext.ExitCode = await WorkerCommandHandler.ExecuteAsync(arguments, invocationContext.GetCancellationToken());
 #else
             await Task.CompletedTask;
-            Console.Error.WriteLine("worker subcommand requires Windows");
+            await Console.Error.WriteLineAsync("worker subcommand requires Windows").ConfigureAwait(false);
             invocationContext.ExitCode = 4;
 #endif
         });

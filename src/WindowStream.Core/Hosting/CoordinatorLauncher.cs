@@ -154,7 +154,9 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             hostname: Environment.MachineName,
             protocolMajorVersion: 2,
             protocolRevision: 0);
+#pragma warning disable CA2000 // ownership of MakaretuMulticastServiceHost transfers to ServerAdvertiser which is await-using
         await using ServerAdvertiser advertiser = new ServerAdvertiser(new MakaretuMulticastServiceHost());
+#pragma warning restore CA2000
 
         Task controlServerTask = controlServer.RunAsync(tcpPort, cancellationToken);
         // The acceptor is bound after RunAsync triggers StartListening — wait one
@@ -234,7 +236,6 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         CoordinatorControlServer controlServer,
         CancellationToken cancellationToken)
     {
-        NalFragmenter fragmenter = new NalFragmenter();
         int sequence = 0;
         try
         {
@@ -246,7 +247,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                     continue;
                 }
                 int currentSequence = Interlocked.Increment(ref sequence) - 1;
-                foreach (FragmentedPacket packet in fragmenter.Fragment(
+                foreach (FragmentedPacket packet in NalFragmenter.Fragment(
                     streamId: chunk.StreamId,
                     sequence: currentSequence,
                     presentationTimestampMicroseconds: (long)chunk.Frame.PresentationTimestampMicroseconds,
@@ -283,11 +284,13 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                 {
                     snapshot = captureSource.ListWindows().ToList();
                 }
+#pragma warning disable CA1031 // intentional catch-all in enumeration loop; exception is reported and loop continues
                 catch (Exception enumerationException)
                 {
                     diagnostics.Report(new PipelineEvent.EnumerationFailed(enumerationException));
                     continue;
                 }
+#pragma warning restore CA1031
 
                 foreach (WindowEnumerationEvent enumerationEvent in registry.Diff(snapshot))
                 {

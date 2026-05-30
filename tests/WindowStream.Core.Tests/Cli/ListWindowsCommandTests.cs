@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -28,10 +29,10 @@ public sealed class ListWindowsCommandTests
 
         Assert.Equal(0, exitCode);
         var output = writer.ToString();
-        Assert.Contains("42", output);
-        Assert.Contains("Notepad - Untitled", output);
-        Assert.Contains("notepad", output);
-        Assert.Contains("43", output);
+        Assert.Contains("42", output, StringComparison.Ordinal);
+        Assert.Contains("Notepad - Untitled", output, StringComparison.Ordinal);
+        Assert.Contains("notepad", output, StringComparison.Ordinal);
+        Assert.Contains("43", output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -44,8 +45,8 @@ public sealed class ListWindowsCommandTests
         await handler.ExecuteAsync(CancellationToken.None);
 
         var output = writer.ToString();
-        Assert.Contains("HANDLE", output);
-        Assert.Contains("PROCESS", output);
-        Assert.Contains("TITLE", output);
+        Assert.Contains("HANDLE", output, StringComparison.Ordinal);
+        Assert.Contains("PROCESS", output, StringComparison.Ordinal);
+        Assert.Contains("TITLE", output, StringComparison.Ordinal);
     }
 }

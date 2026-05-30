@@ -76,7 +76,7 @@ public sealed class WgcCapture : IWindowCapture
         session = framePool.CreateCaptureSession(item);
         session.StartCapture();
 
-        Frames = ReadAsync();
+        Frames = ReadAsync(cancellationToken);
     }
 
     private void OnItemClosed(GraphicsCaptureItem sender, object args)
@@ -96,10 +96,12 @@ public sealed class WgcCapture : IWindowCapture
             CapturedFrame converted = frameConverter.Convert(frame, startTicks);
             frameChannel.Writer.TryWrite(converted);
         }
+#pragma warning disable CA1031 // top-level WGC frame-arrived callback; exception is forwarded to channel as completion fault
         catch (Exception exception)
         {
             frameChannel.Writer.TryComplete(new WindowCaptureException("WGC frame conversion failed.", exception));
         }
+#pragma warning restore CA1031
     }
 
     private async IAsyncEnumerable<CapturedFrame> ReadAsync(
@@ -232,7 +234,9 @@ public sealed class WgcCapture : IWindowCapture
             return;
         }
 
+#pragma warning disable CA1031 // best-effort dispose of old converter before recreating; failure is non-fatal
         try { colorConverter?.Dispose(); } catch { }
+#pragma warning restore CA1031
         colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, evenWidth, evenHeight);
         ringWidth = evenWidth;
         ringHeight = evenHeight;
@@ -270,12 +274,16 @@ public sealed class WgcCapture : IWindowCapture
             return ValueTask.CompletedTask;
         }
         disposed = true;
+#pragma warning disable CA1031 // best-effort dispose in async teardown; failures must not propagate from DisposeAsync
         try { session.Dispose(); } catch { }
         try { framePool.Dispose(); } catch { }
+#pragma warning restore CA1031
         DisposeNv12RingAndConverter();
         if (ownsDeviceManager)
         {
+#pragma warning disable CA1031 // best-effort dispose in async teardown; failures must not propagate from DisposeAsync
             try { deviceManager.Dispose(); } catch { }
+#pragma warning restore CA1031
         }
         frameChannel.Writer.TryComplete();
         return ValueTask.CompletedTask;

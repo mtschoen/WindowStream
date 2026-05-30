@@ -11,10 +11,7 @@ public sealed class NalReassembler
 
     public NalReassembler(IClock clock, TimeSpan reassemblyTimeout)
     {
-        if (clock is null)
-        {
-            throw new ArgumentNullException(nameof(clock));
-        }
+        ArgumentNullException.ThrowIfNull(clock);
         if (reassemblyTimeout < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(reassemblyTimeout), reassemblyTimeout, "timeout must be non-negative");
@@ -25,10 +22,7 @@ public sealed class NalReassembler
 
     public ReassembledNalUnit? Offer(PacketHeader header, byte[] payload)
     {
-        if (payload is null)
-        {
-            throw new ArgumentNullException(nameof(payload));
-        }
+        ArgumentNullException.ThrowIfNull(payload);
         if (payload.Length > PacketHeader.MaximumPayloadByteLength)
         {
             throw new ArgumentException(

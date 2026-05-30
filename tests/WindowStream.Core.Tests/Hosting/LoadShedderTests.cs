@@ -30,7 +30,7 @@ public class LoadShedderTests
         Assert.Equal(200UL, (await output.Reader.ReadAsync()).Frame.PresentationTimestampMicroseconds);
         Assert.Equal(300UL, (await output.Reader.ReadAsync()).Frame.PresentationTimestampMicroseconds);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         try { await task; } catch (OperationCanceledException) { }
     }
 
@@ -68,7 +68,7 @@ public class LoadShedderTests
         Assert.True(first.Frame.IsKeyframe || second.Frame.IsKeyframe,
             "keyframe (pts=300) must appear in output");
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         try { await task; } catch (OperationCanceledException) { }
     }
 }

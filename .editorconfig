@@ -183,6 +183,47 @@ dotnet_diagnostic.CA1008.severity = none
 # no test can exercise — directly breaking the 100% coverage gate. Add a standard
 # ctor if and when a caller actually needs it.
 dotnet_diagnostic.CA1032.severity = none
+# RCS1194 is Roslynator's twin of CA1032 — same rationale (unused ctors break the
+# coverage gate).
+dotnet_diagnostic.RCS1194.severity = none
+
+# CA1710 — "identifiers should have correct suffix" (wants *EventArgs). The project
+# convention (AGENTS.md) is FULL WORDS in identifiers — the event-payload types are
+# deliberately named *EventArguments. "Fixing" this would violate a stated project
+# convention, so the convention wins.
+dotnet_diagnostic.CA1710.severity = none
+
+# CA1711 — "identifiers should not have incorrect suffix" (flags the "Flags" suffix).
+# PacketFlags is a [Flags] enum; the suffix is conventional and correct.
+dotnet_diagnostic.CA1711.severity = none
+
+# CA1819 — "properties should not return arrays". The flagged types (ServerHelloMessage,
+# WindowSnapshotMessage, ReassembledNalUnit, WorkerChunkFrame) are wire/DTO records
+# whose array properties ARE the serialized payload. Returning IReadOnlyList would
+# change the protocol surface for no benefit on internal data-transfer types.
+dotnet_diagnostic.CA1819.severity = none
+
+# CA1724 — "type names should not match namespaces". Session, SessionState, and
+# Diagnostics are central domain types that legitimately share a word with their
+# namespace segment. Renaming core types to dodge an opinionated rule is high-churn
+# for no clarity gain.
+dotnet_diagnostic.CA1724.severity = none
+
+# CA1034 — "nested types should not be visible". PipelineEvent is a closed
+# discriminated-union: ~20 nested records modelling one event hierarchy, addressed as
+# PipelineEvent.Listening etc. This is a deliberate, cohesive C# DU pattern; exploding
+# it into 20 top-level files would obscure the closed hierarchy.
+dotnet_diagnostic.CA1034.severity = none
+
+# CA1003 — "use generic event handler instances". InAppDashboardSink exposes a
+# purpose-built typed event; EventHandler<T> would add ceremony (sender arg, EventArgs
+# wrapper) the in-process sink does not need.
+dotnet_diagnostic.CA1003.severity = none
+
+# CA1838 — "avoid StringBuilder parameters for P/Invokes". The two Win32 interop
+# signatures use StringBuilder per the classic Win32 marshalling pattern; the char[]/
+# span rewrite is a micro-optimisation not worth the interop risk here.
+dotnet_diagnostic.CA1838.severity = none
 
 #### Per-project relaxations ####
 # Test projects: CA1707 (underscores in member names) is the xUnit

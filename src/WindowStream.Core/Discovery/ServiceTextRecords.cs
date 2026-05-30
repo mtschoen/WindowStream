@@ -7,10 +7,7 @@ public static class ServiceTextRecords
 {
     public static IReadOnlyList<string> Build(AdvertisementOptions options)
     {
-        if (options is null)
-        {
-            throw new ArgumentNullException(nameof(options));
-        }
+        ArgumentNullException.ThrowIfNull(options);
 
         if (options.protocolMajorVersion < 0)
         {
@@ -33,7 +30,7 @@ public static class ServiceTextRecords
             throw new ArgumentException("Hostname must not be empty.", nameof(options));
         }
 
-        if (options.hostname.Contains('='))
+        if (options.hostname.Contains('=', StringComparison.Ordinal))
         {
             throw new ArgumentException("Hostname must not contain '='.", nameof(options));
         }

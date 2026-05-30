@@ -1,3 +1,4 @@
+using System;
 using WindowStream.Core.Observability;
 using WindowStream.Server.Observability;
 using Xunit;
@@ -40,7 +41,7 @@ public class ServerStateReducerTests
     {
         ServerStateReducer reducer = new();
         reducer.Apply(new PipelineEvent.OpenStreamReceived(1, 7));
-        reducer.Apply(new PipelineEvent.WorkerSpawnFailed(1, new System.Exception("boom")));
+        reducer.Apply(new PipelineEvent.WorkerSpawnFailed(1, new InvalidOperationException("boom")));
         Assert.Equal(StageStatus.Error, reducer.State.Streams[1].WorkerSpawn);
         Assert.Equal("boom", reducer.State.Streams[1].WorkerSpawnError);
     }

@@ -59,7 +59,7 @@ public class WorkerSupervisorTests
     public async Task StartStream_AssignsMonotonicStreamId()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         StreamHandle a = await supervisor.StartStreamAsync(
             windowId: 1, hwnd: 0x100, DefaultEncoderOptions(), CancellationToken.None);
         StreamHandle b = await supervisor.StartStreamAsync(
@@ -72,7 +72,7 @@ public class WorkerSupervisorTests
     public async Task StartStream_RefusesPastCapacity()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 1);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 1);
         await supervisor.StartStreamAsync(1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
         await Assert.ThrowsAsync<EncoderCapacityException>(
             () => supervisor.StartStreamAsync(2, 0x200, DefaultEncoderOptions(), CancellationToken.None));
@@ -82,7 +82,7 @@ public class WorkerSupervisorTests
     public async Task UnexpectedExit_FiresStreamEnded_WithEncoderFailed()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
@@ -99,7 +99,7 @@ public class WorkerSupervisorTests
     public async Task CleanExit_FiresStreamEnded_WithClosedByViewer()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
@@ -114,7 +114,7 @@ public class WorkerSupervisorTests
     public async Task StopStream_KillsWorker_FiresEnded()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
@@ -130,7 +130,7 @@ public class WorkerSupervisorTests
     public async Task GetPipe_KnownStreamId_ReturnsPipe()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         StreamHandle handle = await supervisor.StartStreamAsync(
             1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
 
@@ -141,10 +141,10 @@ public class WorkerSupervisorTests
     }
 
     [Fact]
-    public void GetPipe_UnknownStreamId_ReturnsNull()
+    public async Task GetPipe_UnknownStreamId_ReturnsNull()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
 
         Stream? pipe = supervisor.GetPipe(streamId: 9999);
 
@@ -155,7 +155,7 @@ public class WorkerSupervisorTests
     public async Task StartStream_FiresStreamStartedEvent()
     {
         FakeLauncher launcher = new FakeLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamStartedEventArguments> startedSource = new();
         supervisor.StreamStarted += (_, arguments) => startedSource.TrySetResult(arguments);
 

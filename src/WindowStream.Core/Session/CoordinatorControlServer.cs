@@ -119,7 +119,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                     {
                         Console.Error.WriteLine($"[serve] ServeViewerAsync faulted: {faulted.Exception}");
                     }
-                }, TaskContinuationOptions.OnlyOnFaulted);
+                }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
             }
         }
         catch (OperationCanceledException)
@@ -177,7 +177,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             }
             finally
             {
-                viewerCancellation.Cancel();
+                await viewerCancellation.CancelAsync().ConfigureAwait(false);
                 try { await heartbeatTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
             }
         }
@@ -263,11 +263,11 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         OpenStreamMessage openStream,
         CancellationToken cancellationToken)
     {
-        Console.Error.WriteLine($"[openstream] handling windowId={openStream.WindowId}");
+        await Console.Error.WriteLineAsync($"[openstream] handling windowId={openStream.WindowId}").ConfigureAwait(false);
         long? hwnd = resolveWindowIdToHwnd(openStream.WindowId);
         if (hwnd is null)
         {
-            Console.Error.WriteLine($"[openstream] hwnd resolution returned null for windowId={openStream.WindowId}");
+            await Console.Error.WriteLineAsync($"[openstream] hwnd resolution returned null for windowId={openStream.WindowId}").ConfigureAwait(false);
             await channel.SendAsync(
                 new ErrorMessage(
                     ProtocolErrorCode.WindowNotFound,
@@ -276,11 +276,11 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             return;
         }
 
-        Console.Error.WriteLine($"[openstream] resolved windowId={openStream.WindowId} -> hwnd={hwnd.Value}; resolving encoder options");
+        await Console.Error.WriteLineAsync($"[openstream] resolved windowId={openStream.WindowId} -> hwnd={hwnd.Value}; resolving encoder options").ConfigureAwait(false);
         EncoderOptions? encoderOptions = resolveWindowIdToEncoderOptions(openStream.WindowId);
         if (encoderOptions is null)
         {
-            Console.Error.WriteLine($"[openstream] encoder options NULL for windowId={openStream.WindowId} hwnd={hwnd.Value}");
+            await Console.Error.WriteLineAsync($"[openstream] encoder options NULL for windowId={openStream.WindowId} hwnd={hwnd.Value}").ConfigureAwait(false);
             await channel.SendAsync(
                 new ErrorMessage(
                     ProtocolErrorCode.WindowNotFound,
@@ -289,7 +289,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             return;
         }
 
-        Console.Error.WriteLine($"[openstream] encoder options resolved; calling supervisor.StartStreamAsync (hwnd={hwnd.Value})");
+        await Console.Error.WriteLineAsync($"[openstream] encoder options resolved; calling supervisor.StartStreamAsync (hwnd={hwnd.Value})").ConfigureAwait(false);
         StreamHandle handle;
         try
         {
@@ -298,13 +298,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
         catch (EncoderCapacityException exception)
         {
-            Console.Error.WriteLine($"[openstream] encoder capacity exception: {exception.Message}");
+            await Console.Error.WriteLineAsync($"[openstream] encoder capacity exception: {exception.Message}").ConfigureAwait(false);
             await channel.SendAsync(
                 new ErrorMessage(ProtocolErrorCode.EncoderCapacity, exception.Message),
                 cancellationToken).ConfigureAwait(false);
             return;
         }
-        Console.Error.WriteLine($"[openstream] supervisor returned handle; sending StreamStarted (streamId={handle.StreamId})");
+        await Console.Error.WriteLineAsync($"[openstream] supervisor returned handle; sending StreamStarted (streamId={handle.StreamId})").ConfigureAwait(false);
 
         lock (stateLock)
         {
@@ -446,7 +446,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
         supervisor.StreamEnded -= OnStreamEnded;
 
-        lifecycleCancellation?.Cancel();
+        if (lifecycleCancellation is not null) await lifecycleCancellation.CancelAsync().ConfigureAwait(false);
 
         IControlChannel? channelToClose;
         lock (stateLock)

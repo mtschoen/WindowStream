@@ -106,8 +106,10 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
         if (disposed) return ValueTask.CompletedTask;
         disposed = true;
         exitSource.TrySetResult(0);
+        #pragma warning disable CA1031 // best-effort pipe disposal — stream may already be closed
         try { pipePair.SupervisorSide.Dispose(); } catch { /* best-effort */ }
         try { pipePair.WorkerSide.Dispose(); } catch { /* best-effort */ }
+        #pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
 }
@@ -193,8 +195,10 @@ internal sealed class DuplexStream : Stream
         disposed = true;
         if (disposing)
         {
+            #pragma warning disable CA1031 // best-effort stream disposal — underlying stream may already be closed
             try { readSource.Dispose(); } catch { /* best-effort */ }
             try { writeSink.Dispose(); } catch { /* best-effort */ }
+            #pragma warning restore CA1031
         }
         base.Dispose(disposing);
     }
@@ -284,7 +288,7 @@ internal sealed class BlockingByteStream : Stream
         Array.Copy(buffer, offset, copy, 0, count);
         lock (syncRoot)
         {
-            if (closed) throw new ObjectDisposedException(nameof(BlockingByteStream));
+            ObjectDisposedException.ThrowIf(closed, nameof(BlockingByteStream));
             chunks.Enqueue(copy);
             Monitor.PulseAll(syncRoot);
         }
@@ -302,7 +306,7 @@ internal sealed class BlockingByteStream : Stream
         byte[] copy = buffer.ToArray();
         lock (syncRoot)
         {
-            if (closed) throw new ObjectDisposedException(nameof(BlockingByteStream));
+            ObjectDisposedException.ThrowIf(closed, nameof(BlockingByteStream));
             chunks.Enqueue(copy);
             Monitor.PulseAll(syncRoot);
         }

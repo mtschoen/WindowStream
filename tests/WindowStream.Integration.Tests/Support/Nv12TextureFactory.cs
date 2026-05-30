@@ -1,4 +1,5 @@
 #if WINDOWS
+using System;
 using System.Runtime.InteropServices;
 using Silk.NET.Direct3D11;
 using Silk.NET.DXGI;
@@ -37,7 +38,7 @@ internal static class Nv12TextureFactory
         int hr = device->CreateTexture2D(ref destinationDescription, (SubresourceData*)null, ref destinationTexture);
         if (hr < 0)
         {
-            throw new System.Exception($"CreateTexture2D(NV12 dest) failed: 0x{(uint)hr:X8}");
+            throw new InvalidOperationException($"CreateTexture2D(NV12 dest) failed: 0x{(uint)hr:X8}");
         }
 
         // Build CPU-side NV12 plane data: top half luma (Y), bottom half chroma (UV interleaved).
@@ -95,7 +96,7 @@ internal static class Nv12TextureFactory
         if (hr < 0)
         {
             destinationTexture->Release();
-            throw new System.Exception($"CreateTexture2D(NV12 staging) failed: 0x{(uint)hr:X8}");
+            throw new InvalidOperationException($"CreateTexture2D(NV12 staging) failed: 0x{(uint)hr:X8}");
         }
         try
         {
@@ -104,7 +105,7 @@ internal static class Nv12TextureFactory
             hr = context->Map((ID3D11Resource*)stagingTexture, 0, Map.Write, 0, ref mapped);
             if (hr < 0)
             {
-                throw new System.Exception($"Map(NV12 staging) failed: 0x{(uint)hr:X8}");
+                throw new InvalidOperationException($"Map(NV12 staging) failed: 0x{(uint)hr:X8}");
             }
 
             // Y plane rows

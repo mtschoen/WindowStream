@@ -1,3 +1,4 @@
+using System;
 using WindowStream.Core.Session;
 using Xunit;
 
@@ -9,8 +10,8 @@ public sealed class InvalidSessionTransitionExceptionTests
     public void MessageMentionsFromAndToStates()
     {
         InvalidSessionTransitionException exception = new(SessionState.Stopped, SessionState.Capturing);
-        Assert.Contains("Stopped", exception.Message);
-        Assert.Contains("Capturing", exception.Message);
+        Assert.Contains("Stopped", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Capturing", exception.Message, StringComparison.Ordinal);
         Assert.Equal(SessionState.Stopped, exception.FromState);
         Assert.Equal(SessionState.Capturing, exception.ToState);
     }
