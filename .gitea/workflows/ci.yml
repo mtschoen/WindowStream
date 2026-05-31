@@ -99,3 +99,15 @@ jobs:
           node-version: 20
       - name: markdownlint
         run: npx -y markdownlint-cli '**/*.md' --ignore node_modules
+
+  lint-json:
+    name: JSON lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: jsonlint
+        run: git ls-files '*.json' | xargs -n 1 npx -y jsonlint -q
