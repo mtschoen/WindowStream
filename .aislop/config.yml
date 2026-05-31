@@ -1,0 +1,5 @@
+ci:
+  failBelow: 80
+
+exclude:
+  - "tests/**"

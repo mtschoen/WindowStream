@@ -11,5 +11,29 @@
     "csharp-lsp@claude-plugins-official": true,
     "microsoft-docs@claude-plugins-official": true,
     "kotlin-lsp@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "aislop hook claude"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": ".aislop/config.yml|.aislop/rules.yml|package.json",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "aislop hook claude --on-file-changed"
+          }
+        ]
+      }
+    ]
   }
 }

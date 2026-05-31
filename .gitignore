@@ -118,3 +118,7 @@ tools/test_*.py
 
 .claude/*
 !.claude/settings.json
+
+# ---------- aislop ----------
+.aislop/history.jsonl
+
