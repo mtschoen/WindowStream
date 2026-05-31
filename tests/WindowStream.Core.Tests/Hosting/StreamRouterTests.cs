@@ -23,8 +23,12 @@ public class StreamRouterTests
             new WorkerChunkFrame(200UL, false, new byte[] { 0xBB }), CancellationToken.None);
         pipe.Position = 0;
 
+        // readerTask is awaited inside the using scope (line below the assertions), so
+        // the CancellationTokenSource is still live when the task completes.
+#pragma warning disable CA2025 // readerTask is awaited before cancellation goes out of scope
         using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         Task readerTask = router.ReadFromPipeAsync(streamId: 7, pipe, cancellation.Token);
+#pragma warning restore CA2025
 
         TaggedChunk first = await output.Reader.ReadAsync(cancellation.Token);
         Assert.Equal(7, first.StreamId);
@@ -35,7 +39,7 @@ public class StreamRouterTests
         Assert.Equal(7, second.StreamId);
         Assert.False(second.Frame.IsKeyframe);
 
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         try { await readerTask; } catch (OperationCanceledException) { }
     }
 

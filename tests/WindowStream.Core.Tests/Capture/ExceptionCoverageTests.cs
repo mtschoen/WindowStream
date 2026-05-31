@@ -33,6 +33,6 @@ public sealed class ExceptionCoverageTests
         WindowStream.Core.Capture.WindowGoneException exception =
             new WindowStream.Core.Capture.WindowGoneException(handle);
         Assert.Equal(handle, exception.handle);
-        Assert.Contains("0x7", exception.Message);
+        Assert.Contains("0x7", exception.Message, StringComparison.Ordinal);
     }
 }

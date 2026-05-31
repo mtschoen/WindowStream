@@ -67,10 +67,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
         int width,
         int height)
     {
-        if (deviceManager is null)
-        {
-            throw new ArgumentNullException(nameof(deviceManager));
-        }
+        ArgumentNullException.ThrowIfNull(deviceManager);
         if (width < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(width), width,
@@ -371,10 +368,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(D3D11VideoProcessorColorConverter));
-        }
+        ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
 #endif

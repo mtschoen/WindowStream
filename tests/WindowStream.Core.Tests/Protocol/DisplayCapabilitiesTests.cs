@@ -10,7 +10,9 @@ public sealed class DisplayCapabilitiesTests
     public void EqualReturnsFalseForNull()
     {
         DisplayCapabilities subject = new DisplayCapabilities(1920, 1080, new[] { "h264" });
+#pragma warning disable CA1508 // CA1508: intentionally exercising Equals(null) returning false
         Assert.False(subject.Equals(null));
+#pragma warning restore CA1508
     }
 
     [Fact]

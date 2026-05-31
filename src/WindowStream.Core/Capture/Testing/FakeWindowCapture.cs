@@ -22,7 +22,7 @@ public sealed class FakeWindowCapture : IWindowCapture
         this.handle = handle;
         this.options = options;
         this.cancellationToken = cancellationToken;
-        this.Frames = ReadFramesAsync();
+        this.Frames = ReadFramesAsync(cancellationToken);
     }
 
     private async IAsyncEnumerable<CapturedFrame> ReadFramesAsync(

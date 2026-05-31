@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using WindowStream.Core.Protocol;
 using Xunit;
@@ -129,7 +130,7 @@ public sealed class ControlMessageSerializationTests
     {
         MalformedMessageException exception = Assert.Throws<MalformedMessageException>(
             () => ControlMessageSerialization.Deserialize("{\"type\":\"WAT\"}"));
-        Assert.Contains("WAT", exception.Message);
+        Assert.Contains("WAT", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -15,10 +15,7 @@ public static class LengthPrefixFraming
 
     public static byte[] Encode(byte[] payload)
     {
-        if (payload is null)
-        {
-            throw new ArgumentNullException(nameof(payload));
-        }
+        ArgumentNullException.ThrowIfNull(payload);
         ValidatePayloadLength(payload.Length);
         byte[] framed = new byte[LengthPrefixByteLength + payload.Length];
         BinaryPrimitives.WriteUInt32BigEndian(framed.AsSpan(0, LengthPrefixByteLength), (uint)payload.Length);
@@ -42,10 +39,7 @@ public static class LengthPrefixFraming
         Stream stream,
         CancellationToken cancellationToken)
     {
-        if (stream is null)
-        {
-            throw new ArgumentNullException(nameof(stream));
-        }
+        ArgumentNullException.ThrowIfNull(stream);
         cancellationToken.ThrowIfCancellationRequested();
 
         byte[] lengthBuffer = new byte[LengthPrefixByteLength];
@@ -69,10 +63,7 @@ public static class LengthPrefixFraming
         byte[] payload,
         CancellationToken cancellationToken)
     {
-        if (stream is null)
-        {
-            throw new ArgumentNullException(nameof(stream));
-        }
+        ArgumentNullException.ThrowIfNull(stream);
         byte[] framed = Encode(payload);
         await stream.WriteAsync(framed.AsMemory(0, framed.Length), cancellationToken).ConfigureAwait(false);
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);

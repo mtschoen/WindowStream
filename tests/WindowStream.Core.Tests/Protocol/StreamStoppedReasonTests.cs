@@ -24,7 +24,7 @@ public sealed class StreamStoppedReasonTests
     {
         ArgumentException exception = Assert.Throws<ArgumentException>(
             () => StreamStoppedReasonNames.Parse("NOT_A_REAL_REASON"));
-        Assert.Contains("NOT_A_REAL_REASON", exception.Message);
+        Assert.Contains("NOT_A_REAL_REASON", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

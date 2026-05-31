@@ -21,8 +21,8 @@ internal static class SolidColorFrameFactory
         byte green,
         byte blue)
     {
-        if (widthPixels <= 0) throw new ArgumentOutOfRangeException(nameof(widthPixels));
-        if (heightPixels <= 0) throw new ArgumentOutOfRangeException(nameof(heightPixels));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthPixels);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightPixels);
 
         int rowStrideBytes = widthPixels * 4;
         byte[] pixelBuffer = new byte[rowStrideBytes * heightPixels];

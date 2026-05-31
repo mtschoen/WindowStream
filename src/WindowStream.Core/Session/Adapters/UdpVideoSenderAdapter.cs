@@ -22,12 +22,14 @@ public sealed class UdpVideoSenderAdapter : IUdpVideoSender
 
     public int LocalPort => localEndpoint?.Port ?? 0;
 
+#pragma warning disable CA1725 // CA1725: parameter kept as 'endpoint' to avoid shadowing the localEndpoint field
     public Task BindAsync(IPEndPoint endpoint, CancellationToken cancellationToken)
     {
         udpClient = new UdpClient(endpoint);
         localEndpoint = (IPEndPoint)udpClient.Client.LocalEndPoint!;
         return Task.CompletedTask;
     }
+#pragma warning restore CA1725
 
     public async Task SendPacketAsync(FragmentedPacket packet, IPEndPoint destination, CancellationToken cancellationToken)
     {
@@ -47,7 +49,9 @@ public sealed class UdpVideoSenderAdapter : IUdpVideoSender
     {
         if (disposed) return ValueTask.CompletedTask;
         disposed = true;
+#pragma warning disable CA1031 // best-effort dispose of UDP client in async teardown
         try { udpClient?.Dispose(); } catch { /* best-effort */ }
+#pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
 }

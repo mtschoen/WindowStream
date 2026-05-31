@@ -26,9 +26,9 @@ public sealed class IControlChannelDefaultTests
     }
 
     [Fact]
-    public void RemoteIpAddress_DefaultImplementation_IsNull()
+    public async Task RemoteIpAddress_DefaultImplementation_IsNull()
     {
-        IControlChannel channel = new MinimalControlChannel();
+        await using IControlChannel channel = new MinimalControlChannel();
         IPAddress? address = channel.RemoteIpAddress;
         Assert.Null(address);
     }

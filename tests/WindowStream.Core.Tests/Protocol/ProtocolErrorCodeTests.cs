@@ -34,7 +34,7 @@ public sealed class ProtocolErrorCodeTests
     {
         ArgumentException exception = Assert.Throws<ArgumentException>(
             () => ProtocolErrorCodeNames.Parse("NOT_A_REAL_CODE"));
-        Assert.Contains("NOT_A_REAL_CODE", exception.Message);
+        Assert.Contains("NOT_A_REAL_CODE", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

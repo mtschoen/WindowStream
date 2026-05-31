@@ -1,3 +1,4 @@
+using System;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -17,7 +18,7 @@ public sealed class FrameTooLargeExceptionTests
     public void MessageDescribesLengths()
     {
         FrameTooLargeException exception = new(actualLength: 999, maximumLength: 500);
-        Assert.Contains("999", exception.Message);
-        Assert.Contains("500", exception.Message);
+        Assert.Contains("999", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("500", exception.Message, StringComparison.Ordinal);
     }
 }

@@ -46,8 +46,10 @@ public sealed class FakeTcpConnectionAcceptor : ITcpConnectionAcceptor
         Channel<ControlMessage> serverToViewer = Channel.CreateUnbounded<ControlMessage>(
             new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
 
+#pragma warning disable CA2000 // ownership of FakeControlChannel transfers to the channel consumer via pendingConnections
         FakeControlChannel serverSide = new FakeControlChannel(
             viewerToServer.Reader, serverToViewer.Writer, timeProvider, remoteIpAddress);
+#pragma warning restore CA2000
         FakeViewerEndpoint viewerSide = new FakeViewerEndpoint(viewerToServer.Writer, serverToViewer.Reader);
 
         pendingConnections.Writer.TryWrite(serverSide);

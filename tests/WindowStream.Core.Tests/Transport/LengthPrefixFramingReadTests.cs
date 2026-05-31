@@ -67,7 +67,7 @@ public sealed class LengthPrefixFramingReadTests
     {
         using MemoryStream stream = new();
         using CancellationTokenSource source = new();
-        source.Cancel();
+        await source.CancelAsync();
         await Assert.ThrowsAsync<OperationCanceledException>(
             async () => await LengthPrefixFraming.ReadFrameAsync(stream, source.Token));
     }

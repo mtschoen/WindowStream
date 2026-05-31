@@ -49,7 +49,7 @@ public sealed class FakeUdpVideoSenderTests
         await sender.BindAsync(new IPEndPoint(IPAddress.Loopback, 0), CancellationToken.None);
 
         using CancellationTokenSource cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
 
         PacketHeader header = new PacketHeader(StreamId: 1, Sequence: 0, PresentationTimestampMicroseconds: 0, Flags: PacketFlags.LastFragment, FragmentIndex: 0, FragmentTotal: 1);
         FragmentedPacket packet = new FragmentedPacket(header, new byte[] { 0x01 });

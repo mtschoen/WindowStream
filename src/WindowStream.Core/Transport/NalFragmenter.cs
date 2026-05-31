@@ -3,19 +3,16 @@ using System.Collections.Generic;
 
 namespace WindowStream.Core.Transport;
 
-public sealed class NalFragmenter
+public static class NalFragmenter
 {
-    public IEnumerable<FragmentedPacket> Fragment(
+    public static IEnumerable<FragmentedPacket> Fragment(
         int streamId,
         int sequence,
         long presentationTimestampMicroseconds,
         bool isIdrFrame,
         byte[] nalUnit)
     {
-        if (nalUnit is null)
-        {
-            throw new ArgumentNullException(nameof(nalUnit));
-        }
+        ArgumentNullException.ThrowIfNull(nalUnit);
         if (nalUnit.Length == 0)
         {
             throw new ArgumentException("nalUnit must not be empty", nameof(nalUnit));

@@ -11,9 +11,9 @@ using WindowStream.Core.Hosting;
 
 namespace WindowStream.Cli.Commands;
 
-public sealed class WorkerCommandHandler
+public static class WorkerCommandHandler
 {
-    public async Task<int> ExecuteAsync(WorkerArguments arguments, CancellationToken cancellationToken)
+    public static async Task<int> ExecuteAsync(WorkerArguments arguments, CancellationToken cancellationToken)
     {
         try
         {
@@ -54,13 +54,13 @@ public sealed class WorkerCommandHandler
                                 encoder.RequestKeyframe();
                                 break;
                             case WorkerCommandTag.Shutdown:
-                                lifecycle.Cancel();
+                                await lifecycle.CancelAsync().ConfigureAwait(false);
                                 return;
                         }
                     }
                 }
                 catch (OperationCanceledException) { }
-                catch (EndOfStreamException) { lifecycle.Cancel(); }
+                catch (EndOfStreamException) { await lifecycle.CancelAsync().ConfigureAwait(false); }
             }, lifecycle.Token);
 
             Task encodeOutputTask = Task.Run(async () =>
@@ -106,23 +106,31 @@ public sealed class WorkerCommandHandler
                 }
             }
             catch (OperationCanceledException) { }
+#pragma warning disable CA1031 // worker capture-failure boundary: logs the exception then shuts down the worker process
             catch (Exception captureException)
             {
-                Console.Error.WriteLine($"[worker] capture failed: {captureException}");
-                lifecycle.Cancel();
-                try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch { }
+                await Console.Error.WriteLineAsync($"[worker] capture failed: {captureException}").ConfigureAwait(false);
+                await lifecycle.CancelAsync().ConfigureAwait(false);
+                // CancellationToken.None intentional: token is already cancelled; we want the 2-second wall-clock timeout regardless
+                try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { } // CA1031: graceful-shutdown drain; tasks already cancelled
                 return 2;
             }
+#pragma warning restore CA1031
 
-            lifecycle.Cancel();
-            try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch { }
+            await lifecycle.CancelAsync().ConfigureAwait(false);
+            // CancellationToken.None intentional: token is already cancelled; we want the 2-second wall-clock timeout regardless
+#pragma warning disable CA1031, RCS1075 // graceful-shutdown drain; tasks already cancelled, any residual exception is ignorable
+            try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { }
+#pragma warning restore CA1031, RCS1075
             return 0;
         }
+#pragma warning disable CA1031 // top-level worker guard: logs unexpected fault and returns non-zero exit code
         catch (Exception unexpected)
         {
-            Console.Error.WriteLine($"[worker] unexpected: {unexpected}");
+            await Console.Error.WriteLineAsync($"[worker] unexpected: {unexpected}").ConfigureAwait(false);
             return 3;
         }
+#pragma warning restore CA1031
     }
 }
 #endif

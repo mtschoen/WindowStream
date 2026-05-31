@@ -60,18 +60,18 @@ public sealed class FakeVideoEncoderTests
     }
 
     [Fact]
-    public void Configure_Twice_Throws()
+    public async Task Configure_Twice_Throws()
     {
-        FakeVideoEncoder encoder = new FakeVideoEncoder();
+        await using FakeVideoEncoder encoder = new FakeVideoEncoder();
         encoder.Configure(new EncoderOptions(2, 2, 30, 1_000_000, 30, 2));
         Assert.Throws<InvalidOperationException>(() =>
             encoder.Configure(new EncoderOptions(2, 2, 30, 1_000_000, 30, 2)));
     }
 
     [Fact]
-    public void Configure_Null_Throws()
+    public async Task Configure_Null_Throws()
     {
-        FakeVideoEncoder encoder = new FakeVideoEncoder();
+        await using FakeVideoEncoder encoder = new FakeVideoEncoder();
         Assert.Throws<ArgumentNullException>(() => encoder.Configure(null!));
     }
 
@@ -81,7 +81,7 @@ public sealed class FakeVideoEncoderTests
         await using FakeVideoEncoder encoder = new FakeVideoEncoder();
         encoder.Configure(new EncoderOptions(2, 2, 30, 1_000_000, 30, 2));
         using CancellationTokenSource cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             encoder.EncodeAsync(SampleFrame(), cancellation.Token));
     }

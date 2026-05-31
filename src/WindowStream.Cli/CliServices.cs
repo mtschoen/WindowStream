@@ -36,7 +36,7 @@ public sealed class CliServices : ICliServices
     {
 #if WINDOWS
         IWindowCaptureSource captureSource = new WgcCaptureSource();
-        ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
         ILogger logger = loggerFactory.CreateLogger<CoordinatorLauncher>();
         Diagnostics diagnostics = new Diagnostics(logger);
         ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, diagnostics);

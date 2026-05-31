@@ -19,11 +19,11 @@ public sealed class FakeWindowCaptureAccessorTests
     }
 
     [Fact]
-    public void FakeWindowCapture_ExposesHandleAndOptions()
+    public async Task FakeWindowCapture_ExposesHandleAndOptions()
     {
         WindowHandle handle = new WindowHandle(123);
         CaptureOptions options = new CaptureOptions(25, false);
-        FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
         Assert.Equal(handle, capture.handle);
         Assert.Equal(options, capture.options);
     }
@@ -33,7 +33,7 @@ public sealed class FakeWindowCaptureAccessorTests
     {
         WindowHandle handle = new WindowHandle(1);
         CaptureOptions options = new CaptureOptions(30, false);
-        FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
 
         // Write a sentinel object (neither CapturedFrame nor Exception) to trigger yield break
         capture.channel.Writer.TryWrite(new object());
@@ -77,7 +77,7 @@ public sealed class FakeWindowCaptureAccessorTests
     {
         WindowHandle handle = new WindowHandle(9);
         CaptureOptions options = new CaptureOptions(60, false);
-        FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
 
         // Write an Exception directly as a value (not via TryComplete) to cover the
         // "else if (next is Exception)" branch in ReadFramesAsync

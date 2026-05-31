@@ -97,7 +97,12 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         CancellationTokenSource lifecycle = new CancellationTokenSource();
         if (cancellationToken.CanBeCanceled)
         {
-            cancellationToken.Register(() => { try { lifecycle.Cancel(); } catch { /* already disposed */ } });
+            cancellationToken.Register(() =>
+            {
+                #pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
+                try { lifecycle.Cancel(); } catch { /* already disposed */ }
+                #pragma warning restore CA1031
+            });
         }
 
         ConcurrentDictionary<ulong, long> windowIdToHwnd = new();
@@ -224,12 +229,14 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
     public Task<FakeViewer> ConnectViewerAsync(CancellationToken cancellationToken)
         => FakeViewer.ConnectAsync(Host, TcpPort, cancellationToken);
 
+#pragma warning disable CA1859 // CA1859: factory intentionally returns IWorkerProcessLauncher
     private static IWorkerProcessLauncher CreateRealLauncher()
     {
         string executablePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("could not determine current executable path");
         return new WorkerProcessLauncher(executablePath);
     }
+#pragma warning restore CA1859
 
     private static async Task RunFragmenterLoopAsync(
         Channel<TaggedChunk> shedderOutput,
@@ -237,7 +244,6 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         CoordinatorControlServer controlServer,
         CancellationToken cancellationToken)
     {
-        NalFragmenter fragmenter = new NalFragmenter();
         int sequence = 0;
         try
         {
@@ -249,7 +255,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                     continue;
                 }
                 int currentSequence = Interlocked.Increment(ref sequence) - 1;
-                foreach (FragmentedPacket packet in fragmenter.Fragment(
+                foreach (FragmentedPacket packet in NalFragmenter.Fragment(
                     streamId: chunk.StreamId,
                     sequence: currentSequence,
                     presentationTimestampMicroseconds: (long)chunk.Frame.PresentationTimestampMicroseconds,
@@ -285,7 +291,9 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                 {
                     snapshot = captureSource.ListWindows().ToList();
                 }
+                #pragma warning disable CA1031 // intentional: WGC enumeration errors are non-fatal in the test harness loop
                 catch (Exception)
+                #pragma warning restore CA1031
                 {
                     continue;
                 }
@@ -344,13 +352,19 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         if (disposed) return;
         disposed = true;
 
-        try { lifecycle.Cancel(); } catch { /* already disposed */ }
+        #pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
+        try { await lifecycle.CancelAsync(); } catch { /* already disposed */ }
+        #pragma warning restore CA1031
 
         async Task SwallowAsync(Task task)
         {
             try { await task.ConfigureAwait(false); }
             catch (OperationCanceledException) { }
+            #pragma warning disable CA1031 // intentional: test fixture teardown swallows all task faults
+            #pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
             catch (Exception) { /* test fixture is being torn down */ }
+            #pragma warning restore RCS1075
+            #pragma warning restore CA1031
         }
 
         await SwallowAsync(controlServerTask).ConfigureAwait(false);
@@ -531,12 +545,19 @@ internal sealed class FakeViewer : IAsyncDisposable
         if (disposed) return;
         disposed = true;
 
-        try { pumpCancellation.Cancel(); } catch { /* best-effort */ }
+        #pragma warning disable CA1031 // best-effort: pump CTS may already be disposed
+        try { await pumpCancellation.CancelAsync(); } catch { /* best-effort */ }
+        try { tcpStream.Dispose(); } catch { /* best-effort */ }
         try { tcpClient.Dispose(); } catch { /* best-effort */ }
         try { udpClient.Dispose(); } catch { /* best-effort */ }
+        #pragma warning restore CA1031
         try { await udpPumpTask.ConfigureAwait(false); }
         catch (OperationCanceledException) { }
+        #pragma warning disable CA1031 // intentional: test fixture teardown swallows all pump faults
+        #pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
         catch (Exception) { /* fixture teardown */ }
+        #pragma warning restore RCS1075
+        #pragma warning restore CA1031
         pumpCancellation.Dispose();
     }
 }

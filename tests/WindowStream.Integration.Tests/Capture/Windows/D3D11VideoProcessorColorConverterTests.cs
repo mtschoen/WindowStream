@@ -108,10 +108,10 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
                 bool bottomHalf = y >= height / 2;
 
                 byte blue, green, red;
-                if (!rightHalf && !bottomHalf)      { blue = 0;   green = 0;   red = 255; } // red
-                else if (rightHalf && !bottomHalf)  { blue = 0;   green = 255; red = 0;   } // green
-                else if (!rightHalf)                { blue = 255; green = 0;   red = 0;   } // blue
-                else                               { blue = 255; green = 255; red = 255; } // white
+                if (!rightHalf && !bottomHalf) { blue = 0; green = 0; red = 255; } // red
+                else if (rightHalf && !bottomHalf) { blue = 0; green = 255; red = 0; } // green
+                else if (!rightHalf) { blue = 255; green = 0; red = 0; } // blue
+                else { blue = 255; green = 255; red = 255; } // white
 
                 int offset = (y * width + x) * 4;
                 data[offset + 0] = blue;
@@ -299,9 +299,9 @@ public sealed unsafe class D3D11VideoProcessorColorConverterTests
                 double uScaled = uValue - 128.0;
                 double vScaled = vValue - 128.0;
 
-                int red   = Clamp((int)(1.164 * yScaled                + 1.596 * vScaled));
+                int red = Clamp((int)(1.164 * yScaled + 1.596 * vScaled));
                 int green = Clamp((int)(1.164 * yScaled - 0.392 * uScaled - 0.813 * vScaled));
-                int blue  = Clamp((int)(1.164 * yScaled + 2.018 * uScaled));
+                int blue = Clamp((int)(1.164 * yScaled + 2.018 * uScaled));
 
                 int offset = (y * width + x) * 4;
                 bgra[offset + 0] = (byte)blue;

@@ -19,6 +19,7 @@ namespace WindowStream.Core.Capture.Windows;
 public sealed class Direct3D11DeviceManager : IDisposable
 {
     [DllImport("d3d11.dll", ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int D3D11CreateDevice(
         IntPtr adapter,
         uint driverType,
@@ -32,6 +33,7 @@ public sealed class Direct3D11DeviceManager : IDisposable
         out IntPtr immediateContext);
 
     [DllImport("d3d11.dll", ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(
         IntPtr dxgiDevice, out IntPtr graphicsDevice);
 
@@ -129,6 +131,7 @@ public sealed class Direct3D11DeviceManager : IDisposable
         if (disposed) return;
         disposed = true;
 
+        (winRtDevice as IDisposable)?.Dispose();
         winRtDevice = null;
 
         if (nativeContextPointer != 0)
@@ -145,10 +148,7 @@ public sealed class Direct3D11DeviceManager : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
-        {
-            throw new ObjectDisposedException(nameof(Direct3D11DeviceManager));
-        }
+        ObjectDisposedException.ThrowIf(disposed, this);
     }
 }
 #endif

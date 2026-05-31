@@ -22,6 +22,7 @@ public sealed class Direct3D11DeviceManagerTests
     }
 
     [Fact]
+#pragma warning disable CA1508 // CA1508: Roslyn cannot track the unsafe pointer write via double-indirection; the null guard is real
     public void Native_Device_Supports_ID3D11VideoDevice_QueryInterface()
     {
         // Proves the D3D11_CREATE_DEVICE_VIDEO_SUPPORT flag took effect.
@@ -45,6 +46,7 @@ public sealed class Direct3D11DeviceManagerTests
             }
         }
     }
+#pragma warning restore CA1508
 
     [Fact]
     public void Dispose_Is_Idempotent()

@@ -18,7 +18,7 @@ public sealed class StatusColorConverter : IValueConverter
             "Serving" => Colors.LimeGreen,
             "Starting…" => Colors.Orange,
             "Stopped" => Colors.Gray,
-            _ when status.StartsWith("Error") => Colors.Red,
+            _ when status.StartsWith("Error", StringComparison.Ordinal) => Colors.Red,
             _ => Colors.Gray
         };
     }

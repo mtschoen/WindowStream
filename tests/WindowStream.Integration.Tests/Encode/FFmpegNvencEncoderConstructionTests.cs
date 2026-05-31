@@ -33,39 +33,39 @@ public sealed class FFmpegNvencEncoderConstructionTests
     }
 
     [Fact]
-    public void ValidatePreConfigureState_Null_Throws()
+    public async Task ValidatePreConfigureState_Null_Throws()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         Assert.Throws<ArgumentNullException>(() => encoder.ValidatePreConfigureState(null!));
     }
 
     [Fact]
-    public void ValidatePreConfigureState_AlreadyConfigured_Throws()
+    public async Task ValidatePreConfigureState_AlreadyConfigured_Throws()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         encoder.SimulateConfiguredForTest(SampleOptions());
         Assert.Throws<InvalidOperationException>(() => encoder.ValidatePreConfigureState(SampleOptions()));
     }
 
     [Fact]
-    public void ValidatePreConfigureState_LoaderFails_PropagatesException()
+    public async Task ValidatePreConfigureState_LoaderFails_PropagatesException()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new FailingLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new FailingLoader());
         Assert.Throws<EncoderException>(() => encoder.ValidatePreConfigureState(SampleOptions()));
     }
 
     [Fact]
-    public void ValidatePreConfigureState_ValidState_DoesNotThrow()
+    public async Task ValidatePreConfigureState_ValidState_DoesNotThrow()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         // Should not throw — DummyLoader succeeds and options is null
         encoder.ValidatePreConfigureState(SampleOptions());
     }
 
     [Fact]
-    public void Configure_WhenLoaderFails_ThrowsEncoderException()
+    public async Task Configure_WhenLoaderFails_ThrowsEncoderException()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new FailingLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new FailingLoader());
         Assert.Throws<EncoderException>(() => encoder.Configure(SampleOptions()));
     }
 
@@ -89,7 +89,7 @@ public sealed class FFmpegNvencEncoderConstructionTests
         await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         encoder.SimulateConfiguredForTest(SampleOptions());
         using CancellationTokenSource cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         bool threw = false;
         try
         {
@@ -104,25 +104,25 @@ public sealed class FFmpegNvencEncoderConstructionTests
     }
 
     [Fact]
-    public void RequestKeyframe_BeforeConfigure_Throws()
+    public async Task RequestKeyframe_BeforeConfigure_Throws()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         Assert.Throws<InvalidOperationException>(() => encoder.RequestKeyframe());
     }
 
     [Fact]
-    public void RequestKeyframe_AfterConfigure_SetsFlag()
+    public async Task RequestKeyframe_AfterConfigure_SetsFlag()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         encoder.SimulateConfiguredForTest(SampleOptions());
         // Should not throw
         encoder.RequestKeyframe();
     }
 
     [Fact]
-    public void SimulateConfiguredForTest_Null_Throws()
+    public async Task SimulateConfiguredForTest_Null_Throws()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         Assert.Throws<ArgumentNullException>(() => encoder.SimulateConfiguredForTest(null!));
     }
 
@@ -138,13 +138,15 @@ public sealed class FFmpegNvencEncoderConstructionTests
             await encoder.EncodeAsync(SampleFrame(), CancellationToken.None);
         }
         catch (DllNotFoundException) { /* expected — no native FFmpeg DLLs in test run */ }
+        #pragma warning disable CA1031, RCS1075 // intentional: any native-interop error is acceptable here; test only checks the return path // RCS1075: intentional swallow of native-interop errors in this return-path test
         catch (Exception) { /* other native errors are also acceptable */ }
+        #pragma warning restore CA1031, RCS1075
     }
 
     [Fact]
-    public void EncodedChunks_IsNotNull()
+    public async Task EncodedChunks_IsNotNull()
     {
-        FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
+        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder(new DummyLoader());
         Assert.NotNull(encoder.EncodedChunks);
     }
 

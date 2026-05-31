@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Serilog.Core;
 using Serilog.Events;
 using WindowStream.Core.Observability;
@@ -16,7 +17,7 @@ public sealed class InAppDashboardSink : ILogEventSink
 
     public InAppDashboardSink(int capacity = 500)
     {
-        if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
         this.capacity = capacity;
         buffer = new Queue<LogEntry>(capacity);
     }
@@ -62,7 +63,7 @@ public sealed class InAppDashboardSink : ILogEventSink
             Severity: severity,
             EventType: eventType,
             StreamId: streamId,
-            Message: logEvent.RenderMessage(),
+            Message: logEvent.RenderMessage(CultureInfo.InvariantCulture),
             Exception: logEvent.Exception);
     }
 }

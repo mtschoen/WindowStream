@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
@@ -34,8 +35,8 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             ArgumentList =
             {
                 "worker",
-                "--hwnd", arguments.Hwnd.ToString(),
-                "--stream-id", arguments.StreamId.ToString(),
+                "--hwnd", arguments.Hwnd.ToString(CultureInfo.InvariantCulture),
+                "--stream-id", arguments.StreamId.ToString(CultureInfo.InvariantCulture),
                 "--pipe-name", arguments.PipeName,
                 "--encoder-options", arguments.EncoderOptionsJson
             },
@@ -63,6 +64,7 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             connectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
             await pipe.WaitForConnectionAsync(connectTimeout.Token).ConfigureAwait(false);
         }
+#pragma warning disable CA1031 // intentional catch-all in pipe handshake; exception is wrapped and rethrown with context
         catch (Exception originalException)
         {
             bool exited = process.HasExited;
@@ -74,15 +76,18 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
                     process.Kill(entireProcessTree: true);
                 }
             }
+#pragma warning disable CA1031 // best-effort kill; process may have already exited
             catch
             {
             }
+#pragma warning restore CA1031
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw new InvalidOperationException(
-                $"worker pipe handshake failed (exited={exited}, exitCode={exitCode?.ToString() ?? "n/a"}); " +
+                $"worker pipe handshake failed (exited={exited}, exitCode={exitCode?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}); " +
                 $"worker stderr:{System.Environment.NewLine}{stderrBuffer}",
                 originalException);
         }
+#pragma warning restore CA1031
         return new WorkerHandle(process, pipe);
     }
 
@@ -121,9 +126,11 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
                     process.Kill(entireProcessTree: true);
                 }
             }
+#pragma warning disable CA1031 // best-effort kill; process may have already exited
             catch
             {
             }
+#pragma warning restore CA1031
         }
 
         public async ValueTask DisposeAsync()
@@ -133,9 +140,11 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             {
                 await ((NamedPipeServerStream)Pipe).DisposeAsync().ConfigureAwait(false);
             }
+#pragma warning disable CA1031 // best-effort pipe dispose in async teardown
             catch
             {
             }
+#pragma warning restore CA1031
             process.Dispose();
         }
     }

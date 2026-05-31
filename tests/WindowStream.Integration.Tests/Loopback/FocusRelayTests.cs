@@ -37,26 +37,32 @@ public class FocusRelayTests
     // duplicate the minimal calls needed so the test class has no external
     // helper dependency.
     [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern IntPtr GetForegroundWindowNative();
 
     [DllImport("user32.dll", EntryPoint = "SetForegroundWindow")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindowNative(IntPtr hwnd);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowTextW", CharSet = CharSet.Unicode)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowTextNative(IntPtr hwnd, string text);
 
     [DllImport("user32.dll", EntryPoint = "IsWindowVisible")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisibleNative(IntPtr hwnd);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint GetWindowThreadProcessIdNative(IntPtr hwnd, out uint processId);
 
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
     [DllImport("user32.dll", EntryPoint = "EnumWindows")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindowsNative(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
@@ -249,9 +255,11 @@ public class FocusRelayTests
                 try
                 {
                     candidate.Kill(entireProcessTree: true);
-                    candidate.WaitForExit(2000);
+                    await candidate.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
                 }
+                #pragma warning disable CA1031 // best-effort notepad cleanup — Kill can throw on already-exited process
                 catch
+                #pragma warning restore CA1031
                 {
                     // best-effort cleanup
                 }

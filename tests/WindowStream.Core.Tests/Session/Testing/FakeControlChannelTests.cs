@@ -13,7 +13,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task Send_And_Receive_Roundtrips_ControlMessage()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -32,7 +32,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task NotifyHeartbeatReceived_Updates_LastHeartbeatReceived()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -50,7 +50,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task DisposeAsync_IsIdempotent()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -62,7 +62,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task Receive_On_Closed_Viewer_Side_Throws_EndOfStream()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -77,7 +77,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task FakeViewerEndpoint_Receive_WrongType_Throws()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -95,7 +95,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task FakeViewerEndpoint_Receive_On_Closed_Channel_Throws_EndOfStream()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
@@ -110,7 +110,7 @@ public sealed class FakeControlChannelTests
     [Fact]
     public async Task FakeViewerEndpoint_DisposeAsync_IsIdempotent()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
         IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);

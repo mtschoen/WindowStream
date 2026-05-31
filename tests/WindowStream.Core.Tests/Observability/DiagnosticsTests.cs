@@ -18,6 +18,8 @@ public class DiagnosticsTests
         Diagnostics diagnostics = new(loggerMock.Object);
         diagnostics.Report(new PipelineEvent.Listening(TcpPort: 53234, UdpPort: 53235));
 
+        // Moq verification lambda — state.ToString() is the test assertion, not a hot log path.
+#pragma warning disable CA1873 // not a production log call; argument evaluation is intentional in test
         loggerMock.Verify(logger => logger.Log(
             LogLevel.Information,
             It.IsAny<EventId>(),
@@ -25,6 +27,7 @@ public class DiagnosticsTests
             null,
             It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+#pragma warning restore CA1873
     }
 
     [Fact]

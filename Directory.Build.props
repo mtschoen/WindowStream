@@ -5,5 +5,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!-- Superset of all SDK analyzers (a strict superset of the fleet's
+         latest-Recommended baseline). Per-rule opt-outs live in .editorconfig. -->
+    <AnalysisLevel>latest-All</AnalysisLevel>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roslynator adds 200+ RCS rules on top of the SDK analyzers, enforced as
+         build diagnostics (and thus errors via TreatWarningsAsErrors). Pinned to
+         the fleet version for reproducibility / git-wizard parity. -->
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>

@@ -57,6 +57,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
     public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken) =>
         Start(handle, options, sharedDeviceManager: null, sharedFrameTexturePool: null, cancellationToken);
 
+#pragma warning disable CA1822 // CA1822: public capture-source API overload backing IWindowCaptureSource.Start; kept instance for API symmetry
     public IWindowCapture Start(
         WindowHandle handle,
         CaptureOptions options,
@@ -82,6 +83,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
             throw;
         }
     }
+#pragma warning restore CA1822
 
     private static readonly Guid iidIUnknown = new Guid("00000000-0000-0000-C000-000000000046");
     private static readonly Guid iidInterop = new Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
@@ -91,7 +93,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
     private static GraphicsCaptureItem CreateItemForWindow(IntPtr windowHandle, WindowHandle handle)
     {
         const string classId = "Windows.Graphics.Capture.GraphicsCaptureItem";
-        WindowsCreateString(classId, (uint)classId.Length, out IntPtr hstring);
+        _ = WindowsCreateString(classId, (uint)classId.Length, out IntPtr hstring);
         try
         {
             // Get activation factory as IUnknown, then QI for IGraphicsCaptureItemInterop
@@ -128,7 +130,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
                     int createHr = interop.CreateForWindow(windowHandle, ref iid, out IntPtr itemPointer);
                     if (createHr < 0)
                     {
-                        throw new COMException("CreateForWindow failed. HRESULT: 0x" + ((uint)createHr).ToString("X8", System.Globalization.CultureInfo.InvariantCulture), createHr);
+                        throw new WindowCaptureException("CreateForWindow failed. HRESULT: 0x" + ((uint)createHr).ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
                     }
                     GraphicsCaptureItem item = MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
                     Marshal.Release(itemPointer);
@@ -142,7 +144,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
         }
         finally
         {
-            WindowsDeleteString(hstring);
+            _ = WindowsDeleteString(hstring);
         }
     }
 }

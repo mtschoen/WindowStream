@@ -22,8 +22,6 @@ namespace WindowStream.Integration.Tests.Loopback;
 /// </summary>
 public sealed class PauseResumeTests
 {
-    private const int StreamId = 1;
-
     [DesktopAndNvidiaDriverFact]
     public async Task PauseForwardsCommandToWorker_AndResumeForwardsCommand_AndKeyframeArrivesAtViewer()
     {

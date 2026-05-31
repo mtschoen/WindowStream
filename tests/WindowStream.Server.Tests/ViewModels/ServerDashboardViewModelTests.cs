@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Serilog.Events;
@@ -224,7 +225,7 @@ public sealed class ServerDashboardViewModelTests
     public async Task Start_Serving_Async_Completes_Normally_On_Cancellation()
     {
         using CancellationTokenSource cancellationTokenSource = new();
-        cancellationTokenSource.Cancel();
+        await cancellationTokenSource.CancelAsync();
         ServerDashboardViewModel viewModel = new(new CancellingSessionHostLauncher(), new InAppDashboardSink(capacity: 16));
 
         // Must not throw — OperationCanceledException is swallowed.
@@ -260,7 +261,7 @@ public sealed class ServerDashboardViewModelTests
         LogEntry entry = new(timestamp, WindowStream.Core.Observability.Severity.Info, "Log", null, "hello", null);
         LogEntryViewModel viewModel = new(entry);
 
-        string local = timestamp.LocalDateTime.ToString("HH:mm:ss.fff");
+        string local = timestamp.LocalDateTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
         Assert.Equal(local, viewModel.Timestamp);
     }
 

@@ -59,8 +59,10 @@ public sealed class TcpControlChannelAdapter : IControlChannel
     {
         if (disposed) return ValueTask.CompletedTask;
         disposed = true;
+#pragma warning disable CA1031 // best-effort dispose of stream and TCP client in async teardown
         try { stream.Dispose(); } catch { /* best-effort */ }
         try { tcpClient.Dispose(); } catch { /* best-effort */ }
+#pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
 }

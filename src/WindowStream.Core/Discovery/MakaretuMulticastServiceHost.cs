@@ -61,7 +61,9 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         // route to. Without this Makaretu auto-generates A records from every
         // local IPv4 (including Hyper-V / WSL bridges) and the picker resolves
         // to an unreachable IP.
+#pragma warning disable CA1859 // CA1859: interface type kept for readability on this cold discovery path
         IReadOnlyList<IPAddress> physicalAddresses = ResolvePhysicalLanAddresses();
+#pragma warning restore CA1859
 
         ServiceProfile profile = new ServiceProfile(
             instanceName: serviceInstance,
@@ -107,7 +109,7 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         string? overrideName = Environment.GetEnvironmentVariable("WINDOWSTREAM_MDNS_INTERFACE");
         if (!string.IsNullOrWhiteSpace(overrideName))
         {
-            IReadOnlyList<NetworkInterface> matched = snapshot.Where(intf =>
+            List<NetworkInterface> matched = snapshot.Where(intf =>
                 intf.Name.Contains(overrideName!, StringComparison.OrdinalIgnoreCase) ||
                 intf.Description.Contains(overrideName!, StringComparison.OrdinalIgnoreCase)).ToList();
             if (matched.Count > 0)
@@ -117,14 +119,14 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
             // Fall through to heuristic if the override didn't match anything.
         }
 
-        IReadOnlyList<NetworkInterface> physical = snapshot.Where(IsPhysicalLanInterface).ToList();
+        List<NetworkInterface> physical = snapshot.Where(IsPhysicalLanInterface).ToList();
         // If the heuristic excluded everything (unusual, e.g. all interfaces
         // happened to match a virtual-fragment), fall back to the unfiltered
         // candidates rather than break discovery entirely.
         return physical.Count > 0 ? physical : snapshot;
     }
 
-    private static IReadOnlyList<IPAddress> ResolvePhysicalLanAddresses()
+    private static List<IPAddress> ResolvePhysicalLanAddresses()
     {
         IEnumerable<NetworkInterface> filtered = FilterPhysicalLanInterfaces(
             NetworkInterface.GetAllNetworkInterfaces());

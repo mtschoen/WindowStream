@@ -50,7 +50,9 @@ public sealed class TcpConnectionAcceptorAdapter : ITcpConnectionAcceptor
     {
         if (disposed) return ValueTask.CompletedTask;
         disposed = true;
-        try { listener?.Stop(); } catch { /* best-effort */ }
+#pragma warning disable CA1031 // best-effort stop/dispose of TCP listener in async teardown
+        try { listener?.Stop(); listener?.Dispose(); } catch { /* best-effort */ }
+#pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
 }

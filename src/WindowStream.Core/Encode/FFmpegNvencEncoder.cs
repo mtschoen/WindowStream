@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -76,7 +77,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
 
     internal void ValidatePreConfigureState(EncoderOptions options)
     {
-        if (options is null) throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
         if (this.options is not null) throw new InvalidOperationException("Configure already called.");
         nativeLoader.EnsureLoaded();
     }
@@ -267,7 +268,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
             ffmpeg.av_frame_free(&frame);
             throw new EncoderException(
                 "Duplicate pool key: FFmpeg pool returned ("
-                + "texP=0x" + texturePointer.ToString("X")
+                + "texP=0x" + texturePointer.ToString("X", CultureInfo.InvariantCulture)
                 + ", idx=" + textureSubresourceIndex
                 + ") while a prior acquisition is still in flight. "
                 + "Indicates FFmpeg pool corruption or a missing Release.");
@@ -285,7 +286,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         {
             throw new EncoderException(
                 "No pool AVFrame matches released ("
-                + "texP=0x" + texturePointer.ToString("X")
+                + "texP=0x" + texturePointer.ToString("X", CultureInfo.InvariantCulture)
                 + ", idx=" + textureSubresourceIndex
                 + ") — either release was called without a matching acquire, "
                 + "or the texture was already consumed by EncodeAsync.");
@@ -327,7 +328,7 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         {
             throw new EncoderException(
                 "No pool AVFrame matches captured ("
-                + "texP=0x" + frame.nativeTexturePointer.ToString("X")
+                + "texP=0x" + frame.nativeTexturePointer.ToString("X", CultureInfo.InvariantCulture)
                 + ", idx=" + frame.textureArrayIndex
                 + ") — caller violated the IFrameTexturePool contract "
                 + "(EncodeAsync or ReleaseFrameTexture must follow each AcquireFrameTexture exactly once).");
