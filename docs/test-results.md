@@ -1,7 +1,6 @@
 # WindowStream test results
 
-Durable record of unit/integration test runs and end-to-end latency
-measurements. Raw logs are transient (gitignored); the authoritative
+Durable record of unit/integration test runs and end-to-end latency measurements. Raw logs are transient (gitignored); the authoritative
 numbers live here.
 
 ---
@@ -10,38 +9,30 @@ numbers live here.
 
 ### Unit + integration tests
 
-- **Unit tests:** `tests/WindowStream.Core.Tests/` (xUnit, Coverlet).
-  100% line + branch coverage gate on `WindowStream.Core` and the
+- **Unit tests:** `tests/WindowStream.Core.Tests/` (xUnit, Coverlet). 100% line + branch coverage gate on `WindowStream.Core` and the
   `windowstream` CLI module.
-- **Integration tests:** `tests/WindowStream.Integration.Tests/` (xUnit).
-  Hardware-gated skips: NVENC-dependent tests skip when no NVIDIA driver
-  is available, the mDNS loopback test skips when multicast loopback is
-  blocked, and the focus-relay test skips when Notepad cannot be launched
-  non-interactively.
+- **Integration tests:** `tests/WindowStream.Integration.Tests/` (xUnit). Hardware-gated skips: NVENC-dependent tests skip when no NVIDIA
+  driver is available, the mDNS loopback test skips when multicast loopback is blocked, and the focus-relay test skips when Notepad cannot
+  be launched non-interactively.
 
 ### Latency measurements
 
 - **Tool:** `tools/framecount-analyze.py`
-- **Server log format:** `[FRAMECOUNT] stage=<S> ptsUs=<P> wallMs=<T>`
-  lines from `WgcFrameConverter` (stage=convert) and
+- **Server log format:** `[FRAMECOUNT] stage=<S> ptsUs=<P> wallMs=<T>` lines from `WgcFrameConverter` (stage=convert) and
   `FFmpegNvencEncoder` (stage=enc).
-- **Viewer log format:** `D FRAMECOUNT: stage=<S> ptsUs=<P> wallMs=<T>`
-  lines from `MediaCodecDecoder` (reasm, dec) and Choreographer post
-  (present).
-- **Join key:** `ptsUs` (microseconds since capture start, threaded
-  through `CapturedFrame` → encoder PTS → MediaCodec
+- **Viewer log format:** `D FRAMECOUNT: stage=<S> ptsUs=<P> wallMs=<T>` lines from `MediaCodecDecoder` (reasm, dec) and Choreographer
+  post (present).
+- **Join key:** `ptsUs` (microseconds since capture start, threaded through `CapturedFrame` → encoder PTS → MediaCodec
   `presentationTimeUs`).
-- **Cross-source clock-skew estimator:** `min(enc → reasm)` becomes the
-  zero-network-latency floor; subtract it from all cross-source deltas.
-  Same-source deltas (convert→enc, reasm→dec, dec→present) are
-  clock-skew-free already.
+- **Cross-source clock-skew estimator:** `min(enc → reasm)` becomes the zero-network-latency floor; subtract it from all cross-source
+  deltas. Same-source deltas (convert→enc, reasm→dec, dec→present) are clock-skew-free already.
 
 ---
 
 ## Latency timeline
 
 | # | Date | Build | Source | Device | Stage | p0 (min) | p50 | p95 |
-|---|---|---|---|---|---|---:|---:|---:|
+| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
 | 1 | 2026-04-26 | pre-`09515ff` (queue=3) | typing ~4 ev/s | — | cap → enc | — | 751 ms | — |
 | 2 | 2026-04-26 | post-`09515ff` (`surfaces=1`) | typing ~4 ev/s | — | cap → enc | — | 252 ms | — |
 | 3 | b9fc7f6 | post all perf fixes, pre-M3 | Unity 4K @ 60 | Galaxy XR | cap → present | — | 51 ms | 66 ms |
@@ -50,18 +41,15 @@ numbers live here.
 | 6 | 2026-05-14 | main + Tier 1a | Edge latency-clock 165 fps | Galaxy XR | cap → present | **15 ms** | **28 ms** | **40 ms** |
 | 7 | 2026-05-14 | main + Tier 1a | Edge latency-clock 165 fps | Galaxy XR (XR compositor) | **photon → photon** | **13 ms** | **17 ms** | **34 ms** |
 
-Direct comparison: rows 3 ↔ 4 (same source/sink/network). Row 4 −
-row 3 = GPU-resident pipeline contribution = **−17 ms p50, −15 ms p95**.
+Direct comparison: rows 3 ↔ 4 (same source/sink/network). Row 4 − row 3 = GPU-resident pipeline contribution = **−17 ms p50, −15 ms
+p95**.
 
-Rows 4 ↔ 6: Tier 1a MediaCodec hints (`KEY_PRIORITY=0` +
-`KEY_OPERATING_RATE=Short.MAX_VALUE`) = **−6 ms p50, −11 ms p95** on E2E.
-Best case improved from 17 ms → **15 ms** (p0).
+Rows 4 ↔ 6: Tier 1a MediaCodec hints (`KEY_PRIORITY=0` + `KEY_OPERATING_RATE=Short.MAX_VALUE`) = **−6 ms p50, −11 ms p95** on E2E. Best
+case improved from 17 ms → **15 ms** (p0).
 
-Row 7: Camera-based photon-to-photon measurement using
-`SpatialExternalSurface` (XR compositor, bypassing SurfaceFlinger).
-Median **17 ms ≈ 1 frame at 60 fps**. p0 of 13 ms is sub-frame.
-This is the **ground truth** measurement; software-level cross-device
-timings (enc→present) are inflated by NTP clock skew.
+Row 7: Camera-based photon-to-photon measurement using `SpatialExternalSurface` (XR compositor, bypassing SurfaceFlinger). Median **17 ms
+≈ 1 frame at 60 fps**. p0 of 13 ms is sub-frame. This is the **ground truth** measurement; software-level cross-device timings
+(enc→present) are inflated by NTP clock skew.
 
 ---
 
@@ -69,19 +57,16 @@ timings (enc→present) are inflated by NTP clock skew.
 
 ### 2026-05-14 — XR compositor photon-to-photon (row 7)
 
-**Setup:** Same build as row 6 but running via `SpatialExternalSurface`
-(Jetpack XR alpha13) in Full Space Managed mode, bypassing SurfaceFlinger.
-Browser latency-clock at 165 fps displayed on physical monitor; same
-clock streamed to Galaxy XR XR compositor panel. HMD `screenrecord`
-captures both displays in a single video.
+**Setup:** Same build as row 6 but running via `SpatialExternalSurface` (Jetpack XR alpha13) in Full Space Managed mode, bypassing
+SurfaceFlinger. Browser latency-clock at 165 fps displayed on physical monitor; same clock streamed to Galaxy XR XR compositor panel. HMD
+`screenrecord` captures both displays in a single video.
 
-**Method:** Extract frames from `tools/xr-latency-recording-20260514.mp4`,
-read millisecond timestamps from both the physical monitor and the
-virtual XR panel. Delta = monitor − virtual. Positive = virtual behind
-(real latency); negative = virtual ahead (camera shutter timing noise).
+**Method:** Extract frames from `tools/xr-latency-recording-20260514.mp4`, read millisecond timestamps from both the physical monitor and
+the virtual XR panel. Delta = monitor − virtual. Positive = virtual behind (real latency); negative = virtual ahead (camera shutter timing
+noise).
 
 | Frame | Monitor | Virtual (XR) | Delta |
-|-------|---------|-------------|------:|
+| --- | --- | --- | ---: |
 | 001 | `13:58:15.587` | `13:58:15.570` | 17 ms |
 | 002 | `13:58:16.620` | `13:58:16.604` | 16 ms |
 | 003 | `13:58:16.504` | `13:58:16.487` | 17 ms |
@@ -95,7 +80,7 @@ virtual XR panel. Delta = monitor − virtual. Positive = virtual behind
 | 014 | `13:58:28.606` | `13:58:28.572` | 34 ms |
 
 | Stat | Value |
-|------|------:|
+| --- | ---: |
 | Samples | 11 |
 | p0 (min) | 13 ms |
 | **p50 (median)** | **17 ms** |
@@ -103,26 +88,22 @@ virtual XR panel. Delta = monitor − virtual. Positive = virtual behind
 | Steady-state range | 13–17 ms |
 | Outlier rate | ~9% |
 
-**Verdict:** 13–17 ms = 1 frame at 60 fps (16.67 ms). The XR compositor
-path achieves the theoretical minimum. The single 34 ms outlier (≈ 2
-frames) is consistent with an occasional UDP reassembly stall.
+**Verdict:** 13–17 ms = 1 frame at 60 fps (16.67 ms). The XR compositor path achieves the theoretical minimum. The single 34 ms outlier
+(≈ 2 frames) is consistent with an occasional UDP reassembly stall.
 
-Sample frame from the recording (monitor = `13:58:20.138`, virtual =
-`13:58:20.121`, delta = 17 ms):
+Sample frame from the recording (monitor = `13:58:20.138`, virtual = `13:58:20.121`, delta = 17 ms):
 
-![XR compositor latency proof — 17ms delta between physical monitor and virtual panel](xr-latency-frame-sample.jpg)
+![XR compositor latency proof — 17ms delta between physical monitor and virtual panel](images/xr-latency-frame-sample.jpg)
 
 ---
 
 ### 2026-05-14 — Tier 1a MediaCodec low-latency (row 6)
 
-**Setup:** Current `main` with Tier 1a (`KEY_PRIORITY=0` +
-`KEY_OPERATING_RATE=Short.MAX_VALUE`). Edge `--app=` latency-clock at
-165 fps cap. 630 paired frames over 15 s recording window. Clean wifi
-(98% of enc→reasm frames arrived in 0–10 ms).
+**Setup:** Current `main` with Tier 1a (`KEY_PRIORITY=0` + `KEY_OPERATING_RATE=Short.MAX_VALUE`). Edge `--app=` latency-clock at 165 fps
+cap. 630 paired frames over 15 s recording window. Clean wifi (98% of enc→reasm frames arrived in 0–10 ms).
 
 | Stage | p0 (min) | p50 | p95 | max |
-|---|---:|---:|---:|---:|
+| --- | ---: | ---: | ---: | ---: |
 | convert → enc (server, GPU→NVENC) | 4 ms | 5 ms | 11 ms | 30 ms |
 | enc → reasm (network + reassembly) | 0 ms | 3 ms | 7 ms | 48 ms |
 | reasm → dec (viewer decode) | 5 ms | 9 ms | 13 ms | 21 ms |
@@ -132,7 +113,7 @@ Sample frame from the recording (monitor = `13:58:20.138`, virtual =
 Delta vs baseline (05-11, pre-Tier 1a):
 
 | Stage | Baseline p50/p95 | Tier 1a p50/p95 | Delta |
-|---|---:|---:|---:|
+| --- | ---: | ---: | ---: |
 | convert → enc | 8 / 11 ms | **5 / 11 ms** | **−3 ms p50** |
 | enc → reasm | 3 / 7 ms | **3 / 7 ms** | — |
 | reasm → dec | 12 / 17 ms | **9 / 13 ms** | **−3 ms p50, −4 ms p95** |
@@ -141,7 +122,7 @@ Delta vs baseline (05-11, pre-Tier 1a):
 
 Per-second timeline (rock solid from t=7 onward, E2E p50 = 26–31 ms):
 
-```
+```text
 t(s)   n    enc→reasm        reasm→dec        dec→pres         E2E
            p50   p95  max    p50   p95  max    p50  p95  max    p50   p95   max
   5    30      3     9   12      9    13   14     11    17   20     33    44   48
@@ -164,12 +145,11 @@ NVENC queue depth: median=1, max=1.
 
 ### 2026-05-09 — M5 GPU-resident pipeline, GXR (row 4)
 
-**Setup:** `c51b88a` main (M5). Unity 4K @ 60 fps. Galaxy XR via TLS
-adb. 150 s, 3,814 frames joined across 5 stages. Clock-skew estimate:
-`enc → reasm` floor at −729 ms (server clock ahead of viewer).
+**Setup:** `c51b88a` main (M5). Unity 4K @ 60 fps. Galaxy XR via TLS adb. 150 s, 3,814 frames joined across 5 stages. Clock-skew
+estimate: `enc → reasm` floor at −729 ms (server clock ahead of viewer).
 
 | Stage delta | p50 | p95 | min | max |
-|---|---:|---:|---:|---:|
+| --- | ---: | ---: | ---: | ---: |
 | convert → enc (server, GPU→NVENC) | 8 | 13 | 4 | 90 |
 | enc → reasm (network + reassembly) | 4 | 9 | 0 | 53 |
 | reasm → dec (viewer decode) | 11 | 15 | 6 | 55 |
@@ -182,19 +162,16 @@ NVENC queue depth (in-flight, convert → enc): median 1, p95 1, max 2.
 
 ### 2026-05-09 — M5 smoke, Fold 3 (row 5)
 
-**Setup:** `c51b88a` main (M5). Unity 4K @ 60 fps in playmode, 108 s.
-Fold 3 (only adb device available), not Galaxy XR.
+**Setup:** `c51b88a` main (M5). Unity 4K @ 60 fps in playmode, 108 s. Fold 3 (only adb device available), not Galaxy XR.
 
 | Stage join | count | p50 | p95 | p99 | max |
-|---|---:|---:|---:|---:|---:|
+| --- | ---: | ---: | ---: | ---: | ---: |
 | server: cap → enc | 6274 | 9 ms | 10 ms | 10 ms | 14 ms |
 | viewer: reasm → present | 1825 | 32 ms | 48 ms | 52 ms | 82 ms |
 
-Fold 3's hardware decoder kept pace with only ~17 fps against the
-58 fps server emit, so frames queued at the UDP stage. Server pipeline
-matched M4-era throughput (sub-10 ms p99). Viewer-internal
-`reasm → present` (32 ms p50) in the same range as GXR's post-M4
-measurement (23 ms p50).
+Fold 3's hardware decoder kept pace with only ~17 fps against the 58 fps server emit, so frames queued at the UDP stage. Server pipeline
+matched M4-era throughput (sub-10 ms p99). Viewer-internal `reasm → present` (32 ms p50) in the same range as GXR's post-M4 measurement
+(23 ms p50).
 
 ---
 
@@ -202,20 +179,14 @@ measurement (23 ms p50).
 
 For a future swimmy-era baseline (83384b6 or earlier):
 
-1. **Stages at 83384b6**: cap, enc, frag, reasm, dec. **No `present`.**
-   Comparable end-to-end is **cap → dec**, not cap → present. From the
-   M5 run: dec → present is +11/+17 ms p50/p95, so M5 cap → dec ≈
-   **23 ms p50 / 34 ms p95**.
+1. **Stages at 83384b6**: cap, enc, frag, reasm, dec. **No `present`.** Comparable end-to-end is **cap → dec**, not cap → present. From
+   the M5 run: dec → present is +11/+17 ms p50/p95, so M5 cap → dec ≈ **23 ms p50 / 34 ms p95**.
 
-2. **Stage equivalence**: at 83384b6 the converter was sws_scale (CPU
-   readback). At M5 the converter is D3D11 video processor. Both fire
-   between WGC frame arrival and NVENC ingest. `cap` (WGC arrival) is
-   the right common reference point.
+2. **Stage equivalence**: at 83384b6 the converter was sws_scale (CPU readback). At M5 the converter is D3D11 video processor. Both fire
+   between WGC frame arrival and NVENC ingest. `cap` (WGC arrival) is the right common reference point.
 
-3. **Wire-protocol gotcha**: 83384b6 server uses `serve --hwnd <handle>`
-   (v1 single-window). Today's portable APK expects v2 ServerHello with
-   windows array. Likely NOT wire-compatible — build a matching old
-   viewer APK at that vintage, or find a vintage where v2 protocol
+3. **Wire-protocol gotcha**: 83384b6 server uses `serve --hwnd <handle>` (v1 single-window). Today's portable APK expects v2 ServerHello
+   with windows array. Likely NOT wire-compatible — build a matching old viewer APK at that vintage, or find a vintage where v2 protocol
    is in but GPU pipeline is not.
 
 ---
@@ -225,11 +196,10 @@ For a future swimmy-era baseline (83384b6 or earlier):
 ### 2026-05-14 — coverage initiative complete
 
 - **Tests:** 344 total (306 unit + 38 integration; 3 hardware-gated skips)
-- **Coverage:** 100% line / 100% branch / 100% method on both
-  `WindowStream.Core` and the `windowstream` CLI module
+- **Coverage:** 100% line / 100% branch / 100% method on both `WindowStream.Core` and the `windowstream` CLI module
 
 | Suite | Tests | Skipped | Result |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | WindowStream.Core.Tests (xUnit) | 306 | 0 | PASS |
 | WindowStream.Integration.Tests (xUnit) | 38 | 3 | PASS |
 
@@ -239,34 +209,28 @@ For a future swimmy-era baseline (83384b6 or earlier):
 - **Tests:** 344 total (306 unit + 38 integration; 3 hardware-gated skips)
 - **Coverage:** 100% line / 100% branch / 100% method
 
-The 100% line+branch coverage gate was relaxed to 90/85 in M2 (commit
-`a708734`) for the GPU-resident pipeline transition window. M5 restored
-100/100 by:
+The 100% line+branch coverage gate was relaxed to 90/85 in M2 (commit `a708734`) for the GPU-resident pipeline transition window. M5
+restored 100/100 by:
 
-1. Marking native-socket adapters (`TcpConnectionAcceptorAdapter`,
-   `TcpControlChannelAdapter`, `UdpVideoSenderAdapter`) as
+1. Marking native-socket adapters (`TcpConnectionAcceptorAdapter`, `TcpControlChannelAdapter`, `UdpVideoSenderAdapter`) as
    `[ExcludeFromCodeCoverage]` with rationale.
-2. Adding focused unit tests for v2-era gaps (`CliServices` constructor
-   + null guards, `WorkerArguments` record,
-   `IControlChannel.RemoteIpAddress` default impl,
-   `WorkerSupervisor.GetPipe`, `FakeVideoEncoder.Stopped`,
+2. Adding focused unit tests for v2-era gaps (`CliServices` constructor + null guards, `WorkerArguments` record,
+   `IControlChannel.RemoteIpAddress` default impl, `WorkerSupervisor.GetPipe`, `FakeVideoEncoder.Stopped`,
    `StreamStoppedReasonConverter` null path).
 3. Restoring `<Threshold>100,100</Threshold>` in the test csproj.
 
 Exclusion annotations (with rationale, kept for native I/O):
+
 - `FFmpegNvencEncoder` native FFmpeg call paths
 - `TcpConnectionAcceptorAdapter` (native socket wrapper)
 - `TcpControlChannelAdapter` (TCP stream wrapper)
 - `UdpVideoSenderAdapter` (UDP socket wrapper)
 - `CliServices.CreateDefault` (real-hardware DI wiring)
 
-End-to-end correctness verified by
-`FFmpegNvencEncoderHwaccelTests` (4 resolution × encode-then-decode
-round-trips at 640×360, 800×450, 960×540, 1120×630 — all PASS) and
-`WorkerProcessIntegrationTests.WorkerEmitsChunksThroughPipe`.
+End-to-end correctness verified by `FFmpegNvencEncoderHwaccelTests` (4 resolution × encode-then-decode round-trips at 640×360, 800×450,
+960×540, 1120×630 — all PASS) and `WorkerProcessIntegrationTests.WorkerEmitsChunksThroughPipe`.
 
-M5 manual-smoke checkpoint **complete (2026-05-09)**: live demo from
-Unity 6.0 4K → Galaxy XR over Wi-Fi.
+M5 manual-smoke checkpoint **complete (2026-05-09)**: live demo from Unity 6.0 4K → Galaxy XR over Wi-Fi.
 
 ---
 
@@ -301,5 +265,4 @@ python tools/framecount-analyze.py server.log viewer.log
 tools\latency-test
 ```
 
-Handles adb wifi connect, source-window detection, server launch, and
-a 4-second frame-flow probe before asking you to go on-head.
+Handles adb wifi connect, source-window detection, server launch, and a 4-second frame-flow probe before asking you to go on-head.

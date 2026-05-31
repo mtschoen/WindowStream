@@ -87,3 +87,15 @@ jobs:
             "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/statuses/$env:GITHUB_SHA"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+  lint-markdown:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: markdownlint
+        run: npx -y markdownlint-cli '**/*.md' --ignore node_modules

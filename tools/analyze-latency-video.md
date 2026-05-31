@@ -25,7 +25,7 @@ python tools/analyze-latency-video.py recording.mp4 \
 ```
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| --- | --- | --- |
 | `--step N` | 5 | Process every Nth video frame |
 | `--skip S` | 0 | Skip the first S seconds of video |
 | `--clock-rate F` | 165.0 | Frame-counter rate in FPS (green mode only) |
@@ -105,14 +105,14 @@ Measured on Quest 3 / Galaxy XR, GPU-resident pipeline, May 2026.
 ### Green frame-counter recordings (20260526)
 
 | Recording | Frames | Source % | Decoded % | p50 (frames) | p50 (ms) |
-|-----------|-------:|---------:|----------:|--------------:|---------:|
+| --- | ---: | ---: | ---: | ---: | ---: |
 | 014405.mp4 | 54 | 100% | 100% | 4 | 24.2 |
 | 013458.mp4 | 54 | 88.9% | 100% | 5 | 30.3 |
 
 ### White timestamp recording (20260524)
 
 | Recording | Frames | Source % | Decoded % | p50 (ms) |
-|-----------|-------:|---------:|----------:|---------:|
+| --- | ---: | ---: | ---: | ---: |
 | 074503.mp4 | 54 | 94.4% | 100% | 24.0 |
 
 **Consistent p50 of ~24 ms across both formats**, matching the known

@@ -3,5 +3,8 @@
     "line_length": 160,
     "code_blocks": false,
     "tables": false
+  },
+  "MD033": {
+    "allowed_elements": ["p", "br", "img", "sub", "i", "code"]
   }
 }
