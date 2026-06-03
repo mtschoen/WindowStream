@@ -1,5 +1,4 @@
 #if WINDOWS
-using System;
 using WindowStream.Core.Capture;
 
 namespace WindowStream.Integration.Tests.Support;
@@ -8,7 +7,7 @@ namespace WindowStream.Integration.Tests.Support;
 /// Creates synthetic <see cref="CapturedFrame"/> instances filled with a solid BGRA colour.
 /// Used by NVENC smoke tests to supply a valid frame without a live window capture.
 /// </summary>
-internal static class SolidColorFrameFactory
+static class SolidColorFrameFactory
 {
     /// <summary>
     /// Creates a <see cref="CapturedFrame"/> in <see cref="PixelFormat.Bgra32"/> format
@@ -24,11 +23,11 @@ internal static class SolidColorFrameFactory
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthPixels);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightPixels);
 
-        int rowStrideBytes = widthPixels * 4;
-        byte[] pixelBuffer = new byte[rowStrideBytes * heightPixels];
-        for (int pixelIndex = 0; pixelIndex < widthPixels * heightPixels; pixelIndex++)
+        var rowStrideBytes = widthPixels * 4;
+        var pixelBuffer = new byte[rowStrideBytes * heightPixels];
+        for (var pixelIndex = 0; pixelIndex < widthPixels * heightPixels; pixelIndex++)
         {
-            int offset = pixelIndex * 4;
+            var offset = pixelIndex * 4;
             pixelBuffer[offset + 0] = blue;
             pixelBuffer[offset + 1] = green;
             pixelBuffer[offset + 2] = red;

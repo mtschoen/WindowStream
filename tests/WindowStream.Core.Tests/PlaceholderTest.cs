@@ -1,10 +1,12 @@
+using Xunit;
+
 namespace WindowStream.Core.Tests;
 
 public sealed class PlaceholderTest
 {
-    [Xunit.Fact]
+    [Fact]
     public void AssemblyProductNameIsSet()
     {
-        Xunit.Assert.Equal("WindowStream.Core", WindowStream.Core.AssemblyInformation.ProductName);
+        Assert.Equal("WindowStream.Core", AssemblyInformation.ProductName);
     }
 }

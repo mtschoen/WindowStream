@@ -1,7 +1,4 @@
-using System;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Hosting;
 using Xunit;
 
@@ -9,18 +6,18 @@ namespace WindowStream.Core.Tests.Hosting;
 
 public class LoadShedderTests
 {
-    private static TaggedChunk Chunk(int streamId, ulong pts, bool keyframe = false)
+    static TaggedChunk Chunk(int streamId, ulong pts, bool keyframe = false)
         => new TaggedChunk(streamId, new WorkerChunkFrame(pts, keyframe, new byte[] { 0xFF }));
 
     [Fact]
     public async Task UnderThreshold_PassesAllChunks()
     {
-        Channel<TaggedChunk> input = Channel.CreateUnbounded<TaggedChunk>();
-        Channel<TaggedChunk> output = Channel.CreateUnbounded<TaggedChunk>();
-        LoadShedder shedder = new LoadShedder(input, output, perStreamMaximumQueueDepth: 4);
+        var input = Channel.CreateUnbounded<TaggedChunk>();
+        var output = Channel.CreateUnbounded<TaggedChunk>();
+        var shedder = new LoadShedder(input, output, perStreamMaximumQueueDepth: 4);
 
-        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        Task task = shedder.RunAsync(cancellation.Token);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var task = shedder.RunAsync(cancellation.Token);
 
         await input.Writer.WriteAsync(Chunk(1, 100));
         await input.Writer.WriteAsync(Chunk(1, 200));
@@ -41,14 +38,14 @@ public class LoadShedderTests
     public async Task KeyframesAreNeverDropped()
     {
         // Bounded output of size 1 + producer that blocks until consumer drains.
-        Channel<TaggedChunk> input = Channel.CreateUnbounded<TaggedChunk>();
-        Channel<TaggedChunk> output = Channel.CreateBounded<TaggedChunk>(new BoundedChannelOptions(1)
+        var input = Channel.CreateUnbounded<TaggedChunk>();
+        var output = Channel.CreateBounded<TaggedChunk>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.Wait
         });
-        LoadShedder shedder = new LoadShedder(input, output, perStreamMaximumQueueDepth: 1);
-        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        Task task = shedder.RunAsync(cancellation.Token);
+        var shedder = new LoadShedder(input, output, perStreamMaximumQueueDepth: 1);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var task = shedder.RunAsync(cancellation.Token);
 
         await input.Writer.WriteAsync(Chunk(1, 100, keyframe: false)); // fills bounded(1) output
         await input.Writer.WriteAsync(Chunk(1, 200, keyframe: false)); // queued internally — backpressured
@@ -60,10 +57,10 @@ public class LoadShedderTests
         // Drain output one slot at a time. After each read, send another
         // non-keyframe to re-trigger the shedder's drain step (the shedder
         // pushes-to-output only on input arrival in this implementation).
-        TaggedChunk first = await output.Reader.ReadAsync(cancellation.Token);
+        var first = await output.Reader.ReadAsync(cancellation.Token);
         await input.Writer.WriteAsync(Chunk(1, 400, keyframe: false), cancellation.Token);
         await Task.Delay(50, cancellation.Token);
-        TaggedChunk second = await output.Reader.ReadAsync(cancellation.Token);
+        var second = await output.Reader.ReadAsync(cancellation.Token);
 
         Assert.True(first.Frame.IsKeyframe || second.Frame.IsKeyframe,
             "keyframe (pts=300) must appear in output");

@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
+using WindowStream.Core.Session.Input;
 
 namespace WindowStream.Core.Session;
 
@@ -18,38 +15,38 @@ namespace WindowStream.Core.Session;
 /// </summary>
 public sealed class CoordinatorControlServer : IAsyncDisposable
 {
-    private readonly CoordinatorOptions options;
-    private readonly ITcpConnectionAcceptor tcpAcceptor;
-    private readonly WorkerSupervisor supervisor;
-    private readonly Func<WindowDescriptor[]> getCurrentWindows;
-    private readonly Func<ulong, long?> resolveWindowIdToHwnd;
-    private readonly Func<ulong, EncoderOptions?> resolveWindowIdToEncoderOptions;
-    private readonly Func<int> getUdpPort;
-    private readonly Func<int, WorkerCommandTag, Task> sendWorkerCommand;
-    private readonly Input.FocusRelay focusRelay;
-    private readonly Action<int, KeyEventMessage> injectKeyForStream;
-    private readonly TimeProvider timeProvider;
+    readonly CoordinatorOptions _options;
+    readonly ITcpConnectionAcceptor _tcpAcceptor;
+    readonly WorkerSupervisor _supervisor;
+    readonly Func<WindowDescriptor[]> _getCurrentWindows;
+    readonly Func<ulong, long?> _resolveWindowIdToHwnd;
+    readonly Func<ulong, EncoderOptions?> _resolveWindowIdToEncoderOptions;
+    readonly Func<int> _getUdpPort;
+    readonly Func<int, WorkerCommandTag, Task> _sendWorkerCommand;
+    readonly FocusRelay _focusRelay;
+    readonly Action<int, KeyEventMessage> _injectKeyForStream;
+    readonly TimeProvider _timeProvider;
 
-    private readonly object stateLock = new object();
-    private readonly Dictionary<int, ulong> streamIdToWindowId = new Dictionary<int, ulong>();
-    private CancellationTokenSource? lifecycleCancellation;
-    private IControlChannel? activeChannel;
-    private IPEndPoint? activeViewerEndpoint;
-    private bool disposed;
+    readonly object _stateLock = new object();
+    readonly Dictionary<int, ulong> _streamIdToWindowId = new Dictionary<int, ulong>();
+    CancellationTokenSource? _lifecycleCancellation;
+    IControlChannel? _activeChannel;
+    IPEndPoint? _activeViewerEndpoint;
+    bool _disposed;
 
     public event EventHandler<ViewerConnectedEventArguments>? ViewerConnected;
 
     public event EventHandler<ViewerDisconnectedEventArguments>? ViewerDisconnected;
 
-    public int TcpPort => tcpAcceptor.LocalPort;
+    public int TcpPort => _tcpAcceptor.LocalPort;
 
     public IPEndPoint? ActiveViewerEndpoint
     {
         get
         {
-            lock (stateLock)
+            lock (_stateLock)
             {
-                return activeViewerEndpoint;
+                return _activeViewerEndpoint;
             }
         }
     }
@@ -63,47 +60,47 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         Func<ulong, EncoderOptions?> resolveWindowIdToEncoderOptions,
         Func<int> getUdpPort,
         Func<int, WorkerCommandTag, Task> sendWorkerCommand,
-        Input.FocusRelay focusRelay,
+        FocusRelay focusRelay,
         Action<int, KeyEventMessage> injectKeyForStream,
         TimeProvider timeProvider)
     {
-        this.options = options ?? throw new ArgumentNullException(nameof(options));
-        this.tcpAcceptor = tcpAcceptor ?? throw new ArgumentNullException(nameof(tcpAcceptor));
-        this.supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
-        this.getCurrentWindows = getCurrentWindows ?? throw new ArgumentNullException(nameof(getCurrentWindows));
-        this.resolveWindowIdToHwnd = resolveWindowIdToHwnd ?? throw new ArgumentNullException(nameof(resolveWindowIdToHwnd));
-        this.resolveWindowIdToEncoderOptions = resolveWindowIdToEncoderOptions ?? throw new ArgumentNullException(nameof(resolveWindowIdToEncoderOptions));
-        this.getUdpPort = getUdpPort ?? throw new ArgumentNullException(nameof(getUdpPort));
-        this.sendWorkerCommand = sendWorkerCommand ?? throw new ArgumentNullException(nameof(sendWorkerCommand));
-        this.focusRelay = focusRelay ?? throw new ArgumentNullException(nameof(focusRelay));
-        this.injectKeyForStream = injectKeyForStream ?? throw new ArgumentNullException(nameof(injectKeyForStream));
-        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _tcpAcceptor = tcpAcceptor ?? throw new ArgumentNullException(nameof(tcpAcceptor));
+        _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
+        _getCurrentWindows = getCurrentWindows ?? throw new ArgumentNullException(nameof(getCurrentWindows));
+        _resolveWindowIdToHwnd = resolveWindowIdToHwnd ?? throw new ArgumentNullException(nameof(resolveWindowIdToHwnd));
+        _resolveWindowIdToEncoderOptions = resolveWindowIdToEncoderOptions ?? throw new ArgumentNullException(nameof(resolveWindowIdToEncoderOptions));
+        _getUdpPort = getUdpPort ?? throw new ArgumentNullException(nameof(getUdpPort));
+        _sendWorkerCommand = sendWorkerCommand ?? throw new ArgumentNullException(nameof(sendWorkerCommand));
+        _focusRelay = focusRelay ?? throw new ArgumentNullException(nameof(focusRelay));
+        _injectKeyForStream = injectKeyForStream ?? throw new ArgumentNullException(nameof(injectKeyForStream));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
-        this.supervisor.StreamEnded += OnStreamEnded;
+        _supervisor.StreamEnded += OnStreamEnded;
     }
 
     public Task RunAsync(int requestedTcpPort, CancellationToken cancellationToken)
     {
-        lifecycleCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        tcpAcceptor.StartListening(requestedTcpPort);
-        return RunAcceptLoopAsync(lifecycleCancellation.Token);
+        _lifecycleCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _tcpAcceptor.StartListening(requestedTcpPort);
+        return RunAcceptLoopAsync(_lifecycleCancellation.Token);
     }
 
-    private async Task RunAcceptLoopAsync(CancellationToken cancellationToken)
+    async Task RunAcceptLoopAsync(CancellationToken cancellationToken)
     {
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                IControlChannel channel = await tcpAcceptor.AcceptAsync(cancellationToken).ConfigureAwait(false);
+                var channel = await _tcpAcceptor.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
                 bool busy;
-                lock (stateLock)
+                lock (_stateLock)
                 {
-                    busy = activeChannel is not null;
+                    busy = _activeChannel is not null;
                     if (!busy)
                     {
-                        activeChannel = channel;
+                        _activeChannel = channel;
                     }
                 }
 
@@ -128,12 +125,12 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
     }
 
-    private static async Task SendViewerBusyAndCloseAsync(IControlChannel channel, CancellationToken cancellationToken)
+    static async Task SendViewerBusyAndCloseAsync(IControlChannel channel, CancellationToken cancellationToken)
     {
         try
         {
-            using CancellationTokenSource shortTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, shortTimeout.Token);
+            using var shortTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, shortTimeout.Token);
             await channel.SendAsync(
                 new ErrorMessage(ProtocolErrorCode.ViewerBusy, "a viewer is already connected"),
                 linked.Token).ConfigureAwait(false);
@@ -148,11 +145,11 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
     }
 
-    private async Task ServeViewerAsync(IControlChannel channel, CancellationToken cancellationToken)
+    async Task ServeViewerAsync(IControlChannel channel, CancellationToken cancellationToken)
     {
         try
         {
-            ControlMessage firstMessage = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            var firstMessage = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             if (firstMessage is not HelloMessage)
             {
                 await channel.SendAsync(
@@ -163,13 +160,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
             await channel.SendAsync(
                 new ServerHelloMessage(
-                    ServerVersion: options.ServerVersion,
-                    UdpPort: getUdpPort(),
-                    Windows: getCurrentWindows()),
+                    ServerVersion: _options.ServerVersion,
+                    UdpPort: _getUdpPort(),
+                    Windows: _getCurrentWindows()),
                 cancellationToken).ConfigureAwait(false);
 
-            using CancellationTokenSource viewerCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task heartbeatTask = RunHeartbeatAsync(channel, viewerCancellation.Token);
+            using var viewerCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var heartbeatTask = RunHeartbeatAsync(channel, viewerCancellation.Token);
 
             try
             {
@@ -185,18 +182,18 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         {
             // Viewer or lifecycle cancelled.
         }
-        catch (System.IO.EndOfStreamException)
+        catch (EndOfStreamException)
         {
             // Viewer disconnected.
         }
         finally
         {
             IPEndPoint? disconnectedEndpoint;
-            lock (stateLock)
+            lock (_stateLock)
             {
-                disconnectedEndpoint = activeViewerEndpoint;
-                activeViewerEndpoint = null;
-                activeChannel = null;
+                disconnectedEndpoint = _activeViewerEndpoint;
+                _activeViewerEndpoint = null;
+                _activeChannel = null;
             }
             if (disconnectedEndpoint is not null)
             {
@@ -206,26 +203,26 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
     }
 
-    private async Task RunViewerReceiveLoopAsync(IControlChannel channel, CancellationToken cancellationToken)
+    async Task RunViewerReceiveLoopAsync(IControlChannel channel, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            ControlMessage message = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            var message = await channel.ReceiveAsync(cancellationToken).ConfigureAwait(false);
             switch (message)
             {
                 case ListWindowsMessage:
                     await channel.SendAsync(
-                        new WindowSnapshotMessage(getCurrentWindows()),
+                        new WindowSnapshotMessage(_getCurrentWindows()),
                         cancellationToken).ConfigureAwait(false);
                     break;
                 case ViewerReadyMessage viewerReady:
-                    IPAddress? viewerAddress = channel.RemoteIpAddress;
+                    var viewerAddress = channel.RemoteIpAddress;
                     if (viewerAddress is not null)
                     {
-                        IPEndPoint endpoint = new IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort);
-                        lock (stateLock)
+                        var endpoint = new IPEndPoint(viewerAddress, viewerReady.ViewerUdpPort);
+                        lock (_stateLock)
                         {
-                            activeViewerEndpoint = endpoint;
+                            _activeViewerEndpoint = endpoint;
                         }
                         ViewerConnected?.Invoke(this, new ViewerConnectedEventArguments(endpoint.ToString()));
                     }
@@ -234,22 +231,22 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                     await HandleOpenStreamAsync(channel, openStream, cancellationToken).ConfigureAwait(false);
                     break;
                 case CloseStreamMessage closeStream:
-                    await supervisor.StopStreamAsync(closeStream.StreamId).ConfigureAwait(false);
+                    await _supervisor.StopStreamAsync(closeStream.StreamId).ConfigureAwait(false);
                     break;
                 case PauseStreamMessage pauseStream:
-                    await sendWorkerCommand(pauseStream.StreamId, WorkerCommandTag.Pause).ConfigureAwait(false);
+                    await _sendWorkerCommand(pauseStream.StreamId, WorkerCommandTag.Pause).ConfigureAwait(false);
                     break;
                 case ResumeStreamMessage resumeStream:
-                    await sendWorkerCommand(resumeStream.StreamId, WorkerCommandTag.Resume).ConfigureAwait(false);
+                    await _sendWorkerCommand(resumeStream.StreamId, WorkerCommandTag.Resume).ConfigureAwait(false);
                     break;
                 case RequestKeyframeMessage requestKeyframe:
-                    await sendWorkerCommand(requestKeyframe.StreamId, WorkerCommandTag.RequestKeyframe).ConfigureAwait(false);
+                    await _sendWorkerCommand(requestKeyframe.StreamId, WorkerCommandTag.RequestKeyframe).ConfigureAwait(false);
                     break;
                 case FocusWindowMessage focusWindow:
                     HandleFocusWindow(focusWindow);
                     break;
                 case KeyEventMessage keyEvent:
-                    injectKeyForStream(keyEvent.StreamId, keyEvent);
+                    _injectKeyForStream(keyEvent.StreamId, keyEvent);
                     break;
                 case HeartbeatMessage:
                     channel.NotifyHeartbeatReceived();
@@ -258,13 +255,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
     }
 
-    private async Task HandleOpenStreamAsync(
+    async Task HandleOpenStreamAsync(
         IControlChannel channel,
         OpenStreamMessage openStream,
         CancellationToken cancellationToken)
     {
         await Console.Error.WriteLineAsync($"[openstream] handling windowId={openStream.WindowId}").ConfigureAwait(false);
-        long? hwnd = resolveWindowIdToHwnd(openStream.WindowId);
+        var hwnd = _resolveWindowIdToHwnd(openStream.WindowId);
         if (hwnd is null)
         {
             await Console.Error.WriteLineAsync($"[openstream] hwnd resolution returned null for windowId={openStream.WindowId}").ConfigureAwait(false);
@@ -277,7 +274,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
 
         await Console.Error.WriteLineAsync($"[openstream] resolved windowId={openStream.WindowId} -> hwnd={hwnd.Value}; resolving encoder options").ConfigureAwait(false);
-        EncoderOptions? encoderOptions = resolveWindowIdToEncoderOptions(openStream.WindowId);
+        var encoderOptions = _resolveWindowIdToEncoderOptions(openStream.WindowId);
         if (encoderOptions is null)
         {
             await Console.Error.WriteLineAsync($"[openstream] encoder options NULL for windowId={openStream.WindowId} hwnd={hwnd.Value}").ConfigureAwait(false);
@@ -293,7 +290,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         StreamHandle handle;
         try
         {
-            handle = await supervisor.StartStreamAsync(
+            handle = await _supervisor.StartStreamAsync(
                 openStream.WindowId, hwnd.Value, encoderOptions, cancellationToken).ConfigureAwait(false);
         }
         catch (EncoderCapacityException exception)
@@ -306,9 +303,9 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
         await Console.Error.WriteLineAsync($"[openstream] supervisor returned handle; sending StreamStarted (streamId={handle.StreamId})").ConfigureAwait(false);
 
-        lock (stateLock)
+        lock (_stateLock)
         {
-            streamIdToWindowId[handle.StreamId] = openStream.WindowId;
+            _streamIdToWindowId[handle.StreamId] = openStream.WindowId;
         }
 
         await channel.SendAsync(
@@ -316,43 +313,43 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                 StreamId: handle.StreamId,
                 WindowId: openStream.WindowId,
                 Codec: "h264",
-                Width: encoderOptions.widthPixels,
-                Height: encoderOptions.heightPixels,
-                FramesPerSecond: encoderOptions.framesPerSecond),
+                Width: encoderOptions.WidthPixels,
+                Height: encoderOptions.HeightPixels,
+                FramesPerSecond: encoderOptions.FramesPerSecond),
             cancellationToken).ConfigureAwait(false);
     }
 
-    private void HandleFocusWindow(FocusWindowMessage focusWindow)
+    void HandleFocusWindow(FocusWindowMessage focusWindow)
     {
         ulong windowId;
-        lock (stateLock)
+        lock (_stateLock)
         {
-            if (!streamIdToWindowId.TryGetValue(focusWindow.StreamId, out windowId))
+            if (!_streamIdToWindowId.TryGetValue(focusWindow.StreamId, out windowId))
             {
                 return;
             }
         }
 
-        long? hwnd = resolveWindowIdToHwnd(windowId);
+        var hwnd = _resolveWindowIdToHwnd(windowId);
         if (hwnd is null)
         {
             return;
         }
 
-        focusRelay.BringToForeground(hwnd.Value);
+        _focusRelay.BringToForeground(hwnd.Value);
     }
 
-    private async Task RunHeartbeatAsync(IControlChannel channel, CancellationToken cancellationToken)
+    async Task RunHeartbeatAsync(IControlChannel channel, CancellationToken cancellationToken)
     {
-        TimeSpan interval = TimeSpan.FromMilliseconds(options.HeartbeatIntervalMilliseconds);
-        TimeSpan timeout = TimeSpan.FromMilliseconds(options.HeartbeatTimeoutMilliseconds);
-        using PeriodicTimer timer = new PeriodicTimer(interval, timeProvider);
+        var interval = TimeSpan.FromMilliseconds(_options.HeartbeatIntervalMilliseconds);
+        var timeout = TimeSpan.FromMilliseconds(_options.HeartbeatTimeoutMilliseconds);
+        using var timer = new PeriodicTimer(interval, _timeProvider);
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
                 await channel.SendAsync(HeartbeatMessage.Instance, cancellationToken).ConfigureAwait(false);
-                if (timeProvider.GetUtcNow() - channel.LastHeartbeatReceived > timeout)
+                if (_timeProvider.GetUtcNow() - channel.LastHeartbeatReceived > timeout)
                 {
                     await channel.DisposeAsync().ConfigureAwait(false);
                     return;
@@ -365,13 +362,13 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         }
     }
 
-    private void OnStreamEnded(object? sender, StreamEndedEventArguments eventArguments)
+    void OnStreamEnded(object? sender, StreamEndedEventArguments eventArguments)
     {
         IControlChannel? channel;
-        lock (stateLock)
+        lock (_stateLock)
         {
-            streamIdToWindowId.Remove(eventArguments.StreamId);
-            channel = activeChannel;
+            _streamIdToWindowId.Remove(eventArguments.StreamId);
+            channel = _activeChannel;
         }
         if (channel is null)
         {
@@ -384,7 +381,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
     public void NotifyWindowAppeared(WindowDescriptor window)
     {
-        IControlChannel? channel = SnapshotActiveChannel();
+        var channel = SnapshotActiveChannel();
         if (channel is null)
         {
             return;
@@ -394,7 +391,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
     public void NotifyWindowDisappeared(ulong windowId)
     {
-        IControlChannel? channel = SnapshotActiveChannel();
+        var channel = SnapshotActiveChannel();
         if (channel is null)
         {
             return;
@@ -404,7 +401,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
     public void NotifyWindowChanged(ulong windowId, string? newTitle, int? newWidthPixels, int? newHeightPixels)
     {
-        IControlChannel? channel = SnapshotActiveChannel();
+        var channel = SnapshotActiveChannel();
         if (channel is null)
         {
             return;
@@ -414,17 +411,17 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             new WindowUpdatedMessage(windowId, newTitle, newWidthPixels, newHeightPixels));
     }
 
-    private IControlChannel? SnapshotActiveChannel()
+    IControlChannel? SnapshotActiveChannel()
     {
-        lock (stateLock)
+        lock (_stateLock)
         {
-            return activeChannel;
+            return _activeChannel;
         }
     }
 
-    private async Task SendOnActiveChannelAsync(IControlChannel channel, ControlMessage message)
+    async Task SendOnActiveChannelAsync(IControlChannel channel, ControlMessage message)
     {
-        CancellationToken token = lifecycleCancellation?.Token ?? CancellationToken.None;
+        var token = _lifecycleCancellation?.Token ?? CancellationToken.None;
         try
         {
             await channel.SendAsync(message, token).ConfigureAwait(false);
@@ -433,7 +430,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         {
             // Shutdown raced the send.
         }
-        catch (System.IO.EndOfStreamException)
+        catch (EndOfStreamException)
         {
             // Viewer disconnected mid-send.
         }
@@ -441,26 +438,26 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        disposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
-        supervisor.StreamEnded -= OnStreamEnded;
+        _supervisor.StreamEnded -= OnStreamEnded;
 
-        if (lifecycleCancellation is not null) await lifecycleCancellation.CancelAsync().ConfigureAwait(false);
+        if (_lifecycleCancellation is not null) await _lifecycleCancellation.CancelAsync().ConfigureAwait(false);
 
         IControlChannel? channelToClose;
-        lock (stateLock)
+        lock (_stateLock)
         {
-            channelToClose = activeChannel;
-            activeChannel = null;
-            activeViewerEndpoint = null;
+            channelToClose = _activeChannel;
+            _activeChannel = null;
+            _activeViewerEndpoint = null;
         }
         if (channelToClose is not null)
         {
             await channelToClose.DisposeAsync().ConfigureAwait(false);
         }
 
-        await tcpAcceptor.DisposeAsync().ConfigureAwait(false);
-        lifecycleCancellation?.Dispose();
+        await _tcpAcceptor.DisposeAsync().ConfigureAwait(false);
+        _lifecycleCancellation?.Dispose();
     }
 }

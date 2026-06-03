@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Protocol;
 
 namespace WindowStream.Core.Hosting;

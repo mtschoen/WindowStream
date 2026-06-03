@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
@@ -12,12 +7,12 @@ namespace WindowStream.Core.Tests.Hosting;
 
 public class WorkerSupervisorTests
 {
-    private static EncoderOptions DefaultEncoderOptions()
+    static EncoderOptions DefaultEncoderOptions()
         => new EncoderOptions(800, 600, 30, 4_000_000, 30, 1);
 
-    private sealed class FakeWorkerHandle : IWorkerHandle
+    sealed class FakeWorkerHandle : IWorkerHandle
     {
-        private readonly TaskCompletionSource<int> exitSource = new();
+        readonly TaskCompletionSource<int> _exitSource = new();
 
         public FakeWorkerHandle(Stream pipe)
         {
@@ -28,9 +23,9 @@ public class WorkerSupervisorTests
 
         public int ProcessId => 0;
 
-        public Task<int> WaitForExitAsync() => exitSource.Task;
+        public Task<int> WaitForExitAsync() => _exitSource.Task;
 
-        public void Kill() => exitSource.TrySetResult(137);
+        public void Kill() => _exitSource.TrySetResult(137);
 
         public ValueTask DisposeAsync()
         {
@@ -38,18 +33,18 @@ public class WorkerSupervisorTests
             return ValueTask.CompletedTask;
         }
 
-        public void SimulateClean() => exitSource.TrySetResult(0);
+        public void SimulateClean() => _exitSource.TrySetResult(0);
 
-        public void SimulateEncoderFailure() => exitSource.TrySetResult(1);
+        public void SimulateEncoderFailure() => _exitSource.TrySetResult(1);
     }
 
-    private sealed class FakeLauncher : IWorkerProcessLauncher
+    sealed class FakeLauncher : IWorkerProcessLauncher
     {
         public List<FakeWorkerHandle> Launched { get; } = new();
 
         public Task<IWorkerHandle> LaunchAsync(WorkerLaunchArguments arguments, CancellationToken cancellationToken)
         {
-            FakeWorkerHandle handle = new FakeWorkerHandle(new MemoryStream());
+            var handle = new FakeWorkerHandle(new MemoryStream());
             Launched.Add(handle);
             return Task.FromResult<IWorkerHandle>(handle);
         }
@@ -58,11 +53,11 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task StartStream_AssignsMonotonicStreamId()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
-        StreamHandle a = await supervisor.StartStreamAsync(
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var a = await supervisor.StartStreamAsync(
             windowId: 1, hwnd: 0x100, DefaultEncoderOptions(), CancellationToken.None);
-        StreamHandle b = await supervisor.StartStreamAsync(
+        var b = await supervisor.StartStreamAsync(
             windowId: 2, hwnd: 0x200, DefaultEncoderOptions(), CancellationToken.None);
         Assert.Equal(1, a.StreamId);
         Assert.Equal(2, b.StreamId);
@@ -71,8 +66,8 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task StartStream_RefusesPastCapacity()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 1);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 1);
         await supervisor.StartStreamAsync(1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
         await Assert.ThrowsAsync<EncoderCapacityException>(
             () => supervisor.StartStreamAsync(2, 0x200, DefaultEncoderOptions(), CancellationToken.None));
@@ -81,16 +76,16 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task UnexpectedExit_FiresStreamEnded_WithEncoderFailed()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
-        StreamHandle handle = await supervisor.StartStreamAsync(
+        var handle = await supervisor.StartStreamAsync(
             1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
         launcher.Launched[0].SimulateEncoderFailure();
 
-        StreamEndedEventArguments observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(handle.StreamId, observed.StreamId);
         Assert.Equal(StreamStoppedReason.EncoderFailed, observed.Reason);
     }
@@ -98,43 +93,43 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task CleanExit_FiresStreamEnded_WithClosedByViewer()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
         await supervisor.StartStreamAsync(1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
         launcher.Launched[0].SimulateClean();
 
-        StreamEndedEventArguments observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(StreamStoppedReason.ClosedByViewer, observed.Reason);
     }
 
     [Fact]
     public async Task StopStream_KillsWorker_FiresEnded()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamEndedEventArguments> ended = new();
         supervisor.StreamEnded += (_, arguments) => ended.TrySetResult(arguments);
 
-        StreamHandle handle = await supervisor.StartStreamAsync(
+        var handle = await supervisor.StartStreamAsync(
             1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
         await supervisor.StopStreamAsync(handle.StreamId);
 
-        StreamEndedEventArguments observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var observed = await ended.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(handle.StreamId, observed.StreamId);
     }
 
     [Fact]
     public async Task GetPipe_KnownStreamId_ReturnsPipe()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
-        StreamHandle handle = await supervisor.StartStreamAsync(
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var handle = await supervisor.StartStreamAsync(
             1, 0x100, DefaultEncoderOptions(), CancellationToken.None);
 
-        Stream? pipe = supervisor.GetPipe(handle.StreamId);
+        var pipe = supervisor.GetPipe(handle.StreamId);
 
         Assert.NotNull(pipe);
         Assert.Same(launcher.Launched[0].Pipe, pipe);
@@ -143,10 +138,10 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task GetPipe_UnknownStreamId_ReturnsNull()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
 
-        Stream? pipe = supervisor.GetPipe(streamId: 9999);
+        var pipe = supervisor.GetPipe(streamId: 9999);
 
         Assert.Null(pipe);
     }
@@ -154,15 +149,15 @@ public class WorkerSupervisorTests
     [Fact]
     public async Task StartStream_FiresStreamStartedEvent()
     {
-        FakeLauncher launcher = new FakeLauncher();
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
+        var launcher = new FakeLauncher();
+        await using var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams: 4);
         TaskCompletionSource<StreamStartedEventArguments> startedSource = new();
         supervisor.StreamStarted += (_, arguments) => startedSource.TrySetResult(arguments);
 
         await supervisor.StartStreamAsync(
             windowId: 42, hwnd: 0x100, DefaultEncoderOptions(), CancellationToken.None);
 
-        StreamStartedEventArguments started = await startedSource.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var started = await startedSource.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(1, started.StreamId);
         Assert.Equal(42UL, started.WindowId);
         Assert.NotNull(started.Pipe);

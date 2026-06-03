@@ -1,9 +1,6 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace WindowStream.Core.Session.Adapters;
 
@@ -15,10 +12,10 @@ namespace WindowStream.Core.Session.Adapters;
 [ExcludeFromCodeCoverage(Justification = "Native socket I/O thin wrapper; FakeTcpConnectionAcceptor + integration tests cover behaviour.")]
 public sealed class TcpConnectionAcceptorAdapter : ITcpConnectionAcceptor
 {
-    private readonly TimeProvider timeProvider;
-    private readonly IPAddress bindAddress;
-    private TcpListener? listener;
-    private bool disposed;
+    readonly TimeProvider _timeProvider;
+    readonly IPAddress _bindAddress;
+    TcpListener? _listener;
+    bool _disposed;
 
     public TcpConnectionAcceptorAdapter(TimeProvider timeProvider)
         : this(timeProvider, IPAddress.Any)
@@ -27,31 +24,31 @@ public sealed class TcpConnectionAcceptorAdapter : ITcpConnectionAcceptor
 
     public TcpConnectionAcceptorAdapter(TimeProvider timeProvider, IPAddress bindAddress)
     {
-        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        this.bindAddress = bindAddress ?? throw new ArgumentNullException(nameof(bindAddress));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _bindAddress = bindAddress ?? throw new ArgumentNullException(nameof(bindAddress));
     }
 
-    public int LocalPort => ((IPEndPoint?)listener?.LocalEndpoint)?.Port ?? 0;
+    public int LocalPort => ((IPEndPoint?)_listener?.LocalEndpoint)?.Port ?? 0;
 
     public void StartListening(int port)
     {
-        listener = new TcpListener(bindAddress, port);
-        listener.Start();
+        _listener = new TcpListener(_bindAddress, port);
+        _listener.Start();
     }
 
     public async Task<IControlChannel> AcceptAsync(CancellationToken cancellationToken)
     {
-        if (listener is null) throw new InvalidOperationException("StartListening must be called before AcceptAsync.");
-        TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-        return new TcpControlChannelAdapter(client, timeProvider);
+        if (_listener is null) throw new InvalidOperationException("StartListening must be called before AcceptAsync.");
+        var client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+        return new TcpControlChannelAdapter(client, _timeProvider);
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
 #pragma warning disable CA1031 // best-effort stop/dispose of TCP listener in async teardown
-        try { listener?.Stop(); listener?.Dispose(); } catch { /* best-effort */ }
+        try { _listener?.Stop(); _listener?.Dispose(); } catch { /* best-effort */ }
 #pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }

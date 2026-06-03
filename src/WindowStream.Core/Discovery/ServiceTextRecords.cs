@@ -1,5 +1,4 @@
-using System;
-using System.Collections.Generic;
+using System.Globalization;
 
 namespace WindowStream.Core.Discovery;
 
@@ -9,37 +8,37 @@ public static class ServiceTextRecords
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        if (options.protocolMajorVersion < 0)
+        if (options.ProtocolMajorVersion < 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(options),
-                options.protocolMajorVersion,
+                options.ProtocolMajorVersion,
                 "Protocol major version must be non-negative.");
         }
 
-        if (options.protocolRevision < 0)
+        if (options.ProtocolRevision < 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(options),
-                options.protocolRevision,
+                options.ProtocolRevision,
                 "Protocol revision must be non-negative.");
         }
 
-        if (string.IsNullOrWhiteSpace(options.hostname))
+        if (string.IsNullOrWhiteSpace(options.Hostname))
         {
             throw new ArgumentException("Hostname must not be empty.", nameof(options));
         }
 
-        if (options.hostname.Contains('=', StringComparison.Ordinal))
+        if (options.Hostname.Contains('=', StringComparison.Ordinal))
         {
             throw new ArgumentException("Hostname must not contain '='.", nameof(options));
         }
 
-        return new string[]
+        return new[]
         {
-            "version=" + options.protocolMajorVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "hostname=" + options.hostname,
-            "protocolRev=" + options.protocolRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "version=" + options.ProtocolMajorVersion.ToString(CultureInfo.InvariantCulture),
+            "hostname=" + options.Hostname,
+            "protocolRev=" + options.ProtocolRevision.ToString(CultureInfo.InvariantCulture),
         };
     }
 }

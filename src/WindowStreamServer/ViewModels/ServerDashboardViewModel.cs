@@ -1,11 +1,8 @@
-using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Maui.ApplicationModel;
 using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
 using WindowStream.Server.Observability;
@@ -17,13 +14,15 @@ namespace WindowStream.Server.ViewModels;
 /// ServerStateReducer to derive state-board bindings. Also maintains an
 /// ObservableCollection of recent log entries for the event-log pane.
 /// </summary>
-public sealed class ServerDashboardViewModel : INotifyPropertyChanged
+public sealed partial class ServerDashboardViewModel : INotifyPropertyChanged
 {
-    private readonly ISessionHostLauncher hostLauncher;
-    private readonly InAppDashboardSink sink;
-    private readonly ServerStateReducer reducer = new();
+    readonly ISessionHostLauncher _hostLauncher;
+    // Retained to anchor the sink for the OnEvent subscription's lifetime.
+    // ReSharper disable once NotAccessedField.Local
+    readonly InAppDashboardSink _sink;
+    readonly ServerStateReducer _reducer = new();
 
-    public ServerState State => reducer.State;
+    public ServerState State => _reducer.State;
     public ObservableCollection<LogEntryViewModel> RecentEvents { get; } = new();
 
     public string ServerStatus => State.Listening == StageStatus.Ok ? "Serving" : "Starting…";
@@ -37,9 +36,9 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
 
     public ServerDashboardViewModel(ISessionHostLauncher hostLauncher, InAppDashboardSink sink)
     {
-        this.hostLauncher = hostLauncher;
-        this.sink = sink;
-        foreach (LogEntry entry in sink.Snapshot()) AppendEntry(entry);
+        _hostLauncher = hostLauncher;
+        _sink = sink;
+        foreach (var entry in sink.Snapshot()) AppendEntry(entry);
         sink.OnEvent += OnSinkEvent;
     }
 
@@ -47,7 +46,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
     {
         try
         {
-            await hostLauncher.LaunchAsync(cancellationToken).ConfigureAwait(false);
+            await _hostLauncher.LaunchAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -58,12 +57,12 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         {
             // The diagnostics façade should already have logged details; this catch
             // exists so the page doesn't see an unhandled task exception.
-            System.Diagnostics.Debug.WriteLine($"launcher faulted: {exception}");
+            Debug.WriteLine($"launcher faulted: {exception}");
         }
 #pragma warning restore CA1031
     }
 
-    private void OnSinkEvent(LogEntry entry) =>
+    void OnSinkEvent(LogEntry entry) =>
         MarshalEntryToMainThread(entry);
 
     // The MAUI BeginInvokeOnMainThread call inside the try is uncoverable in headless
@@ -73,7 +72,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
     // We attribute the whole method so the dispatcher call site doesn't keep the
     // line-coverage gate red.
     [ExcludeFromCodeCoverage]
-    private void MarshalEntryToMainThread(LogEntry entry)
+    void MarshalEntryToMainThread(LogEntry entry)
     {
         // Sink fires from arbitrary threads; marshal to main for UI update.
         try
@@ -89,7 +88,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         }
     }
 
-    private void AppendEntry(LogEntry entry)
+    void AppendEntry(LogEntry entry)
     {
         RecentEvents.Add(new LogEntryViewModel(entry));
         while (RecentEvents.Count > 200) RecentEvents.RemoveAt(0);
@@ -98,7 +97,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
 
     public void ApplyEvent(PipelineEvent pipelineEvent)
     {
-        reducer.Apply(pipelineEvent);
+        _reducer.Apply(pipelineEvent);
         MarshalRaiseAllToMainThread();
     }
 
@@ -109,7 +108,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
     // We attribute the whole method so the dispatcher call site doesn't keep the
     // line-coverage gate red.
     [ExcludeFromCodeCoverage]
-    private void MarshalRaiseAllToMainThread()
+    void MarshalRaiseAllToMainThread()
     {
         try
         {
@@ -124,7 +123,7 @@ public sealed class ServerDashboardViewModel : INotifyPropertyChanged
         }
     }
 
-    private void RaiseAll()
+    void RaiseAll()
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ServerStatus)));

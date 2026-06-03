@@ -1,10 +1,6 @@
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace WindowStream.Core.Discovery;
 
-public interface IMulticastServiceHost : System.IAsyncDisposable
+public interface IMulticastServiceHost : IAsyncDisposable
 {
     Task StartAdvertisingAsync(
         string serviceInstance,

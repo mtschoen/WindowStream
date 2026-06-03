@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace WindowStream.Core.Transport;
 
 public static class NalFragmenter
@@ -17,7 +14,7 @@ public static class NalFragmenter
         {
             throw new ArgumentException("nalUnit must not be empty", nameof(nalUnit));
         }
-        int fragmentTotal = (nalUnit.Length + PacketHeader.MaximumPayloadByteLength - 1) / PacketHeader.MaximumPayloadByteLength;
+        var fragmentTotal = (nalUnit.Length + PacketHeader.MaximumPayloadByteLength - 1) / PacketHeader.MaximumPayloadByteLength;
         if (fragmentTotal > 256)
         {
             throw new ArgumentException(
@@ -27,7 +24,7 @@ public static class NalFragmenter
         return EnumerateFragments(streamId, sequence, presentationTimestampMicroseconds, isIdrFrame, nalUnit, fragmentTotal);
     }
 
-    private static IEnumerable<FragmentedPacket> EnumerateFragments(
+    static IEnumerable<FragmentedPacket> EnumerateFragments(
         int streamId,
         int sequence,
         long presentationTimestampMicroseconds,
@@ -35,12 +32,12 @@ public static class NalFragmenter
         byte[] nalUnit,
         int fragmentTotal)
     {
-        int offset = 0;
-        for (int fragmentIndex = 0; fragmentIndex < fragmentTotal; fragmentIndex++)
+        var offset = 0;
+        for (var fragmentIndex = 0; fragmentIndex < fragmentTotal; fragmentIndex++)
         {
-            int fragmentLength = Math.Min(PacketHeader.MaximumPayloadByteLength, nalUnit.Length - offset);
-            bool isLast = fragmentIndex == fragmentTotal - 1;
-            PacketFlags flags = PacketFlags.None;
+            var fragmentLength = Math.Min(PacketHeader.MaximumPayloadByteLength, nalUnit.Length - offset);
+            var isLast = fragmentIndex == fragmentTotal - 1;
+            var flags = PacketFlags.None;
             if (isIdrFrame)
             {
                 flags |= PacketFlags.IdrFrame;

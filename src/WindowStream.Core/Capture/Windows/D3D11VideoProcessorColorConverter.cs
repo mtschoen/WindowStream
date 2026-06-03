@@ -28,20 +28,20 @@ namespace WindowStream.Core.Capture.Windows;
 public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 {
     // IID for ID3D11VideoDevice: {10EC4D5B-975A-4689-B9E4-D0AAC30FE333}
-    private static readonly Guid iidId3D11VideoDevice =
+    static readonly Guid IidId3D11VideoDevice =
         new Guid("10EC4D5B-975A-4689-B9E4-D0AAC30FE333");
 
     // IID for ID3D11VideoContext: {61F21C45-3C0E-4A74-9CEA-67100D9AD5E4}
-    private static readonly Guid iidId3D11VideoContext =
+    static readonly Guid IidId3D11VideoContext =
         new Guid("61F21C45-3C0E-4A74-9CEA-67100D9AD5E4");
 
-    private bool disposed;
+    bool _disposed;
 
     // Acquired in constructor; released in Dispose in reverse-acquisition order.
-    private ID3D11VideoDevice* videoDevice;
-    private ID3D11VideoContext* videoContext;
-    private ID3D11VideoProcessorEnumerator* videoProcessorEnumerator;
-    private ID3D11VideoProcessor* videoProcessor;
+    ID3D11VideoDevice* _videoDevice;
+    ID3D11VideoContext* _videoContext;
+    ID3D11VideoProcessorEnumerator* _videoProcessorEnumerator;
+    ID3D11VideoProcessor* _videoProcessor;
 
     /// <summary>
     /// Initialises the D3D11 video-processor pipeline for BGRA → NV12 conversion
@@ -81,45 +81,45 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 
         // QueryInterface ID3D11Device → ID3D11VideoDevice
         {
-            ID3D11Device* device = (ID3D11Device*)deviceManager.NativeDevicePointer;
+            var device = (ID3D11Device*)deviceManager.NativeDevicePointer;
             ID3D11VideoDevice* acquiredVideoDevice = null;
-            Guid iid = iidId3D11VideoDevice;
-            int result = device->QueryInterface(ref iid, (void**)&acquiredVideoDevice);
+            var iid = IidId3D11VideoDevice;
+            var result = device->QueryInterface(ref iid, (void**)&acquiredVideoDevice);
             if (result < 0)
             {
                 throw new WindowCaptureException(
                     "QueryInterface(ID3D11VideoDevice) failed. HRESULT: 0x"
-                    + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                    + result.ToString("X8", CultureInfo.InvariantCulture));
             }
-            videoDevice = acquiredVideoDevice;
+            _videoDevice = acquiredVideoDevice;
         }
 
         // QueryInterface ID3D11DeviceContext → ID3D11VideoContext
         try
         {
-            ID3D11DeviceContext* context = (ID3D11DeviceContext*)deviceManager.NativeContextPointer;
+            var context = (ID3D11DeviceContext*)deviceManager.NativeContextPointer;
             ID3D11VideoContext* acquiredVideoContext = null;
-            Guid iid = iidId3D11VideoContext;
-            int result = context->QueryInterface(ref iid, (void**)&acquiredVideoContext);
+            var iid = IidId3D11VideoContext;
+            var result = context->QueryInterface(ref iid, (void**)&acquiredVideoContext);
             if (result < 0)
             {
                 throw new WindowCaptureException(
                     "QueryInterface(ID3D11VideoContext) failed. HRESULT: 0x"
-                    + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                    + result.ToString("X8", CultureInfo.InvariantCulture));
             }
-            videoContext = acquiredVideoContext;
+            _videoContext = acquiredVideoContext;
         }
         catch
         {
-            videoDevice->Release();
-            videoDevice = null;
+            _videoDevice->Release();
+            _videoDevice = null;
             throw;
         }
 
         // CreateVideoProcessorEnumerator
         try
         {
-            VideoProcessorContentDesc contentDescription = new VideoProcessorContentDesc
+            var contentDescription = new VideoProcessorContentDesc
             {
                 InputFrameFormat = VideoFrameFormat.Progressive,
                 InputFrameRate = new Rational { Numerator = 60, Denominator = 1 },
@@ -132,23 +132,23 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
             };
 
             ID3D11VideoProcessorEnumerator* acquiredEnumerator = null;
-            int result = videoDevice->CreateVideoProcessorEnumerator(
-                ref contentDescription,
+            var result = _videoDevice->CreateVideoProcessorEnumerator(
+                in contentDescription,
                 ref acquiredEnumerator);
             if (result < 0)
             {
                 throw new WindowCaptureException(
                     "CreateVideoProcessorEnumerator failed. HRESULT: 0x"
-                    + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                    + result.ToString("X8", CultureInfo.InvariantCulture));
             }
-            videoProcessorEnumerator = acquiredEnumerator;
+            _videoProcessorEnumerator = acquiredEnumerator;
         }
         catch
         {
-            videoContext->Release();
-            videoContext = null;
-            videoDevice->Release();
-            videoDevice = null;
+            _videoContext->Release();
+            _videoContext = null;
+            _videoDevice->Release();
+            _videoDevice = null;
             throw;
         }
 
@@ -156,26 +156,26 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
         try
         {
             ID3D11VideoProcessor* acquiredProcessor = null;
-            int result = videoDevice->CreateVideoProcessor(
-                videoProcessorEnumerator,
+            var result = _videoDevice->CreateVideoProcessor(
+                _videoProcessorEnumerator,
                 RateConversionIndex: 0,
                 ref acquiredProcessor);
             if (result < 0)
             {
                 throw new WindowCaptureException(
                     "CreateVideoProcessor failed. HRESULT: 0x"
-                    + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                    + result.ToString("X8", CultureInfo.InvariantCulture));
             }
-            videoProcessor = acquiredProcessor;
+            _videoProcessor = acquiredProcessor;
         }
         catch
         {
-            videoProcessorEnumerator->Release();
-            videoProcessorEnumerator = null;
-            videoContext->Release();
-            videoContext = null;
-            videoDevice->Release();
-            videoDevice = null;
+            _videoProcessorEnumerator->Release();
+            _videoProcessorEnumerator = null;
+            _videoContext->Release();
+            _videoContext = null;
+            _videoDevice->Release();
+            _videoDevice = null;
             throw;
         }
     }
@@ -227,8 +227,8 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
                 "Array index must be non-negative.");
         }
 
-        ID3D11Texture2D* sourceTexture = (ID3D11Texture2D*)sourceBgraPointer;
-        ID3D11Texture2D* destinationTexture = (ID3D11Texture2D*)destinationNv12Pointer;
+        var sourceTexture = (ID3D11Texture2D*)sourceBgraPointer;
+        var destinationTexture = (ID3D11Texture2D*)destinationNv12Pointer;
 
         ID3D11VideoProcessorInputView* inputView = null;
         ID3D11VideoProcessorOutputView* outputView = null;
@@ -236,7 +236,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
         try
         {
             // Create input view for the BGRA source (FourCC = 0 → use format from texture)
-            VideoProcessorInputViewDesc inputViewDescription = new VideoProcessorInputViewDesc
+            var inputViewDescription = new VideoProcessorInputViewDesc
             {
                 FourCC = 0,
                 ViewDimension = VpivDimension.Texture2D,
@@ -248,22 +248,22 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 
             {
                 ID3D11VideoProcessorInputView* acquiredInputView = null;
-                int result = videoDevice->CreateVideoProcessorInputView(
+                var result = _videoDevice->CreateVideoProcessorInputView(
                     (ID3D11Resource*)sourceTexture,
-                    videoProcessorEnumerator,
-                    ref inputViewDescription,
+                    _videoProcessorEnumerator,
+                    in inputViewDescription,
                     ref acquiredInputView);
                 if (result < 0)
                 {
                     throw new WindowCaptureException(
                         "CreateVideoProcessorInputView failed. HRESULT: 0x"
-                        + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                        + result.ToString("X8", CultureInfo.InvariantCulture));
                 }
                 inputView = acquiredInputView;
             }
 
             // Create output view for the NV12 destination (array slice = arrayIndex)
-            VideoProcessorOutputViewDesc outputViewDescription = new VideoProcessorOutputViewDesc
+            var outputViewDescription = new VideoProcessorOutputViewDesc
             {
                 ViewDimension = VpovDimension.Texture2Darray,
                 Anonymous = new VideoProcessorOutputViewDescUnion
@@ -279,22 +279,22 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
 
             {
                 ID3D11VideoProcessorOutputView* acquiredOutputView = null;
-                int result = videoDevice->CreateVideoProcessorOutputView(
+                var result = _videoDevice->CreateVideoProcessorOutputView(
                     (ID3D11Resource*)destinationTexture,
-                    videoProcessorEnumerator,
-                    ref outputViewDescription,
+                    _videoProcessorEnumerator,
+                    in outputViewDescription,
                     ref acquiredOutputView);
                 if (result < 0)
                 {
                     throw new WindowCaptureException(
                         "CreateVideoProcessorOutputView failed. HRESULT: 0x"
-                        + ((uint)result).ToString("X8", CultureInfo.InvariantCulture));
+                        + result.ToString("X8", CultureInfo.InvariantCulture));
                 }
                 outputView = acquiredOutputView;
             }
 
             // Configure the stream: progressive, single frame, no past/future frames
-            VideoProcessorStream stream = new VideoProcessorStream
+            var stream = new VideoProcessorStream
             {
                 Enable = new Bool32(true),
                 OutputIndex = 0,
@@ -309,8 +309,8 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
                 PpFutureSurfacesRight = null,
             };
 
-            int bltResult = videoContext->VideoProcessorBlt(
-                videoProcessor,
+            var bltResult = _videoContext->VideoProcessorBlt(
+                _videoProcessor,
                 outputView,
                 OutputFrame: 0,
                 StreamCount: 1,
@@ -320,7 +320,7 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
             {
                 throw new WindowCaptureException(
                     "VideoProcessorBlt failed. HRESULT: 0x"
-                    + ((uint)bltResult).ToString("X8", CultureInfo.InvariantCulture));
+                    + bltResult.ToString("X8", CultureInfo.InvariantCulture));
             }
 
         }
@@ -340,35 +340,35 @@ public sealed unsafe class D3D11VideoProcessorColorConverter : IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
         // Release in reverse-acquisition order: processor → enumerator → videoContext → videoDevice
-        if (videoProcessor != null)
+        if (_videoProcessor != null)
         {
-            videoProcessor->Release();
-            videoProcessor = null;
+            _videoProcessor->Release();
+            _videoProcessor = null;
         }
-        if (videoProcessorEnumerator != null)
+        if (_videoProcessorEnumerator != null)
         {
-            videoProcessorEnumerator->Release();
-            videoProcessorEnumerator = null;
+            _videoProcessorEnumerator->Release();
+            _videoProcessorEnumerator = null;
         }
-        if (videoContext != null)
+        if (_videoContext != null)
         {
-            videoContext->Release();
-            videoContext = null;
+            _videoContext->Release();
+            _videoContext = null;
         }
-        if (videoDevice != null)
+        if (_videoDevice != null)
         {
-            videoDevice->Release();
-            videoDevice = null;
+            _videoDevice->Release();
+            _videoDevice = null;
         }
     }
 
-    private void ThrowIfDisposed()
+    void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }
 #endif

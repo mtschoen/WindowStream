@@ -1,9 +1,6 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Transport;
 
 namespace WindowStream.Core.Session.Adapters;
@@ -16,41 +13,41 @@ namespace WindowStream.Core.Session.Adapters;
 [ExcludeFromCodeCoverage(Justification = "Native UDP socket wrapper; FakeUdpVideoSender + PacketHeader covers framing in isolation.")]
 public sealed class UdpVideoSenderAdapter : IUdpVideoSender
 {
-    private UdpClient? udpClient;
-    private IPEndPoint? localEndpoint;
-    private bool disposed;
+    UdpClient? _udpClient;
+    IPEndPoint? _localEndpoint;
+    bool _disposed;
 
-    public int LocalPort => localEndpoint?.Port ?? 0;
+    public int LocalPort => _localEndpoint?.Port ?? 0;
 
 #pragma warning disable CA1725 // CA1725: parameter kept as 'endpoint' to avoid shadowing the localEndpoint field
     public Task BindAsync(IPEndPoint endpoint, CancellationToken cancellationToken)
     {
-        udpClient = new UdpClient(endpoint);
-        localEndpoint = (IPEndPoint)udpClient.Client.LocalEndPoint!;
+        _udpClient = new UdpClient(endpoint);
+        _localEndpoint = (IPEndPoint)_udpClient.Client.LocalEndPoint!;
         return Task.CompletedTask;
     }
 #pragma warning restore CA1725
 
     public async Task SendPacketAsync(FragmentedPacket packet, IPEndPoint destination, CancellationToken cancellationToken)
     {
-        if (udpClient is null) throw new InvalidOperationException("BindAsync must be called before SendPacketAsync.");
+        if (_udpClient is null) throw new InvalidOperationException("BindAsync must be called before SendPacketAsync.");
         cancellationToken.ThrowIfCancellationRequested();
 
-        ReadOnlyMemory<byte> payloadMemory = packet.Payload;
-        int totalLength = PacketHeader.HeaderByteLength + payloadMemory.Length;
-        byte[] datagram = new byte[totalLength];
+        var payloadMemory = packet.Payload;
+        var totalLength = PacketHeader.HeaderByteLength + payloadMemory.Length;
+        var datagram = new byte[totalLength];
         packet.Header.WriteTo(datagram.AsSpan(0, PacketHeader.HeaderByteLength));
         payloadMemory.Span.CopyTo(datagram.AsSpan(PacketHeader.HeaderByteLength));
 
-        await udpClient.SendAsync(datagram, totalLength, destination).ConfigureAwait(false);
+        await _udpClient.SendAsync(datagram, totalLength, destination).ConfigureAwait(false);
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
 #pragma warning disable CA1031 // best-effort dispose of UDP client in async teardown
-        try { udpClient?.Dispose(); } catch { /* best-effort */ }
+        try { _udpClient?.Dispose(); } catch { /* best-effort */ }
 #pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }

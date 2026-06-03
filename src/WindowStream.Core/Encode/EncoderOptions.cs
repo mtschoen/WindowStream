@@ -1,15 +1,13 @@
-using System;
-
 namespace WindowStream.Core.Encode;
 
 public sealed class EncoderOptions
 {
-    public int widthPixels { get; }
-    public int heightPixels { get; }
-    public int framesPerSecond { get; }
-    public int bitrateBitsPerSecond { get; }
-    public int groupOfPicturesLength { get; }
-    public int safetyKeyframeIntervalSeconds { get; }
+    public int WidthPixels { get; }
+    public int HeightPixels { get; }
+    public int FramesPerSecond { get; }
+    public int BitrateBitsPerSecond { get; }
+    public int GroupOfPicturesLength { get; }
+    public int SafetyKeyframeIntervalSeconds { get; }
 
     public EncoderOptions(
         int widthPixels,
@@ -26,11 +24,11 @@ public sealed class EncoderOptions
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(groupOfPicturesLength);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(safetyKeyframeIntervalSeconds);
 
-        this.widthPixels = widthPixels;
-        this.heightPixels = heightPixels;
-        this.framesPerSecond = framesPerSecond;
-        this.bitrateBitsPerSecond = bitrateBitsPerSecond;
-        this.groupOfPicturesLength = groupOfPicturesLength;
-        this.safetyKeyframeIntervalSeconds = safetyKeyframeIntervalSeconds;
+        WidthPixels = widthPixels;
+        HeightPixels = heightPixels;
+        FramesPerSecond = framesPerSecond;
+        BitrateBitsPerSecond = bitrateBitsPerSecond;
+        GroupOfPicturesLength = groupOfPicturesLength;
+        SafetyKeyframeIntervalSeconds = safetyKeyframeIntervalSeconds;
     }
 }

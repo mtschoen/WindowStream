@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -9,7 +8,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void WriteProducesExpectedByteLayout()
     {
-        byte[] buffer = new byte[PacketHeader.HeaderByteLength];
+        var buffer = new byte[PacketHeader.HeaderByteLength];
         PacketHeader header = new(
             StreamId: 0x01020304,
             Sequence: 0x10203040,
@@ -49,7 +48,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void ParseRecoversWrittenValues()
     {
-        byte[] buffer = new byte[PacketHeader.HeaderByteLength + 5];
+        var buffer = new byte[PacketHeader.HeaderByteLength + 5];
         PacketHeader original = new(
             StreamId: 7,
             Sequence: 9001,
@@ -58,17 +57,17 @@ public sealed class PacketHeaderTests
             FragmentIndex: 0,
             FragmentTotal: 1);
         original.WriteTo(buffer);
-        PacketHeader parsed = PacketHeader.Parse(buffer);
+        var parsed = PacketHeader.Parse(buffer);
         Assert.Equal(original, parsed);
     }
 
     [Fact]
     public void IsIdrFrameAndIsLastFragmentReflectFlags()
     {
-        PacketHeader idrOnly = MakeHeader(PacketFlags.IdrFrame, fragmentIndex: 0, fragmentTotal: 1);
-        PacketHeader lastOnly = MakeHeader(PacketFlags.LastFragment, fragmentIndex: 0, fragmentTotal: 1);
-        PacketHeader both = MakeHeader(PacketFlags.IdrFrame | PacketFlags.LastFragment, 0, 1);
-        PacketHeader none = MakeHeader(PacketFlags.None, 0, 1);
+        var idrOnly = MakeHeader(PacketFlags.IdrFrame, fragmentIndex: 0, fragmentTotal: 1);
+        var lastOnly = MakeHeader(PacketFlags.LastFragment, fragmentIndex: 0, fragmentTotal: 1);
+        var both = MakeHeader(PacketFlags.IdrFrame | PacketFlags.LastFragment, 0, 1);
+        var none = MakeHeader(PacketFlags.None, 0, 1);
         Assert.True(idrOnly.IsIdrFrame);
         Assert.False(idrOnly.IsLastFragment);
         Assert.False(lastOnly.IsIdrFrame);
@@ -89,7 +88,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void ParseRejectsWrongMagic()
     {
-        byte[] buffer = new byte[PacketHeader.HeaderByteLength];
+        var buffer = new byte[PacketHeader.HeaderByteLength];
         buffer[0] = 0x00; buffer[1] = 0x00; buffer[2] = 0x00; buffer[3] = 0x00;
         buffer[22] = 0x01;  // fragmentTotal must be > 0 to reach the magic check first? it's ok — magic comes first.
         Assert.Throws<MalformedPacketException>(() => PacketHeader.Parse(buffer));
@@ -98,7 +97,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void ParseRejectsZeroFragmentTotal()
     {
-        byte[] buffer = new byte[PacketHeader.HeaderByteLength];
+        var buffer = new byte[PacketHeader.HeaderByteLength];
         new PacketHeader(1, 1, 1, PacketFlags.None, FragmentIndex: 0, FragmentTotal: 1).WriteTo(buffer);
         buffer[22] = 0x00;
         Assert.Throws<MalformedPacketException>(() => PacketHeader.Parse(buffer));
@@ -107,7 +106,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void ParseRejectsFragmentIndexAtOrAboveTotal()
     {
-        byte[] buffer = new byte[PacketHeader.HeaderByteLength];
+        var buffer = new byte[PacketHeader.HeaderByteLength];
         new PacketHeader(1, 1, 1, PacketFlags.None, FragmentIndex: 0, FragmentTotal: 1).WriteTo(buffer);
         buffer[21] = 0x05;  // index
         buffer[22] = 0x03;  // total
@@ -117,7 +116,7 @@ public sealed class PacketHeaderTests
     [Fact]
     public void WriteRejectsShortBuffer()
     {
-        PacketHeader header = MakeHeader(PacketFlags.None, 0, 1);
+        var header = MakeHeader(PacketFlags.None, 0, 1);
         Assert.Throws<ArgumentException>(() => header.WriteTo(new byte[PacketHeader.HeaderByteLength - 1]));
     }
 
@@ -135,7 +134,7 @@ public sealed class PacketHeaderTests
             () => new PacketHeader(1, 1, 1, PacketFlags.None, FragmentIndex: 0, FragmentTotal: 0));
     }
 
-    private static PacketHeader MakeHeader(PacketFlags flags, int fragmentIndex, int fragmentTotal)
+    static PacketHeader MakeHeader(PacketFlags flags, int fragmentIndex, int fragmentTotal)
     {
         return new PacketHeader(
             StreamId: 1,

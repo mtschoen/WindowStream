@@ -1,6 +1,5 @@
-using System;
-using Xunit;
 using WindowStream.Core.Encode;
+using Xunit;
 
 namespace WindowStream.Core.Tests.Encode;
 
@@ -9,7 +8,7 @@ public sealed class EncoderOptionsTests
     [Fact]
     public void Constructor_AcceptsValidValues()
     {
-        EncoderOptions options = new EncoderOptions(
+        var options = new EncoderOptions(
             widthPixels: 1920,
             heightPixels: 1080,
             framesPerSecond: 60,
@@ -17,12 +16,12 @@ public sealed class EncoderOptionsTests
             groupOfPicturesLength: 60,
             safetyKeyframeIntervalSeconds: 2);
 
-        Assert.Equal(1920, options.widthPixels);
-        Assert.Equal(1080, options.heightPixels);
-        Assert.Equal(60, options.framesPerSecond);
-        Assert.Equal(8_000_000, options.bitrateBitsPerSecond);
-        Assert.Equal(60, options.groupOfPicturesLength);
-        Assert.Equal(2, options.safetyKeyframeIntervalSeconds);
+        Assert.Equal(1920, options.WidthPixels);
+        Assert.Equal(1080, options.HeightPixels);
+        Assert.Equal(60, options.FramesPerSecond);
+        Assert.Equal(8_000_000, options.BitrateBitsPerSecond);
+        Assert.Equal(60, options.GroupOfPicturesLength);
+        Assert.Equal(2, options.SafetyKeyframeIntervalSeconds);
     }
 
     [Theory]

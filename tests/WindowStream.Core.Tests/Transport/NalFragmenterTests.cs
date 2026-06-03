@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -10,7 +8,7 @@ public sealed class NalFragmenterTests
     [Fact]
     public void SmallNalProducesSinglePacketWithLastFlag()
     {
-        byte[] nalUnit = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42 }; // SPS-ish
+        var nalUnit = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42 }; // SPS-ish
         List<FragmentedPacket> packets = new(NalFragmenter.Fragment(
             streamId: 7,
             sequence: 100,
@@ -28,7 +26,7 @@ public sealed class NalFragmenterTests
     [Fact]
     public void IdrFlagIsSetOnEveryFragmentWhenRequested()
     {
-        byte[] nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 2 + 100];
+        var nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 2 + 100];
 #pragma warning disable CA5394 // non-cryptographic: seeded Random used only to fill test payload bytes
         new Random(42).NextBytes(nalUnit);
 #pragma warning restore CA5394
@@ -36,7 +34,7 @@ public sealed class NalFragmenterTests
             streamId: 1, sequence: 1, presentationTimestampMicroseconds: 1,
             isIdrFrame: true, nalUnit: nalUnit));
         Assert.Equal(3, packets.Count);
-        foreach (FragmentedPacket packet in packets)
+        foreach (var packet in packets)
         {
             Assert.True(packet.Header.IsIdrFrame);
         }
@@ -48,10 +46,10 @@ public sealed class NalFragmenterTests
     [Fact]
     public void FragmentIndicesAreContiguousAndTotalMatches()
     {
-        byte[] nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 3];
+        var nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 3];
         List<FragmentedPacket> packets = new(NalFragmenter.Fragment(1, 1, 1, false, nalUnit));
         Assert.Equal(3, packets.Count);
-        for (int index = 0; index < packets.Count; index++)
+        for (var index = 0; index < packets.Count; index++)
         {
             Assert.Equal((byte)index, packets[index].Header.FragmentIndex);
             Assert.Equal((byte)3, packets[index].Header.FragmentTotal);
@@ -61,15 +59,15 @@ public sealed class NalFragmenterTests
     [Fact]
     public void PayloadIsConcatenationOfAllFragmentsInOrder()
     {
-        byte[] nalUnit = new byte[PacketHeader.MaximumPayloadByteLength + 500];
-        for (int index = 0; index < nalUnit.Length; index++)
+        var nalUnit = new byte[PacketHeader.MaximumPayloadByteLength + 500];
+        for (var index = 0; index < nalUnit.Length; index++)
         {
             nalUnit[index] = (byte)(index & 0xFF);
         }
         List<FragmentedPacket> packets = new(NalFragmenter.Fragment(1, 1, 1, false, nalUnit));
-        byte[] reassembled = new byte[nalUnit.Length];
-        int cursor = 0;
-        foreach (FragmentedPacket packet in packets)
+        var reassembled = new byte[nalUnit.Length];
+        var cursor = 0;
+        foreach (var packet in packets)
         {
             packet.Payload.Span.CopyTo(reassembled.AsSpan(cursor));
             cursor += packet.Payload.Length;
@@ -83,7 +81,7 @@ public sealed class NalFragmenterTests
         Assert.Throws<ArgumentException>(
             () =>
             {
-                foreach (FragmentedPacket _ in NalFragmenter.Fragment(1, 1, 1, false, Array.Empty<byte>())) { }
+                foreach (var _ in NalFragmenter.Fragment(1, 1, 1, false, Array.Empty<byte>())) { }
             });
     }
 
@@ -93,7 +91,7 @@ public sealed class NalFragmenterTests
         Assert.Throws<ArgumentNullException>(
             () =>
             {
-                foreach (FragmentedPacket _ in NalFragmenter.Fragment(1, 1, 1, false, null!)) { }
+                foreach (var _ in NalFragmenter.Fragment(1, 1, 1, false, null!)) { }
             });
     }
 
@@ -101,18 +99,18 @@ public sealed class NalFragmenterTests
     public void TooManyFragmentsThrows()
     {
         // 256 fragments is the byte-size limit on fragmentTotal; exactly 256 should pass, 257 should fail.
-        byte[] nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 256 + 1];
+        var nalUnit = new byte[PacketHeader.MaximumPayloadByteLength * 256 + 1];
         Assert.Throws<ArgumentException>(
             () =>
             {
-                foreach (FragmentedPacket _ in NalFragmenter.Fragment(1, 1, 1, false, nalUnit)) { }
+                foreach (var _ in NalFragmenter.Fragment(1, 1, 1, false, nalUnit)) { }
             });
     }
 
     [Fact]
     public void HeaderStreamIdAndSequenceArePropagated()
     {
-        byte[] nalUnit = new byte[100];
+        var nalUnit = new byte[100];
         List<FragmentedPacket> packets = new(NalFragmenter.Fragment(
             streamId: 42, sequence: 99, presentationTimestampMicroseconds: 1234, false, nalUnit));
         Assert.Equal((uint)42, packets[0].Header.StreamId);

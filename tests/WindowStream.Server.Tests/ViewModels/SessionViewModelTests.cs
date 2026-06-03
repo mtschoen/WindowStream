@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using WindowStream.Server.ViewModels;
 using Xunit;
 
@@ -19,7 +18,7 @@ public sealed class SessionViewModelTests
     {
         var viewModel = new SessionViewModel();
         string? lastChanged = null;
-        ((INotifyPropertyChanged)viewModel).PropertyChanged += (_, eventArguments) => lastChanged = eventArguments.PropertyName;
+        viewModel.PropertyChanged += (_, eventArguments) => lastChanged = eventArguments.PropertyName;
 
         viewModel.ReportMetrics(new SessionMetrics(
             FramesPerSecond: 59.9,
@@ -58,7 +57,7 @@ public sealed class SessionViewModelTests
     public void Set_Field_Does_Not_Raise_Property_Changed_When_Value_Unchanged()
     {
         var viewModel = new SessionViewModel();
-        int raised = 0;
+        var raised = 0;
         viewModel.PropertyChanged += (_, _) => raised++;
 
         viewModel.ReportStatus(SessionStatus.Starting);

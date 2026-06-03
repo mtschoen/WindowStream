@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using WindowStream.Core.Protocol;
 using Xunit;
 
@@ -12,7 +10,7 @@ public sealed class ControlMessageSerializationTests
     {
         // StreamStoppedReasonConverter throws JsonException on a null wire value,
         // which Deserialize wraps as MalformedMessageException.
-        string payload = "{\"type\":\"STREAM_STOPPED\",\"streamId\":1,\"reason\":null}";
+        var payload = "{\"type\":\"STREAM_STOPPED\",\"streamId\":1,\"reason\":null}";
         Assert.Throws<MalformedMessageException>(
             () => ControlMessageSerialization.Deserialize(payload));
     }
@@ -29,17 +27,17 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void ServerHello_RoundTripsWithWindowsListAndUdpPort()
     {
-        WindowDescriptor[] windows = new[]
+        var windows = new[]
         {
             new WindowDescriptor(1UL, 0x100, 99, "notepad", "Untitled - Notepad", 800, 600),
             new WindowDescriptor(2UL, 0x200, 100, "devenv", "WindowStream.sln", 1920, 1080)
         };
-        ServerHelloMessage original = new ServerHelloMessage(ServerVersion: 2, UdpPort: 64000, Windows: windows);
+        var original = new ServerHelloMessage(ServerVersion: 2, UdpPort: 64000, Windows: windows);
 
-        string serialized = ControlMessageSerialization.Serialize(original);
-        ControlMessage deserialized = ControlMessageSerialization.Deserialize(serialized);
+        var serialized = ControlMessageSerialization.Serialize(original);
+        var deserialized = ControlMessageSerialization.Deserialize(serialized);
 
-        ServerHelloMessage typed = Assert.IsType<ServerHelloMessage>(deserialized);
+        var typed = Assert.IsType<ServerHelloMessage>(deserialized);
         Assert.Equal(2, typed.ServerVersion);
         Assert.Equal(64000, typed.UdpPort);
         Assert.Equal(2, typed.Windows.Length);
@@ -50,7 +48,7 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void StreamStarted_RoundTripsWithWindowId()
     {
-        StreamStartedMessage original = new StreamStartedMessage(
+        var original = new StreamStartedMessage(
             StreamId: 7,
             WindowId: 42UL,
             Codec: "h264",
@@ -58,8 +56,8 @@ public sealed class ControlMessageSerializationTests
             Height: 1080,
             FramesPerSecond: 60);
 
-        string serialized = ControlMessageSerialization.Serialize(original);
-        StreamStartedMessage typed = Assert.IsType<StreamStartedMessage>(ControlMessageSerialization.Deserialize(serialized));
+        var serialized = ControlMessageSerialization.Serialize(original);
+        var typed = Assert.IsType<StreamStartedMessage>(ControlMessageSerialization.Deserialize(serialized));
 
         Assert.Equal(7, typed.StreamId);
         Assert.Equal(42UL, typed.WindowId);
@@ -72,8 +70,8 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void StreamStopped_RoundTripsWithReason()
     {
-        StreamStoppedMessage original = new StreamStoppedMessage(StreamId: 3, Reason: StreamStoppedReason.EncoderFailed);
-        StreamStoppedMessage typed = Assert.IsType<StreamStoppedMessage>(
+        var original = new StreamStoppedMessage(StreamId: 3, Reason: StreamStoppedReason.EncoderFailed);
+        var typed = Assert.IsType<StreamStoppedMessage>(
             ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
         Assert.Equal(3, typed.StreamId);
         Assert.Equal(StreamStoppedReason.EncoderFailed, typed.Reason);
@@ -82,8 +80,8 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void ViewerReady_RoundTripsWithoutStreamId()
     {
-        ViewerReadyMessage original = new ViewerReadyMessage(ViewerUdpPort: 12345);
-        ViewerReadyMessage typed = Assert.IsType<ViewerReadyMessage>(
+        var original = new ViewerReadyMessage(ViewerUdpPort: 12345);
+        var typed = Assert.IsType<ViewerReadyMessage>(
             ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
         Assert.Equal(12345, typed.ViewerUdpPort);
     }
@@ -91,8 +89,8 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void KeyEvent_RoundTripsWithStreamId()
     {
-        KeyEventMessage original = new KeyEventMessage(StreamId: 5, KeyCode: 0x41, IsUnicode: true, IsDown: true);
-        KeyEventMessage typed = Assert.IsType<KeyEventMessage>(
+        var original = new KeyEventMessage(StreamId: 5, KeyCode: 0x41, IsUnicode: true, IsDown: true);
+        var typed = Assert.IsType<KeyEventMessage>(
             ControlMessageSerialization.Deserialize(ControlMessageSerialization.Serialize(original)));
         Assert.Equal(5, typed.StreamId);
         Assert.Equal(0x41, typed.KeyCode);
@@ -121,14 +119,14 @@ public sealed class ControlMessageSerializationTests
     [Fact]
     public void HeartbeatEmitsExactlyTypeField()
     {
-        string encoded = ControlMessageSerialization.Serialize(HeartbeatMessage.Instance);
+        var encoded = ControlMessageSerialization.Serialize(HeartbeatMessage.Instance);
         Assert.Equal("{\"type\":\"HEARTBEAT\"}", encoded);
     }
 
     [Fact]
     public void UnknownTypeThrowsMalformed()
     {
-        MalformedMessageException exception = Assert.Throws<MalformedMessageException>(
+        var exception = Assert.Throws<MalformedMessageException>(
             () => ControlMessageSerialization.Deserialize("{\"type\":\"WAT\"}"));
         Assert.Contains("WAT", exception.Message, StringComparison.Ordinal);
     }
@@ -162,10 +160,10 @@ public sealed class ControlMessageSerializationTests
             () => ControlMessageSerialization.Deserialize("{\"type\":\"ERROR\",\"code\":null,\"message\":\"x\"}"));
     }
 
-    private static void AssertRoundTrip(ControlMessage original)
+    static void AssertRoundTrip(ControlMessage original)
     {
-        string encoded = ControlMessageSerialization.Serialize(original);
-        ControlMessage decoded = ControlMessageSerialization.Deserialize(encoded);
+        var encoded = ControlMessageSerialization.Serialize(original);
+        var decoded = ControlMessageSerialization.Deserialize(encoded);
         Assert.Equal(original, decoded);
     }
 }

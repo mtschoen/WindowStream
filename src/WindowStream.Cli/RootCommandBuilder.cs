@@ -1,7 +1,5 @@
-using System;
 using System.CommandLine;
 using System.Text.Json;
-using System.Threading.Tasks;
 using WindowStream.Cli.Commands;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Encode;
@@ -47,15 +45,19 @@ public static class RootCommandBuilder
         };
         workerCommand.SetHandler(async invocationContext =>
         {
-            long hwnd = invocationContext.ParseResult.GetValueForOption(workerHwndOption);
-            int streamId = invocationContext.ParseResult.GetValueForOption(workerStreamIdOption);
-            string pipeName = invocationContext.ParseResult.GetValueForOption(workerPipeNameOption)!;
-            string encoderOptionsJson = invocationContext.ParseResult.GetValueForOption(workerEncoderOptionsOption)!;
+            var hwnd = invocationContext.ParseResult.GetValueForOption(workerHwndOption);
+            var streamId = invocationContext.ParseResult.GetValueForOption(workerStreamIdOption);
+            var pipeName = invocationContext.ParseResult.GetValueForOption(workerPipeNameOption)!;
+            var encoderOptionsJson = invocationContext.ParseResult.GetValueForOption(workerEncoderOptionsOption)!;
 
-            EncoderOptions encoderOptions =
+            var encoderOptions =
                 JsonSerializer.Deserialize<EncoderOptions>(encoderOptionsJson)
                 ?? throw new InvalidOperationException("could not parse encoder options");
-            WorkerArguments arguments = new WorkerArguments(
+            // Consumed only under #if WINDOWS (WorkerCommandHandler is Windows-only). Built on
+            // every TFM so the parse/validation runs uniformly; moving it into #if WINDOWS would
+            // redistribute coverage across the multi-target CLI build (gated at 100%).
+            // ReSharper disable once UnusedVariable
+            var arguments = new WorkerArguments(
                 new WindowHandle(hwnd), streamId, pipeName, encoderOptions);
 
 #if WINDOWS

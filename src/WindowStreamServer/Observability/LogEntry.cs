@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Observability;
 
 namespace WindowStream.Server.Observability;

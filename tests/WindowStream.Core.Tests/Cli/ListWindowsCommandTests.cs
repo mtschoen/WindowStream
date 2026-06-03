@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Cli.Commands;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;

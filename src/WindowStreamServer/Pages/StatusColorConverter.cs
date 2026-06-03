@@ -1,7 +1,4 @@
-using System;
 using System.Globalization;
-using Microsoft.Maui.Controls;
-using Microsoft.Maui.Graphics;
 
 namespace WindowStream.Server.Pages;
 
@@ -12,7 +9,7 @@ public sealed class StatusColorConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        string status = value as string ?? "";
+        var status = value as string ?? "";
         return status switch
         {
             "Serving" => Colors.LimeGreen,

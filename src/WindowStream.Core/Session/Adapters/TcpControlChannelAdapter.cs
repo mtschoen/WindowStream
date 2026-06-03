@@ -1,11 +1,7 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
 using WindowStream.Core.Transport;
 
@@ -18,50 +14,50 @@ namespace WindowStream.Core.Session.Adapters;
 [ExcludeFromCodeCoverage(Justification = "Native TCP stream wrapper; framing + serialization are covered in isolation, and FakeControlChannel covers behaviour.")]
 public sealed class TcpControlChannelAdapter : IControlChannel
 {
-    private readonly TcpClient tcpClient;
-    private readonly Stream stream;
-    private readonly TimeProvider timeProvider;
-    private DateTimeOffset lastHeartbeatReceived;
-    private bool disposed;
+    readonly TcpClient _tcpClient;
+    readonly Stream _stream;
+    readonly TimeProvider _timeProvider;
+    DateTimeOffset _lastHeartbeatReceived;
+    bool _disposed;
 
     public TcpControlChannelAdapter(TcpClient tcpClient, TimeProvider timeProvider)
     {
-        this.tcpClient = tcpClient ?? throw new ArgumentNullException(nameof(tcpClient));
-        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        stream = tcpClient.GetStream();
-        lastHeartbeatReceived = timeProvider.GetUtcNow();
+        _tcpClient = tcpClient ?? throw new ArgumentNullException(nameof(tcpClient));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _stream = tcpClient.GetStream();
+        _lastHeartbeatReceived = timeProvider.GetUtcNow();
     }
 
-    public DateTimeOffset LastHeartbeatReceived => lastHeartbeatReceived;
+    public DateTimeOffset LastHeartbeatReceived => _lastHeartbeatReceived;
 
-    public IPAddress? RemoteIpAddress => (tcpClient.Client.RemoteEndPoint as IPEndPoint)?.Address;
+    public IPAddress? RemoteIpAddress => (_tcpClient.Client.RemoteEndPoint as IPEndPoint)?.Address;
 
     public void NotifyHeartbeatReceived()
     {
-        lastHeartbeatReceived = timeProvider.GetUtcNow();
+        _lastHeartbeatReceived = _timeProvider.GetUtcNow();
     }
 
     public async Task SendAsync(ControlMessage message, CancellationToken cancellationToken)
     {
-        string json = ControlMessageSerialization.Serialize(message);
-        byte[] payload = Encoding.UTF8.GetBytes(json);
-        await LengthPrefixFraming.WriteFrameAsync(stream, payload, cancellationToken).ConfigureAwait(false);
+        var json = ControlMessageSerialization.Serialize(message);
+        var payload = Encoding.UTF8.GetBytes(json);
+        await LengthPrefixFraming.WriteFrameAsync(_stream, payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ControlMessage> ReceiveAsync(CancellationToken cancellationToken)
     {
-        byte[] payload = await LengthPrefixFraming.ReadFrameAsync(stream, cancellationToken).ConfigureAwait(false);
-        string json = Encoding.UTF8.GetString(payload);
+        var payload = await LengthPrefixFraming.ReadFrameAsync(_stream, cancellationToken).ConfigureAwait(false);
+        var json = Encoding.UTF8.GetString(payload);
         return ControlMessageSerialization.Deserialize(json);
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
 #pragma warning disable CA1031 // best-effort dispose of stream and TCP client in async teardown
-        try { stream.Dispose(); } catch { /* best-effort */ }
-        try { tcpClient.Dispose(); } catch { /* best-effort */ }
+        try { _stream.Dispose(); } catch { /* best-effort */ }
+        try { _tcpClient.Dispose(); } catch { /* best-effort */ }
 #pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }

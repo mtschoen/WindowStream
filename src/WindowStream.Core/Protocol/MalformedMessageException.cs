@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Protocol;
 
 public sealed class MalformedMessageException : Exception

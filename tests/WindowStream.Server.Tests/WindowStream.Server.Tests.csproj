@@ -12,7 +12,12 @@
     <ThresholdStat>total</ThresholdStat>
     <ExcludeByAttribute>GeneratedCode,CompilerGenerated,ExcludeFromCodeCoverage</ExcludeByAttribute>
     <ExcludeByFile>**/Program.cs;**/App.xaml.cs;**/AppShell.xaml.cs;**/MauiProgram.cs;**/Pages/**;**/Platforms/**</ExcludeByFile>
-    <Include>[WindowStreamServer]*ViewModels*</Include>
+    <!-- Anchor coverage to the real ViewModels namespace. The previous loose *ViewModels*
+         glob also matched the CsWinRT-generated CCW vtable class
+         (WinRT.WindowStreamServerVtableClasses.WindowStream_Server_ViewModels_SessionViewModelWinRTTypeDetails),
+         pulling 10 lines of uncovered generated marshalling glue into the denominator (90.29%).
+         That class lacks [GeneratedCode], so ExcludeByAttribute does not catch it. -->
+    <Include>[WindowStreamServer]WindowStream.Server.ViewModels.*</Include>
     <Exclude>[WindowStream.Core]*</Exclude>
     <CoverletOutput>coverage.cobertura.xml</CoverletOutput>
   </PropertyGroup>

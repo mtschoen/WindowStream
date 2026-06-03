@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -12,9 +11,9 @@ public sealed class NalReassemblerTests
         FakeClock clock = new();
         NalReassembler reassembler = new(clock, TimeSpan.FromMilliseconds(500));
         PacketHeader header = new(1, 1, 1000, PacketFlags.LastFragment, FragmentIndex: 0, FragmentTotal: 1);
-        ReassembledNalUnit? result = reassembler.Offer(header, new byte[] { 0x41, 0x42 });
+        var result = reassembler.Offer(header, new byte[] { 0x41, 0x42 });
         Assert.NotNull(result);
-        Assert.Equal(new byte[] { 0x41, 0x42 }, result!.Value.NalUnit);
+        Assert.Equal(new byte[] { 0x41, 0x42 }, result.Value.NalUnit);
         Assert.Equal((uint)1, result.Value.StreamId);
         Assert.Equal((uint)1, result.Value.Sequence);
         Assert.Equal((ulong)1000, result.Value.PresentationTimestampMicroseconds);
@@ -27,9 +26,9 @@ public sealed class NalReassemblerTests
         FakeClock clock = new();
         NalReassembler reassembler = new(clock, TimeSpan.FromMilliseconds(500));
         PacketHeader header = new(1, 1, 1, PacketFlags.IdrFrame | PacketFlags.LastFragment, 0, 1);
-        ReassembledNalUnit? result = reassembler.Offer(header, new byte[] { 0x65 });
+        var result = reassembler.Offer(header, new byte[] { 0x65 });
         Assert.NotNull(result);
-        Assert.True(result!.Value.IsIdrFrame);
+        Assert.True(result.Value.IsIdrFrame);
     }
 
     [Fact]
@@ -42,9 +41,9 @@ public sealed class NalReassemblerTests
         PacketHeader third = new(1, 10, 100, PacketFlags.LastFragment, 2, 3);
         Assert.Null(reassembler.Offer(first, new byte[] { 0x01, 0x02 }));
         Assert.Null(reassembler.Offer(second, new byte[] { 0x03, 0x04 }));
-        ReassembledNalUnit? result = reassembler.Offer(third, new byte[] { 0x05 });
+        var result = reassembler.Offer(third, new byte[] { 0x05 });
         Assert.NotNull(result);
-        Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 }, result!.Value.NalUnit);
+        Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 }, result.Value.NalUnit);
     }
 
     [Fact]
@@ -57,9 +56,9 @@ public sealed class NalReassemblerTests
         PacketHeader third = new(1, 10, 100, PacketFlags.LastFragment, 2, 3);
         Assert.Null(reassembler.Offer(third, new byte[] { 0x05 }));
         Assert.Null(reassembler.Offer(first, new byte[] { 0x01, 0x02 }));
-        ReassembledNalUnit? result = reassembler.Offer(second, new byte[] { 0x03, 0x04 });
+        var result = reassembler.Offer(second, new byte[] { 0x03, 0x04 });
         Assert.NotNull(result);
-        Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 }, result!.Value.NalUnit);
+        Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05 }, result.Value.NalUnit);
     }
 
     [Fact]
@@ -72,9 +71,9 @@ public sealed class NalReassemblerTests
         PacketHeader second = new(1, 10, 100, PacketFlags.LastFragment, 1, 2);
         Assert.Null(reassembler.Offer(first, new byte[] { 0x01 }));
         Assert.Null(reassembler.Offer(duplicate, new byte[] { 0xFF }));  // should NOT overwrite
-        ReassembledNalUnit? result = reassembler.Offer(second, new byte[] { 0x02 });
+        var result = reassembler.Offer(second, new byte[] { 0x02 });
         Assert.NotNull(result);
-        Assert.Equal(new byte[] { 0x01, 0x02 }, result!.Value.NalUnit);
+        Assert.Equal(new byte[] { 0x01, 0x02 }, result.Value.NalUnit);
     }
 
     [Fact]
@@ -88,8 +87,8 @@ public sealed class NalReassemblerTests
         PacketHeader streamTwoLast = new(2, 1, 1, PacketFlags.LastFragment, 1, 2);
         Assert.Null(reassembler.Offer(streamOneFirst, new byte[] { 0x11 }));
         Assert.Null(reassembler.Offer(streamTwoFirst, new byte[] { 0x22 }));
-        ReassembledNalUnit? one = reassembler.Offer(streamOneLast, new byte[] { 0x1A });
-        ReassembledNalUnit? two = reassembler.Offer(streamTwoLast, new byte[] { 0x2A });
+        var one = reassembler.Offer(streamOneLast, new byte[] { 0x1A });
+        var two = reassembler.Offer(streamTwoLast, new byte[] { 0x2A });
         Assert.Equal(new byte[] { 0x11, 0x1A }, one!.Value.NalUnit);
         Assert.Equal(new byte[] { 0x22, 0x2A }, two!.Value.NalUnit);
     }
@@ -122,7 +121,7 @@ public sealed class NalReassemblerTests
         clock.Advance(TimeSpan.FromMilliseconds(300));  // total 600 for sequence 10, 300 for sequence 11
         Assert.Equal(1, reassembler.PurgeExpired());
         PacketHeader freshLast = new(1, 11, 100, PacketFlags.LastFragment, 1, 2);
-        ReassembledNalUnit? result = reassembler.Offer(freshLast, new byte[] { 0x03 });
+        var result = reassembler.Offer(freshLast, new byte[] { 0x03 });
         Assert.NotNull(result);
     }
 

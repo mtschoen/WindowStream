@@ -1,15 +1,10 @@
 #if WINDOWS
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Encode;
@@ -33,25 +28,25 @@ namespace WindowStream.Integration.Tests.Loopback;
 /// Tests obtain a <see cref="FakeViewer"/> via <see cref="ConnectViewerAsync"/>
 /// to drive the protocol from the viewer side.
 /// </summary>
-internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
+sealed class CoordinatorLoopbackHarness : IAsyncDisposable
 {
     public const string Host = "127.0.0.1";
 
-    private readonly CancellationTokenSource lifecycle;
-    private readonly ConcurrentDictionary<ulong, long> windowIdToHwnd;
-    private readonly ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor;
-    private readonly ConcurrentDictionary<ulong, EncoderOptions> windowIdToEncoderOptions;
-    private readonly UdpVideoSenderAdapter udpSender;
-    private readonly TcpConnectionAcceptorAdapter tcpAcceptor;
-    private readonly WorkerSupervisor supervisor;
-    private readonly CoordinatorControlServer controlServer;
-    private readonly Task controlServerTask;
-    private readonly Task shedderLoopTask;
-    private readonly Task fragmenterLoopTask;
-    private readonly Task? enumerationLoopTask;
-    private bool disposed;
+    readonly CancellationTokenSource _lifecycle;
+    readonly ConcurrentDictionary<ulong, long> _windowIdToHwnd;
+    readonly ConcurrentDictionary<ulong, WindowDescriptor> _windowIdToDescriptor;
+    readonly ConcurrentDictionary<ulong, EncoderOptions> _windowIdToEncoderOptions;
+    readonly UdpVideoSenderAdapter _udpSender;
+    readonly TcpConnectionAcceptorAdapter _tcpAcceptor;
+    readonly WorkerSupervisor _supervisor;
+    readonly CoordinatorControlServer _controlServer;
+    readonly Task _controlServerTask;
+    readonly Task _shedderLoopTask;
+    readonly Task _fragmenterLoopTask;
+    readonly Task? _enumerationLoopTask;
+    bool _disposed;
 
-    private CoordinatorLoopbackHarness(
+    CoordinatorLoopbackHarness(
         CancellationTokenSource lifecycle,
         ConcurrentDictionary<ulong, long> windowIdToHwnd,
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor,
@@ -65,27 +60,27 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         Task fragmenterLoopTask,
         Task? enumerationLoopTask)
     {
-        this.lifecycle = lifecycle;
-        this.windowIdToHwnd = windowIdToHwnd;
-        this.windowIdToDescriptor = windowIdToDescriptor;
-        this.windowIdToEncoderOptions = windowIdToEncoderOptions;
-        this.udpSender = udpSender;
-        this.tcpAcceptor = tcpAcceptor;
-        this.supervisor = supervisor;
-        this.controlServer = controlServer;
-        this.controlServerTask = controlServerTask;
-        this.shedderLoopTask = shedderLoopTask;
-        this.fragmenterLoopTask = fragmenterLoopTask;
-        this.enumerationLoopTask = enumerationLoopTask;
+        _lifecycle = lifecycle;
+        _windowIdToHwnd = windowIdToHwnd;
+        _windowIdToDescriptor = windowIdToDescriptor;
+        _windowIdToEncoderOptions = windowIdToEncoderOptions;
+        _udpSender = udpSender;
+        _tcpAcceptor = tcpAcceptor;
+        _supervisor = supervisor;
+        _controlServer = controlServer;
+        _controlServerTask = controlServerTask;
+        _shedderLoopTask = shedderLoopTask;
+        _fragmenterLoopTask = fragmenterLoopTask;
+        _enumerationLoopTask = enumerationLoopTask;
     }
 
-    public int TcpPort => tcpAcceptor.LocalPort;
+    public int TcpPort => _tcpAcceptor.LocalPort;
 
-    public int UdpPort => udpSender.LocalPort;
+    public int UdpPort => _udpSender.LocalPort;
 
-    public WorkerSupervisor Supervisor => supervisor;
+    public WorkerSupervisor Supervisor => _supervisor;
 
-    public CoordinatorControlServer Server => controlServer;
+    public CoordinatorControlServer Server => _controlServer;
 
     public static async Task<CoordinatorLoopbackHarness> StartAsync(
         int maximumConcurrentStreams = 8,
@@ -94,7 +89,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         IForegroundWindowApi? foregroundWindowApi = null,
         CancellationToken cancellationToken = default)
     {
-        CancellationTokenSource lifecycle = new CancellationTokenSource();
+        var lifecycle = new CancellationTokenSource();
         if (cancellationToken.CanBeCanceled)
         {
             cancellationToken.Register(() =>
@@ -110,44 +105,44 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         ConcurrentDictionary<ulong, EncoderOptions> windowIdToEncoderOptions = new();
         ConcurrentDictionary<int, ulong> streamIdToWindowId = new();
 
-        IWorkerProcessLauncher launcher = workerLauncher ?? CreateRealLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams);
+        var launcher = workerLauncher ?? CreateRealLauncher();
+        var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams);
 
-        Channel<TaggedChunk> routerOutput = Channel.CreateUnbounded<TaggedChunk>();
-        Channel<TaggedChunk> shedderOutput = Channel.CreateBounded<TaggedChunk>(
+        var routerOutput = Channel.CreateUnbounded<TaggedChunk>();
+        var shedderOutput = Channel.CreateBounded<TaggedChunk>(
             new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.DropOldest });
-        StreamRouter streamRouter = new StreamRouter(routerOutput);
-        LoadShedder loadShedder = new LoadShedder(routerOutput, shedderOutput, perStreamMaximumQueueDepth: 8);
+        var streamRouter = new StreamRouter(routerOutput);
+        var loadShedder = new LoadShedder(routerOutput, shedderOutput, perStreamMaximumQueueDepth: 8);
 
-        UdpVideoSenderAdapter udpSender = new UdpVideoSenderAdapter();
+        var udpSender = new UdpVideoSenderAdapter();
         await udpSender.BindAsync(new IPEndPoint(IPAddress.Loopback, 0), lifecycle.Token).ConfigureAwait(false);
-        TcpConnectionAcceptorAdapter tcpAcceptor = new TcpConnectionAcceptorAdapter(
+        var tcpAcceptor = new TcpConnectionAcceptorAdapter(
             TimeProvider.System, IPAddress.Loopback);
 
-        FocusRelay focusRelay = new FocusRelay(foregroundWindowApi ?? new NoOpForegroundWindowApi());
+        var focusRelay = new FocusRelay(foregroundWindowApi ?? new NoOpForegroundWindowApi());
 
         // Heartbeat timeout deliberately generous: tests using FakeViewer often pause
         // between protocol steps and we don't want the server tearing the connection
         // down during an unhurried assertion.
-        CoordinatorOptions coordinatorOptions = new CoordinatorOptions(
+        var coordinatorOptions = new CoordinatorOptions(
             HeartbeatIntervalMilliseconds: 2000,
             HeartbeatTimeoutMilliseconds: 60000,
             ServerVersion: 2,
             MaximumConcurrentStreams: maximumConcurrentStreams);
 
-        CoordinatorControlServer controlServer = new CoordinatorControlServer(
+        var controlServer = new CoordinatorControlServer(
             options: coordinatorOptions,
             tcpAcceptor: tcpAcceptor,
             supervisor: supervisor,
             getCurrentWindows: () => windowIdToDescriptor.Values.ToArray(),
             resolveWindowIdToHwnd: windowId =>
-                windowIdToHwnd.TryGetValue(windowId, out long handle) ? handle : null,
+                windowIdToHwnd.TryGetValue(windowId, out var handle) ? handle : null,
             resolveWindowIdToEncoderOptions: windowId =>
-                windowIdToEncoderOptions.TryGetValue(windowId, out EncoderOptions? options) ? options : null,
+                windowIdToEncoderOptions.TryGetValue(windowId, out var options) ? options : null,
             getUdpPort: () => udpSender.LocalPort,
             sendWorkerCommand: async (streamId, tag) =>
             {
-                Stream? pipe = supervisor.GetPipe(streamId);
+                var pipe = supervisor.GetPipe(streamId);
                 if (pipe is not null)
                 {
                     await WorkerChunkPipe.WriteCommandAsync(
@@ -163,26 +158,26 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
             timeProvider: TimeProvider.System);
 
         // Hook supervisor stream lifecycle for routing.
-        supervisor.StreamStarted += (_, args) =>
+        supervisor.StreamStarted += (sender, args) =>
         {
             streamIdToWindowId[args.StreamId] = args.WindowId;
             _ = streamRouter.ReadFromPipeAsync(args.StreamId, args.Pipe, lifecycle.Token);
         };
         supervisor.StreamEnded += (_, args) =>
         {
-            streamIdToWindowId.TryRemove(args.StreamId, out ulong _);
+            streamIdToWindowId.TryRemove(args.StreamId, out var _);
         };
 
-        Task shedderLoopTask = Task.Run(() => loadShedder.RunAsync(lifecycle.Token), lifecycle.Token);
-        Task fragmenterLoopTask = Task.Run(
+        var shedderLoopTask = Task.Run(() => loadShedder.RunAsync(lifecycle.Token), lifecycle.Token);
+        var fragmenterLoopTask = Task.Run(
             () => RunFragmenterLoopAsync(shedderOutput, udpSender, controlServer, lifecycle.Token),
             lifecycle.Token);
 
         Task? enumerationLoopTask = null;
         if (useRealWgcEnumeration)
         {
-            WgcCaptureSource captureSource = new WgcCaptureSource();
-            WindowIdentityRegistry registry = new WindowIdentityRegistry();
+            var captureSource = new WgcCaptureSource();
+            var registry = new WindowIdentityRegistry();
             enumerationLoopTask = Task.Run(
                 () => RunEnumerationLoopAsync(
                     captureSource,
@@ -194,7 +189,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                 lifecycle.Token);
         }
 
-        Task controlServerTask = controlServer.RunAsync(0, lifecycle.Token);
+        var controlServerTask = controlServer.RunAsync(0, lifecycle.Token);
 
         return new CoordinatorLoopbackHarness(
             lifecycle,
@@ -221,41 +216,41 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
     /// </summary>
     public void InjectWindow(WindowDescriptor descriptor, long hwnd, EncoderOptions encoderOptions)
     {
-        windowIdToHwnd[descriptor.WindowId] = hwnd;
-        windowIdToDescriptor[descriptor.WindowId] = descriptor;
-        windowIdToEncoderOptions[descriptor.WindowId] = encoderOptions;
+        _windowIdToHwnd[descriptor.WindowId] = hwnd;
+        _windowIdToDescriptor[descriptor.WindowId] = descriptor;
+        _windowIdToEncoderOptions[descriptor.WindowId] = encoderOptions;
     }
 
     public Task<FakeViewer> ConnectViewerAsync(CancellationToken cancellationToken)
         => FakeViewer.ConnectAsync(Host, TcpPort, cancellationToken);
 
 #pragma warning disable CA1859 // CA1859: factory intentionally returns IWorkerProcessLauncher
-    private static IWorkerProcessLauncher CreateRealLauncher()
+    static IWorkerProcessLauncher CreateRealLauncher()
     {
-        string executablePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
-            ?? throw new InvalidOperationException("could not determine current executable path");
+        var executablePath = Process.GetCurrentProcess().MainModule?.FileName
+                             ?? throw new InvalidOperationException("could not determine current executable path");
         return new WorkerProcessLauncher(executablePath);
     }
 #pragma warning restore CA1859
 
-    private static async Task RunFragmenterLoopAsync(
+    static async Task RunFragmenterLoopAsync(
         Channel<TaggedChunk> shedderOutput,
         UdpVideoSenderAdapter udpSender,
         CoordinatorControlServer controlServer,
         CancellationToken cancellationToken)
     {
-        int sequence = 0;
+        var sequence = 0;
         try
         {
-            await foreach (TaggedChunk chunk in shedderOutput.Reader.ReadAllAsync(cancellationToken))
+            await foreach (var chunk in shedderOutput.Reader.ReadAllAsync(cancellationToken))
             {
-                IPEndPoint? destination = controlServer.ActiveViewerEndpoint;
+                var destination = controlServer.ActiveViewerEndpoint;
                 if (destination is null)
                 {
                     continue;
                 }
-                int currentSequence = Interlocked.Increment(ref sequence) - 1;
-                foreach (FragmentedPacket packet in NalFragmenter.Fragment(
+                var currentSequence = Interlocked.Increment(ref sequence) - 1;
+                foreach (var packet in NalFragmenter.Fragment(
                     streamId: chunk.StreamId,
                     sequence: currentSequence,
                     presentationTimestampMicroseconds: (long)chunk.Frame.PresentationTimestampMicroseconds,
@@ -273,7 +268,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         }
     }
 
-    private static async Task RunEnumerationLoopAsync(
+    static async Task RunEnumerationLoopAsync(
         WgcCaptureSource captureSource,
         WindowIdentityRegistry registry,
         CoordinatorControlServer controlServer,
@@ -281,7 +276,7 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor,
         CancellationToken cancellationToken)
     {
-        using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
@@ -298,32 +293,32 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                     continue;
                 }
 
-                foreach (WindowEnumerationEvent enumerationEvent in registry.Diff(snapshot))
+                foreach (var enumerationEvent in registry.Diff(snapshot))
                 {
                     switch (enumerationEvent)
                     {
                         case WindowAppeared appeared:
-                            windowIdToHwnd[appeared.WindowId] = appeared.Information.handle.value;
-                            WindowDescriptor descriptor = new WindowDescriptor(
+                            windowIdToHwnd[appeared.WindowId] = appeared.Information.Handle.Value;
+                            var descriptor = new WindowDescriptor(
                                 WindowId: appeared.WindowId,
-                                Hwnd: appeared.Information.handle.value,
+                                Hwnd: appeared.Information.Handle.Value,
                                 ProcessId: 0,
-                                ProcessName: appeared.Information.processName,
-                                Title: appeared.Information.title,
-                                PhysicalWidth: appeared.Information.widthPixels,
-                                PhysicalHeight: appeared.Information.heightPixels);
+                                ProcessName: appeared.Information.ProcessName,
+                                Title: appeared.Information.Title,
+                                PhysicalWidth: appeared.Information.WidthPixels,
+                                PhysicalHeight: appeared.Information.HeightPixels);
                             windowIdToDescriptor[appeared.WindowId] = descriptor;
                             controlServer.NotifyWindowAppeared(descriptor);
                             break;
                         case WindowDisappeared gone:
-                            windowIdToHwnd.TryRemove(gone.WindowId, out long _);
-                            windowIdToDescriptor.TryRemove(gone.WindowId, out WindowDescriptor? _);
+                            windowIdToHwnd.TryRemove(gone.WindowId, out var _);
+                            windowIdToDescriptor.TryRemove(gone.WindowId, out var _);
                             controlServer.NotifyWindowDisappeared(gone.WindowId);
                             break;
                         case WindowChanged changed:
-                            if (windowIdToDescriptor.TryGetValue(changed.WindowId, out WindowDescriptor? existing))
+                            if (windowIdToDescriptor.TryGetValue(changed.WindowId, out var existing))
                             {
-                                WindowDescriptor updated = existing with
+                                var updated = existing with
                                 {
                                     Title = changed.NewTitle ?? existing.Title,
                                     PhysicalWidth = changed.NewWidthPixels ?? existing.PhysicalWidth,
@@ -349,11 +344,11 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        disposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
         #pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
-        try { await lifecycle.CancelAsync(); } catch { /* already disposed */ }
+        try { await _lifecycle.CancelAsync(); } catch { /* already disposed */ }
         #pragma warning restore CA1031
 
         async Task SwallowAsync(Task task)
@@ -367,26 +362,26 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
             #pragma warning restore CA1031
         }
 
-        await SwallowAsync(controlServerTask).ConfigureAwait(false);
-        await SwallowAsync(shedderLoopTask).ConfigureAwait(false);
-        await SwallowAsync(fragmenterLoopTask).ConfigureAwait(false);
-        if (enumerationLoopTask is not null)
+        await SwallowAsync(_controlServerTask).ConfigureAwait(false);
+        await SwallowAsync(_shedderLoopTask).ConfigureAwait(false);
+        await SwallowAsync(_fragmenterLoopTask).ConfigureAwait(false);
+        if (_enumerationLoopTask is not null)
         {
-            await SwallowAsync(enumerationLoopTask).ConfigureAwait(false);
+            await SwallowAsync(_enumerationLoopTask).ConfigureAwait(false);
         }
 
-        await controlServer.DisposeAsync().ConfigureAwait(false);
-        await supervisor.DisposeAsync().ConfigureAwait(false);
-        await udpSender.DisposeAsync().ConfigureAwait(false);
+        await _controlServer.DisposeAsync().ConfigureAwait(false);
+        await _supervisor.DisposeAsync().ConfigureAwait(false);
+        await _udpSender.DisposeAsync().ConfigureAwait(false);
 
-        lifecycle.Dispose();
+        _lifecycle.Dispose();
     }
 
     /// <summary>
     /// FocusRelay implementation that does nothing — tests don't actually want
     /// the harness manipulating real desktop focus.
     /// </summary>
-    private sealed class NoOpForegroundWindowApi : IForegroundWindowApi
+    sealed class NoOpForegroundWindowApi : IForegroundWindowApi
     {
         public long GetForegroundWindow() => 0;
         public uint GetWindowThreadProcessId(long hwnd) => 0;
@@ -403,49 +398,51 @@ internal sealed class CoordinatorLoopbackHarness : IAsyncDisposable
 /// <see cref="ReceiveNalUnitAsync"/>. Sends and receives JSON control messages
 /// via <see cref="LengthPrefixFraming"/>.
 /// </summary>
-internal sealed class FakeViewer : IAsyncDisposable
+sealed class FakeViewer : IAsyncDisposable
 {
-    private readonly TcpClient tcpClient;
-    private readonly NetworkStream tcpStream;
-    private readonly UdpClient udpClient;
-    private readonly Channel<UdpPacketCapture> rawUdpPackets =
-        Channel.CreateUnbounded<UdpPacketCapture>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = true });
-    private readonly ConcurrentDictionary<int, Channel<ReassembledNalUnit>> nalUnitsByStreamId = new();
-    private readonly CancellationTokenSource pumpCancellation = new CancellationTokenSource();
-    private readonly Task udpPumpTask;
-    private bool disposed;
+    readonly TcpClient _tcpClient;
+    readonly NetworkStream _tcpStream;
+    readonly UdpClient _udpClient;
 
-    private FakeViewer(TcpClient tcpClient, UdpClient udpClient)
+    readonly Channel<UdpPacketCapture> _rawUdpPackets =
+        Channel.CreateUnbounded<UdpPacketCapture>(new UnboundedChannelOptions { SingleReader = false, SingleWriter = true });
+
+    readonly ConcurrentDictionary<int, Channel<ReassembledNalUnit>> _nalUnitsByStreamId = new();
+    readonly CancellationTokenSource _pumpCancellation = new CancellationTokenSource();
+    readonly Task _udpPumpTask;
+    bool _disposed;
+
+    FakeViewer(TcpClient tcpClient, UdpClient udpClient)
     {
-        this.tcpClient = tcpClient;
-        this.tcpStream = tcpClient.GetStream();
-        this.udpClient = udpClient;
+        _tcpClient = tcpClient;
+        _tcpStream = tcpClient.GetStream();
+        _udpClient = udpClient;
         LocalUdpEndpoint = (IPEndPoint)udpClient.Client.LocalEndPoint!;
-        udpPumpTask = Task.Run(() => RunUdpPumpAsync(pumpCancellation.Token));
+        _udpPumpTask = Task.Run(() => RunUdpPumpAsync(_pumpCancellation.Token));
     }
 
     public IPEndPoint LocalUdpEndpoint { get; }
 
     public static async Task<FakeViewer> ConnectAsync(string host, int tcpPort, CancellationToken cancellationToken)
     {
-        TcpClient tcpClient = new TcpClient();
+        var tcpClient = new TcpClient();
         await tcpClient.ConnectAsync(IPAddress.Parse(host), tcpPort, cancellationToken).ConfigureAwait(false);
 
-        UdpClient udpClient = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var udpClient = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         return new FakeViewer(tcpClient, udpClient);
     }
 
     public async Task SendAsync(ControlMessage message, CancellationToken cancellationToken)
     {
-        string json = ControlMessageSerialization.Serialize(message);
-        byte[] payload = Encoding.UTF8.GetBytes(json);
-        await LengthPrefixFraming.WriteFrameAsync(tcpStream, payload, cancellationToken).ConfigureAwait(false);
+        var json = ControlMessageSerialization.Serialize(message);
+        var payload = Encoding.UTF8.GetBytes(json);
+        await LengthPrefixFraming.WriteFrameAsync(_tcpStream, payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ControlMessage> ReceiveAsync(CancellationToken cancellationToken)
     {
-        byte[] payload = await LengthPrefixFraming.ReadFrameAsync(tcpStream, cancellationToken).ConfigureAwait(false);
-        string json = Encoding.UTF8.GetString(payload);
+        var payload = await LengthPrefixFraming.ReadFrameAsync(_tcpStream, cancellationToken).ConfigureAwait(false);
+        var json = Encoding.UTF8.GetString(payload);
         return ControlMessageSerialization.Deserialize(json);
     }
 
@@ -455,7 +452,7 @@ internal sealed class FakeViewer : IAsyncDisposable
     /// so callers see every fragment exactly as the wire delivered it.
     /// </summary>
     public Task<UdpPacketCapture> ReceiveUdpPacketAsync(CancellationToken cancellationToken)
-        => rawUdpPackets.Reader.ReadAsync(cancellationToken).AsTask();
+        => _rawUdpPackets.Reader.ReadAsync(cancellationToken).AsTask();
 
     /// <summary>
     /// Reads one fully-reassembled NAL unit for the supplied stream id. Out-of-order
@@ -464,22 +461,22 @@ internal sealed class FakeViewer : IAsyncDisposable
     /// </summary>
     public Task<ReassembledNalUnit> ReceiveNalUnitAsync(int streamId, CancellationToken cancellationToken)
     {
-        Channel<ReassembledNalUnit> channel = nalUnitsByStreamId.GetOrAdd(
+        var channel = _nalUnitsByStreamId.GetOrAdd(
             streamId, _ => Channel.CreateUnbounded<ReassembledNalUnit>());
         return channel.Reader.ReadAsync(cancellationToken).AsTask();
     }
 
-    private async Task RunUdpPumpAsync(CancellationToken cancellationToken)
+    async Task RunUdpPumpAsync(CancellationToken cancellationToken)
     {
         // One reassembler keyed on (streamId, sequence) demultiplexes fragments
         // from any number of streams without cross-talk.
-        NalReassembler reassembler = new NalReassembler(SystemClock.Instance, TimeSpan.FromSeconds(2));
+        var reassembler = new NalReassembler(SystemClock.Instance, TimeSpan.FromSeconds(2));
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                UdpReceiveResult result = await udpClient.ReceiveAsync(cancellationToken).ConfigureAwait(false);
-                byte[] datagram = result.Buffer;
+                var result = await _udpClient.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+                var datagram = result.Buffer;
                 if (datagram.Length < PacketHeader.HeaderByteLength)
                 {
                     continue;
@@ -495,10 +492,10 @@ internal sealed class FakeViewer : IAsyncDisposable
                     continue;
                 }
 
-                byte[] payload = new byte[datagram.Length - PacketHeader.HeaderByteLength];
+                var payload = new byte[datagram.Length - PacketHeader.HeaderByteLength];
                 Array.Copy(datagram, PacketHeader.HeaderByteLength, payload, 0, payload.Length);
 
-                UdpPacketCapture capture = new UdpPacketCapture(
+                var capture = new UdpPacketCapture(
                     StreamId: (int)header.StreamId,
                     Sequence: (int)header.Sequence,
                     PtsUs: (long)header.PresentationTimestampMicroseconds,
@@ -506,14 +503,14 @@ internal sealed class FakeViewer : IAsyncDisposable
                     FragmentIndex: header.FragmentIndex,
                     FragmentTotal: header.FragmentTotal,
                     Payload: payload);
-                await rawUdpPackets.Writer.WriteAsync(capture, cancellationToken).ConfigureAwait(false);
+                await _rawUdpPackets.Writer.WriteAsync(capture, cancellationToken).ConfigureAwait(false);
 
-                ReassembledNalUnit? completed = reassembler.Offer(header, payload);
+                var completed = reassembler.Offer(header, payload);
                 if (completed is null) continue;
 
-                ReassembledNalUnit unit = completed.Value;
-                int streamId = (int)unit.StreamId;
-                Channel<ReassembledNalUnit> channel = nalUnitsByStreamId.GetOrAdd(
+                var unit = completed.Value;
+                var streamId = (int)unit.StreamId;
+                var channel = _nalUnitsByStreamId.GetOrAdd(
                     streamId, _ => Channel.CreateUnbounded<ReassembledNalUnit>());
                 await channel.Writer.WriteAsync(unit, cancellationToken).ConfigureAwait(false);
             }
@@ -532,8 +529,8 @@ internal sealed class FakeViewer : IAsyncDisposable
         }
         finally
         {
-            rawUdpPackets.Writer.TryComplete();
-            foreach (KeyValuePair<int, Channel<ReassembledNalUnit>> entry in nalUnitsByStreamId)
+            _rawUdpPackets.Writer.TryComplete();
+            foreach (var entry in _nalUnitsByStreamId)
             {
                 entry.Value.Writer.TryComplete();
             }
@@ -542,23 +539,23 @@ internal sealed class FakeViewer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        disposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
         #pragma warning disable CA1031 // best-effort: pump CTS may already be disposed
-        try { await pumpCancellation.CancelAsync(); } catch { /* best-effort */ }
-        try { tcpStream.Dispose(); } catch { /* best-effort */ }
-        try { tcpClient.Dispose(); } catch { /* best-effort */ }
-        try { udpClient.Dispose(); } catch { /* best-effort */ }
+        try { await _pumpCancellation.CancelAsync(); } catch { /* best-effort */ }
+        try { _tcpStream.Dispose(); } catch { /* best-effort */ }
+        try { _tcpClient.Dispose(); } catch { /* best-effort */ }
+        try { _udpClient.Dispose(); } catch { /* best-effort */ }
         #pragma warning restore CA1031
-        try { await udpPumpTask.ConfigureAwait(false); }
+        try { await _udpPumpTask.ConfigureAwait(false); }
         catch (OperationCanceledException) { }
         #pragma warning disable CA1031 // intentional: test fixture teardown swallows all pump faults
         #pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
         catch (Exception) { /* fixture teardown */ }
         #pragma warning restore RCS1075
         #pragma warning restore CA1031
-        pumpCancellation.Dispose();
+        _pumpCancellation.Dispose();
     }
 }
 
@@ -568,7 +565,7 @@ internal sealed class FakeViewer : IAsyncDisposable
 /// bytes so tests can assert per-packet shape (fragment index/total, IDR flag,
 /// stream demultiplexing, etc.).
 /// </summary>
-internal sealed record UdpPacketCapture(
+sealed record UdpPacketCapture(
     int StreamId,
     int Sequence,
     long PtsUs,

@@ -1,8 +1,4 @@
-using System;
 using System.CommandLine;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Cli;
 
 // Force line-flushing on Console.Out/Error when stdout/stderr is redirected to
@@ -20,6 +16,8 @@ using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArguments) =>
 {
     eventArguments.Cancel = true;
+    // ReSharper disable once AccessToDisposedClosure
+    // Handler only fires during the awaited InvokeAsync run, before cancellation disposes at exit.
     cancellation.Cancel();
 };
 var root = RootCommandBuilder.Build(services);

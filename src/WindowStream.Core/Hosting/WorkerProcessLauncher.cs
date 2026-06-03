@@ -1,37 +1,33 @@
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.IO;
 using System.IO.Pipes;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace WindowStream.Core.Hosting;
 
 [ExcludeFromCodeCoverage(Justification = "Process spawn + named-pipe handshake; exercised by Phase 4 integration tests.")]
 public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
 {
-    private readonly string executablePath;
+    readonly string _executablePath;
 
     public WorkerProcessLauncher(string executablePath)
     {
-        this.executablePath = executablePath;
+        _executablePath = executablePath;
     }
 
     public async Task<IWorkerHandle> LaunchAsync(WorkerLaunchArguments arguments, CancellationToken cancellationToken)
     {
-        NamedPipeServerStream pipe = new NamedPipeServerStream(
+        var pipe = new NamedPipeServerStream(
             arguments.PipeName,
             PipeDirection.InOut,
             1,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous);
 
-        ProcessStartInfo processStartInfo = new ProcessStartInfo
+        var processStartInfo = new ProcessStartInfo
         {
-            FileName = executablePath,
+            FileName = _executablePath,
             ArgumentList =
             {
                 "worker",
@@ -43,11 +39,11 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
             UseShellExecute = false,
             RedirectStandardError = true
         };
-        Process process = Process.Start(processStartInfo)
-            ?? throw new InvalidOperationException("worker spawn failed");
+        var process = Process.Start(processStartInfo)
+                      ?? throw new InvalidOperationException("worker spawn failed");
         // Mirror worker stderr to parent stderr so worker-side crashes are visible
         // instead of silently discarded by the redirect.
-        StringBuilder stderrBuffer = new StringBuilder();
+        var stderrBuffer = new StringBuilder();
         process.ErrorDataReceived += (_, eventArguments) =>
         {
             if (eventArguments.Data is not null)
@@ -59,7 +55,7 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
         process.BeginErrorReadLine();
         try
         {
-            using CancellationTokenSource connectTimeout =
+            using var connectTimeout =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connectTimeout.CancelAfter(TimeSpan.FromSeconds(10));
             await pipe.WaitForConnectionAsync(connectTimeout.Token).ConfigureAwait(false);
@@ -67,7 +63,7 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
 #pragma warning disable CA1031 // intentional catch-all in pipe handshake; exception is wrapped and rethrown with context
         catch (Exception originalException)
         {
-            bool exited = process.HasExited;
+            var exited = process.HasExited;
             int? exitCode = exited ? process.ExitCode : null;
             try
             {
@@ -79,40 +75,41 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
 #pragma warning disable CA1031 // best-effort kill; process may have already exited
             catch
             {
+                // best-effort kill; the process may have already exited
             }
 #pragma warning restore CA1031
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw new InvalidOperationException(
                 $"worker pipe handshake failed (exited={exited}, exitCode={exitCode?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}); " +
-                $"worker stderr:{System.Environment.NewLine}{stderrBuffer}",
+                $"worker stderr:{Environment.NewLine}{stderrBuffer}",
                 originalException);
         }
 #pragma warning restore CA1031
         return new WorkerHandle(process, pipe);
     }
 
-    private sealed class WorkerHandle : IWorkerHandle
+    sealed class WorkerHandle : IWorkerHandle
     {
-        private readonly Process process;
+        readonly Process _process;
 
         public WorkerHandle(Process process, NamedPipeServerStream pipe)
         {
-            this.process = process;
+            _process = process;
             Pipe = pipe;
         }
 
         public Stream Pipe { get; }
 
-        public int ProcessId => process.Id;
+        public int ProcessId => _process.Id;
 
         public Task<int> WaitForExitAsync()
         {
-            TaskCompletionSource<int> source = new TaskCompletionSource<int>();
-            process.EnableRaisingEvents = true;
-            process.Exited += (_, _) => source.TrySetResult(process.ExitCode);
-            if (process.HasExited)
+            var source = new TaskCompletionSource<int>();
+            _process.EnableRaisingEvents = true;
+            _process.Exited += (_, _) => source.TrySetResult(_process.ExitCode);
+            if (_process.HasExited)
             {
-                source.TrySetResult(process.ExitCode);
+                source.TrySetResult(_process.ExitCode);
             }
             return source.Task;
         }
@@ -121,14 +118,15 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
         {
             try
             {
-                if (!process.HasExited)
+                if (!_process.HasExited)
                 {
-                    process.Kill(entireProcessTree: true);
+                    _process.Kill(entireProcessTree: true);
                 }
             }
 #pragma warning disable CA1031 // best-effort kill; process may have already exited
             catch
             {
+                // best-effort kill; the process may have already exited
             }
 #pragma warning restore CA1031
         }
@@ -143,9 +141,10 @@ public sealed class WorkerProcessLauncher : IWorkerProcessLauncher
 #pragma warning disable CA1031 // best-effort pipe dispose in async teardown
             catch
             {
+                // best-effort pipe dispose during teardown; failure is non-fatal
             }
 #pragma warning restore CA1031
-            process.Dispose();
+            _process.Dispose();
         }
     }
 }

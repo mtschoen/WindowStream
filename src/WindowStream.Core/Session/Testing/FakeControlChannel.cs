@@ -1,8 +1,5 @@
-using System;
 using System.Net;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
 
 namespace WindowStream.Core.Session.Testing;
@@ -14,12 +11,12 @@ namespace WindowStream.Core.Session.Testing;
 /// </summary>
 public sealed class FakeControlChannel : IControlChannel
 {
-    private readonly ChannelReader<ControlMessage> inbound;
-    private readonly ChannelWriter<ControlMessage> outbound;
-    private readonly TimeProvider timeProvider;
-    private readonly IPAddress? remoteIpAddress;
-    private DateTimeOffset lastHeartbeatReceived;
-    private bool disposed;
+    readonly ChannelReader<ControlMessage> _inbound;
+    readonly ChannelWriter<ControlMessage> _outbound;
+    readonly TimeProvider _timeProvider;
+    readonly IPAddress? _remoteIpAddress;
+    DateTimeOffset _lastHeartbeatReceived;
+    bool _disposed;
 
     internal FakeControlChannel(
         ChannelReader<ControlMessage> inbound,
@@ -27,44 +24,44 @@ public sealed class FakeControlChannel : IControlChannel
         TimeProvider timeProvider,
         IPAddress? remoteIpAddress)
     {
-        this.inbound = inbound;
-        this.outbound = outbound;
-        this.timeProvider = timeProvider;
-        this.remoteIpAddress = remoteIpAddress;
-        this.lastHeartbeatReceived = timeProvider.GetUtcNow();
+        _inbound = inbound;
+        _outbound = outbound;
+        _timeProvider = timeProvider;
+        _remoteIpAddress = remoteIpAddress;
+        _lastHeartbeatReceived = timeProvider.GetUtcNow();
     }
 
-    public DateTimeOffset LastHeartbeatReceived => lastHeartbeatReceived;
+    public DateTimeOffset LastHeartbeatReceived => _lastHeartbeatReceived;
 
-    public IPAddress? RemoteIpAddress => remoteIpAddress;
+    public IPAddress? RemoteIpAddress => _remoteIpAddress;
 
     public void NotifyHeartbeatReceived()
     {
-        lastHeartbeatReceived = timeProvider.GetUtcNow();
+        _lastHeartbeatReceived = _timeProvider.GetUtcNow();
     }
 
     public async Task SendAsync(ControlMessage message, CancellationToken cancellationToken)
     {
-        await outbound.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        await _outbound.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<ControlMessage> ReceiveAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return await inbound.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return await _inbound.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (ChannelClosedException)
         {
-            throw new System.IO.EndOfStreamException("The fake viewer disconnected.");
+            throw new EndOfStreamException("The fake viewer disconnected.");
         }
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
-        outbound.TryComplete();
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
+        _outbound.TryComplete();
         return ValueTask.CompletedTask;
     }
 }

@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Hosting;
 
 public sealed class EncoderCapacityException : Exception

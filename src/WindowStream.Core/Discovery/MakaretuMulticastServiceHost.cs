@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 using Makaretu.Dns;
 
 namespace WindowStream.Core.Discovery;
@@ -20,7 +15,7 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
     // bridge or a WSL pseudo-interface even though the interface is "Up" with
     // a valid IPv4 address, so without this filter Makaretu's default picks
     // up Docker/WSL/etc. and the viewer resolves the wrong IP.
-    private static readonly string[] VirtualInterfaceDescriptionFragments = new[]
+    static readonly string[] VirtualInterfaceDescriptionFragments = new[]
     {
         "Hyper-V",
         "Virtual",
@@ -32,9 +27,9 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         "Docker",
     };
 
-    private MulticastService? multicastService;
-    private ServiceDiscovery? serviceDiscovery;
-    private ServiceProfile? serviceProfile;
+    MulticastService? _multicastService;
+    ServiceDiscovery? _serviceDiscovery;
+    ServiceProfile? _serviceProfile;
 
     public Task StartAdvertisingAsync(
         string serviceInstance,
@@ -43,14 +38,14 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         IReadOnlyList<string> textRecords,
         CancellationToken cancellationToken)
     {
-        if (multicastService is not null)
+        if (_multicastService is not null)
         {
             throw new InvalidOperationException("Already advertising.");
         }
 
         // ServiceProfile expects a service type in the form "_windowstream._tcp"
         // (without the trailing ".local."). Strip if present.
-        string normalizedType = serviceType;
+        var normalizedType = serviceType;
         if (normalizedType.EndsWith(".local.", StringComparison.OrdinalIgnoreCase))
         {
             normalizedType = normalizedType[..^".local.".Length];
@@ -65,28 +60,28 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
         IReadOnlyList<IPAddress> physicalAddresses = ResolvePhysicalLanAddresses();
 #pragma warning restore CA1859
 
-        ServiceProfile profile = new ServiceProfile(
+        var profile = new ServiceProfile(
             instanceName: serviceInstance,
             serviceName: normalizedType,
             port: (ushort)port,
             addresses: physicalAddresses.Count > 0 ? physicalAddresses : null);
 
-        foreach (string record in textRecords)
+        foreach (var record in textRecords)
         {
-            string[] parts = record.Split('=', 2);
-            string key = parts[0];
-            string value = parts.Length == 2 ? parts[1] : string.Empty;
+            var parts = record.Split('=', 2);
+            var key = parts[0];
+            var value = parts.Length == 2 ? parts[1] : string.Empty;
             profile.AddProperty(key, value);
         }
 
-        MulticastService multicast = new MulticastService(FilterPhysicalLanInterfaces);
-        ServiceDiscovery discovery = new ServiceDiscovery(multicast);
+        var multicast = new MulticastService(FilterPhysicalLanInterfaces);
+        var discovery = new ServiceDiscovery(multicast);
         discovery.Advertise(profile);
         multicast.Start();
 
-        multicastService = multicast;
-        serviceDiscovery = discovery;
-        serviceProfile = profile;
+        _multicastService = multicast;
+        _serviceDiscovery = discovery;
+        _serviceProfile = profile;
         return Task.CompletedTask;
     }
 
@@ -101,17 +96,17 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
     /// <see cref="NetworkInterface.Name"/> or
     /// <see cref="NetworkInterface.Description"/>.
     /// </summary>
-    private static IEnumerable<NetworkInterface> FilterPhysicalLanInterfaces(
+    static IEnumerable<NetworkInterface> FilterPhysicalLanInterfaces(
         IEnumerable<NetworkInterface> candidates)
     {
         IReadOnlyList<NetworkInterface> snapshot = candidates.ToList();
 
-        string? overrideName = Environment.GetEnvironmentVariable("WINDOWSTREAM_MDNS_INTERFACE");
+        var overrideName = Environment.GetEnvironmentVariable("WINDOWSTREAM_MDNS_INTERFACE");
         if (!string.IsNullOrWhiteSpace(overrideName))
         {
-            List<NetworkInterface> matched = snapshot.Where(intf =>
-                intf.Name.Contains(overrideName!, StringComparison.OrdinalIgnoreCase) ||
-                intf.Description.Contains(overrideName!, StringComparison.OrdinalIgnoreCase)).ToList();
+            var matched = snapshot.Where(intf =>
+                intf.Name.Contains(overrideName, StringComparison.OrdinalIgnoreCase) ||
+                intf.Description.Contains(overrideName, StringComparison.OrdinalIgnoreCase)).ToList();
             if (matched.Count > 0)
             {
                 return matched;
@@ -119,16 +114,16 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
             // Fall through to heuristic if the override didn't match anything.
         }
 
-        List<NetworkInterface> physical = snapshot.Where(IsPhysicalLanInterface).ToList();
+        var physical = snapshot.Where(IsPhysicalLanInterface).ToList();
         // If the heuristic excluded everything (unusual, e.g. all interfaces
         // happened to match a virtual-fragment), fall back to the unfiltered
         // candidates rather than break discovery entirely.
         return physical.Count > 0 ? physical : snapshot;
     }
 
-    private static List<IPAddress> ResolvePhysicalLanAddresses()
+    static List<IPAddress> ResolvePhysicalLanAddresses()
     {
-        IEnumerable<NetworkInterface> filtered = FilterPhysicalLanInterfaces(
+        var filtered = FilterPhysicalLanInterfaces(
             NetworkInterface.GetAllNetworkInterfaces());
         return filtered
             .SelectMany(intf => intf.GetIPProperties().UnicastAddresses)
@@ -137,13 +132,13 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
             .ToList();
     }
 
-    private static bool IsPhysicalLanInterface(NetworkInterface intf)
+    static bool IsPhysicalLanInterface(NetworkInterface intf)
     {
         if (intf.NetworkInterfaceType == NetworkInterfaceType.Loopback) return false;
         if (intf.OperationalStatus != OperationalStatus.Up) return false;
 
-        string description = intf.Description ?? string.Empty;
-        foreach (string fragment in VirtualInterfaceDescriptionFragments)
+        var description = intf.Description;
+        foreach (var fragment in VirtualInterfaceDescriptionFragments)
         {
             if (description.Contains(fragment, StringComparison.OrdinalIgnoreCase))
             {
@@ -155,21 +150,21 @@ public sealed class MakaretuMulticastServiceHost : IMulticastServiceHost
 
     public Task StopAdvertisingAsync(CancellationToken cancellationToken)
     {
-        if (serviceDiscovery is not null && serviceProfile is not null)
+        if (_serviceDiscovery is not null && _serviceProfile is not null)
         {
-            serviceDiscovery.Unadvertise(serviceProfile);
+            _serviceDiscovery.Unadvertise(_serviceProfile);
         }
-        multicastService?.Stop();
+        _multicastService?.Stop();
         return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()
     {
-        serviceDiscovery?.Dispose();
-        multicastService?.Dispose();
-        serviceDiscovery = null;
-        multicastService = null;
-        serviceProfile = null;
+        _serviceDiscovery?.Dispose();
+        _multicastService?.Dispose();
+        _serviceDiscovery = null;
+        _multicastService = null;
+        _serviceProfile = null;
         return ValueTask.CompletedTask;
     }
 }

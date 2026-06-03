@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace WindowStream.Core.Capture.Windows;
 
 public interface IWin32Api

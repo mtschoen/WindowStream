@@ -1,11 +1,9 @@
-using System.Collections.Generic;
-
 namespace WindowStream.Core.Capture.Windows;
 
-internal static class WindowEnumerationFilters
+static class WindowEnumerationFilters
 {
     public static readonly IReadOnlySet<string> ExcludedClassNames =
-        new HashSet<string>(System.StringComparer.Ordinal)
+        new HashSet<string>(StringComparer.Ordinal)
         {
             "Progman",
             "Shell_TrayWnd",

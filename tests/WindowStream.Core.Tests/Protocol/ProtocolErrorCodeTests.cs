@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Protocol;
 using Xunit;
 
@@ -32,7 +31,7 @@ public sealed class ProtocolErrorCodeTests
     [Fact]
     public void ParseThrowsForUnknownValue()
     {
-        ArgumentException exception = Assert.Throws<ArgumentException>(
+        var exception = Assert.Throws<ArgumentException>(
             () => ProtocolErrorCodeNames.Parse("NOT_A_REAL_CODE"));
         Assert.Contains("NOT_A_REAL_CODE", exception.Message, StringComparison.Ordinal);
     }

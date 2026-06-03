@@ -1,8 +1,4 @@
-using System;
-using System.IO;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Hosting;
 using Xunit;
 
@@ -13,10 +9,10 @@ public class StreamRouterTests
     [Fact]
     public async Task RoutesChunksFromPipe_TaggedWithStreamId()
     {
-        Channel<TaggedChunk> output = Channel.CreateUnbounded<TaggedChunk>();
-        StreamRouter router = new StreamRouter(output);
+        var output = Channel.CreateUnbounded<TaggedChunk>();
+        var router = new StreamRouter(output);
 
-        MemoryStream pipe = new MemoryStream();
+        var pipe = new MemoryStream();
         await WorkerChunkPipe.WriteChunkAsync(pipe,
             new WorkerChunkFrame(100UL, true, new byte[] { 0xAA }), CancellationToken.None);
         await WorkerChunkPipe.WriteChunkAsync(pipe,
@@ -26,16 +22,16 @@ public class StreamRouterTests
         // readerTask is awaited inside the using scope (line below the assertions), so
         // the CancellationTokenSource is still live when the task completes.
 #pragma warning disable CA2025 // readerTask is awaited before cancellation goes out of scope
-        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        Task readerTask = router.ReadFromPipeAsync(streamId: 7, pipe, cancellation.Token);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var readerTask = router.ReadFromPipeAsync(streamId: 7, pipe, cancellation.Token);
 #pragma warning restore CA2025
 
-        TaggedChunk first = await output.Reader.ReadAsync(cancellation.Token);
+        var first = await output.Reader.ReadAsync(cancellation.Token);
         Assert.Equal(7, first.StreamId);
         Assert.Equal(100UL, first.Frame.PresentationTimestampMicroseconds);
         Assert.True(first.Frame.IsKeyframe);
 
-        TaggedChunk second = await output.Reader.ReadAsync(cancellation.Token);
+        var second = await output.Reader.ReadAsync(cancellation.Token);
         Assert.Equal(7, second.StreamId);
         Assert.False(second.Frame.IsKeyframe);
 
@@ -46,9 +42,9 @@ public class StreamRouterTests
     [Fact]
     public async Task PipeClosed_StopsReader_DoesNotThrow()
     {
-        Channel<TaggedChunk> output = Channel.CreateUnbounded<TaggedChunk>();
-        StreamRouter router = new StreamRouter(output);
-        MemoryStream emptyPipe = new MemoryStream();
+        var output = Channel.CreateUnbounded<TaggedChunk>();
+        var router = new StreamRouter(output);
+        var emptyPipe = new MemoryStream();
         await router.ReadFromPipeAsync(streamId: 1, emptyPipe, CancellationToken.None);
         Assert.False(output.Reader.TryRead(out _));
     }

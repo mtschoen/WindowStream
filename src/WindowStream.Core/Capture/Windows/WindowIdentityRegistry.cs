@@ -1,67 +1,65 @@
-using System.Collections.Generic;
-
 namespace WindowStream.Core.Capture.Windows;
 
 public sealed class WindowIdentityRegistry
 {
-    private readonly Dictionary<long, KnownWindow> handleToKnown = new();
-    private ulong nextWindowId = 1;
+    readonly Dictionary<long, KnownWindow> _handleToKnown = new();
+    ulong _nextWindowId = 1;
 
     public IEnumerable<WindowEnumerationEvent> Diff(IReadOnlyList<WindowInformation> currentSnapshot)
     {
-        HashSet<long> seenHandles = new HashSet<long>();
-        List<WindowEnumerationEvent> events = new List<WindowEnumerationEvent>();
+        var seenHandles = new HashSet<long>();
+        var events = new List<WindowEnumerationEvent>();
 
-        foreach (WindowInformation current in currentSnapshot)
+        foreach (var current in currentSnapshot)
         {
-            long handle = current.handle.value;
+            var handle = current.Handle.Value;
             seenHandles.Add(handle);
-            if (handleToKnown.TryGetValue(handle, out KnownWindow? previous))
+            if (_handleToKnown.TryGetValue(handle, out var previous))
             {
-                bool titleChanged = previous.Title != current.title;
-                bool widthChanged = previous.WidthPixels != current.widthPixels;
-                bool heightChanged = previous.HeightPixels != current.heightPixels;
+                var titleChanged = previous.Title != current.Title;
+                var widthChanged = previous.WidthPixels != current.WidthPixels;
+                var heightChanged = previous.HeightPixels != current.HeightPixels;
                 if (titleChanged || widthChanged || heightChanged)
                 {
                     events.Add(new WindowChanged(
                         previous.WindowId,
-                        titleChanged ? current.title : null,
-                        widthChanged ? current.widthPixels : null,
-                        heightChanged ? current.heightPixels : null));
-                    handleToKnown[handle] = previous with
+                        titleChanged ? current.Title : null,
+                        widthChanged ? current.WidthPixels : null,
+                        heightChanged ? current.HeightPixels : null));
+                    _handleToKnown[handle] = previous with
                     {
-                        Title = current.title,
-                        WidthPixels = current.widthPixels,
-                        HeightPixels = current.heightPixels
+                        Title = current.Title,
+                        WidthPixels = current.WidthPixels,
+                        HeightPixels = current.HeightPixels
                     };
                 }
             }
             else
             {
-                ulong assigned = nextWindowId++;
-                handleToKnown[handle] = new KnownWindow(
-                    assigned, current.title, current.widthPixels, current.heightPixels);
+                var assigned = _nextWindowId++;
+                _handleToKnown[handle] = new KnownWindow(
+                    assigned, current.Title, current.WidthPixels, current.HeightPixels);
                 events.Add(new WindowAppeared(assigned, current));
             }
         }
 
-        List<long> goneHandles = new List<long>();
-        foreach (KeyValuePair<long, KnownWindow> entry in handleToKnown)
+        var goneHandles = new List<long>();
+        foreach (var entry in _handleToKnown)
         {
             if (!seenHandles.Contains(entry.Key))
             {
                 goneHandles.Add(entry.Key);
             }
         }
-        foreach (long gone in goneHandles)
+        foreach (var gone in goneHandles)
         {
-            ulong identifier = handleToKnown[gone].WindowId;
-            handleToKnown.Remove(gone);
+            var identifier = _handleToKnown[gone].WindowId;
+            _handleToKnown.Remove(gone);
             events.Add(new WindowDisappeared(identifier));
         }
 
         return events;
     }
 
-    private sealed record KnownWindow(ulong WindowId, string Title, int WidthPixels, int HeightPixels);
+    sealed record KnownWindow(ulong WindowId, string Title, int WidthPixels, int HeightPixels);
 }

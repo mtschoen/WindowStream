@@ -1,7 +1,3 @@
-using System;
-using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
 using WindowStream.Core.Session;
 using Xunit;
@@ -14,7 +10,7 @@ public sealed class IControlChannelDefaultTests
     /// In-memory channel that does NOT override <see cref="IControlChannel.RemoteIpAddress"/>,
     /// so accessing the property exercises the default interface implementation.
     /// </summary>
-    private sealed class MinimalControlChannel : IControlChannel
+    sealed class MinimalControlChannel : IControlChannel
     {
         public DateTimeOffset LastHeartbeatReceived => default;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -29,7 +25,7 @@ public sealed class IControlChannelDefaultTests
     public async Task RemoteIpAddress_DefaultImplementation_IsNull()
     {
         await using IControlChannel channel = new MinimalControlChannel();
-        IPAddress? address = channel.RemoteIpAddress;
+        var address = channel.RemoteIpAddress;
         Assert.Null(address);
     }
 }

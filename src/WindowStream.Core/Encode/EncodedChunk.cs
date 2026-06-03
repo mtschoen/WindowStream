@@ -1,12 +1,10 @@
-using System;
-
 namespace WindowStream.Core.Encode;
 
 public sealed class EncodedChunk
 {
-    public ReadOnlyMemory<byte> payload { get; }
-    public bool isKeyframe { get; }
-    public long presentationTimestampMicroseconds { get; }
+    public ReadOnlyMemory<byte> Payload { get; }
+    public bool IsKeyframe { get; }
+    public long PresentationTimestampMicroseconds { get; }
 
     public EncodedChunk(
         ReadOnlyMemory<byte> payload,
@@ -18,8 +16,8 @@ public sealed class EncodedChunk
             throw new ArgumentException("payload must not be empty.", nameof(payload));
         }
         ArgumentOutOfRangeException.ThrowIfNegative(presentationTimestampMicroseconds);
-        this.payload = payload;
-        this.isKeyframe = isKeyframe;
-        this.presentationTimestampMicroseconds = presentationTimestampMicroseconds;
+        Payload = payload;
+        IsKeyframe = isKeyframe;
+        PresentationTimestampMicroseconds = presentationTimestampMicroseconds;
     }
 }

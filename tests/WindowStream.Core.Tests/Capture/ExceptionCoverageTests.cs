@@ -1,4 +1,4 @@
-using System;
+using WindowStream.Core.Capture;
 using Xunit;
 
 namespace WindowStream.Core.Tests.Capture;
@@ -8,9 +8,9 @@ public sealed class ExceptionCoverageTests
     [Fact]
     public void WindowCaptureException_TwoArgConstructor_SetsMessage()
     {
-        InvalidOperationException inner = new InvalidOperationException("inner");
-        WindowStream.Core.Capture.WindowCaptureException exception =
-            new WindowStream.Core.Capture.WindowCaptureException("outer", inner);
+        var inner = new InvalidOperationException("inner");
+        var exception =
+            new WindowCaptureException("outer", inner);
         Assert.Equal("outer", exception.Message);
         Assert.Same(inner, exception.InnerException);
     }
@@ -18,21 +18,21 @@ public sealed class ExceptionCoverageTests
     [Fact]
     public void WindowGoneException_TwoArgConstructor_SetsHandle()
     {
-        InvalidOperationException inner = new InvalidOperationException("boom");
-        WindowStream.Core.Capture.WindowHandle handle = new WindowStream.Core.Capture.WindowHandle(42);
-        WindowStream.Core.Capture.WindowGoneException exception =
-            new WindowStream.Core.Capture.WindowGoneException(handle, inner);
-        Assert.Equal(handle, exception.handle);
+        var inner = new InvalidOperationException("boom");
+        var handle = new WindowHandle(42);
+        var exception =
+            new WindowGoneException(handle, inner);
+        Assert.Equal(handle, exception.Handle);
         Assert.Same(inner, exception.InnerException);
     }
 
     [Fact]
     public void WindowGoneException_OneArgConstructor_ExposesHandle()
     {
-        WindowStream.Core.Capture.WindowHandle handle = new WindowStream.Core.Capture.WindowHandle(7);
-        WindowStream.Core.Capture.WindowGoneException exception =
-            new WindowStream.Core.Capture.WindowGoneException(handle);
-        Assert.Equal(handle, exception.handle);
+        var handle = new WindowHandle(7);
+        var exception =
+            new WindowGoneException(handle);
+        Assert.Equal(handle, exception.Handle);
         Assert.Contains("0x7", exception.Message, StringComparison.Ordinal);
     }
 }

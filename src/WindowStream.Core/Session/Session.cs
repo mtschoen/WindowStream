@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Session;
 
 public sealed class Session
@@ -28,10 +26,10 @@ public sealed class Session
         TransitionTo(SessionState.Stopped, allowedFromStates: new[] { SessionState.Capturing, SessionState.Streaming });
     }
 
-    private void TransitionTo(SessionState toState, SessionState[] allowedFromStates)
+    void TransitionTo(SessionState toState, SessionState[] allowedFromStates)
     {
-        bool allowed = false;
-        for (int index = 0; index < allowedFromStates.Length; index++)
+        var allowed = false;
+        for (var index = 0; index < allowedFromStates.Length; index++)
         {
             if (allowedFromStates[index] == CurrentState)
             {
@@ -43,7 +41,7 @@ public sealed class Session
         {
             throw new InvalidSessionTransitionException(CurrentState, toState);
         }
-        SessionState fromState = CurrentState;
+        var fromState = CurrentState;
         CurrentState = toState;
         StateChanged?.Invoke(this, new SessionStateChangedEventArguments(fromState, toState));
     }

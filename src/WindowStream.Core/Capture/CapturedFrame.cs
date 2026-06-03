@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Capture;
 
 public enum FrameRepresentation
@@ -10,15 +8,15 @@ public enum FrameRepresentation
 
 public sealed class CapturedFrame
 {
-    public int widthPixels { get; }
-    public int heightPixels { get; }
-    public int rowStrideBytes { get; }
-    public PixelFormat pixelFormat { get; }
-    public long presentationTimestampMicroseconds { get; }
-    public FrameRepresentation representation { get; }
-    public ReadOnlyMemory<byte> pixelBuffer { get; }
-    public nint nativeTexturePointer { get; }
-    public int textureArrayIndex { get; }
+    public int WidthPixels { get; }
+    public int HeightPixels { get; }
+    public int RowStrideBytes { get; }
+    public PixelFormat PixelFormat { get; }
+    public long PresentationTimestampMicroseconds { get; }
+    public FrameRepresentation Representation { get; }
+    public ReadOnlyMemory<byte> PixelBuffer { get; }
+    public nint NativeTexturePointer { get; }
+    public int TextureArrayIndex { get; }
 
     /// <summary>
     /// Construct a managed-byte (CPU-resident) <see cref="CapturedFrame"/>.
@@ -37,7 +35,7 @@ public sealed class CapturedFrame
     {
         ValidateCommon(widthPixels, heightPixels, rowStrideBytes, pixelFormat, presentationTimestampMicroseconds);
 
-        long expectedLength = pixelFormat == PixelFormat.Nv12
+        var expectedLength = pixelFormat == PixelFormat.Nv12
             ? (long)rowStrideBytes * heightPixels * 3 / 2
             : (long)rowStrideBytes * heightPixels;
         if (pixelBuffer.Length < expectedLength)
@@ -47,18 +45,18 @@ public sealed class CapturedFrame
                 nameof(pixelBuffer));
         }
 
-        this.widthPixels = widthPixels;
-        this.heightPixels = heightPixels;
-        this.rowStrideBytes = rowStrideBytes;
-        this.pixelFormat = pixelFormat;
-        this.presentationTimestampMicroseconds = presentationTimestampMicroseconds;
-        this.representation = FrameRepresentation.Bytes;
-        this.pixelBuffer = pixelBuffer;
-        this.nativeTexturePointer = 0;
-        this.textureArrayIndex = 0;
+        WidthPixels = widthPixels;
+        HeightPixels = heightPixels;
+        RowStrideBytes = rowStrideBytes;
+        PixelFormat = pixelFormat;
+        PresentationTimestampMicroseconds = presentationTimestampMicroseconds;
+        Representation = FrameRepresentation.Bytes;
+        PixelBuffer = pixelBuffer;
+        NativeTexturePointer = 0;
+        TextureArrayIndex = 0;
     }
 
-    private CapturedFrame(
+    CapturedFrame(
         int widthPixels,
         int heightPixels,
         int rowStrideBytes,
@@ -78,15 +76,15 @@ public sealed class CapturedFrame
             throw new ArgumentOutOfRangeException(nameof(textureArrayIndex), "Texture array index must be non-negative.");
         }
 
-        this.widthPixels = widthPixels;
-        this.heightPixels = heightPixels;
-        this.rowStrideBytes = rowStrideBytes;
-        this.pixelFormat = pixelFormat;
-        this.presentationTimestampMicroseconds = presentationTimestampMicroseconds;
-        this.representation = FrameRepresentation.Texture;
-        this.pixelBuffer = ReadOnlyMemory<byte>.Empty;
-        this.nativeTexturePointer = nativeTexturePointer;
-        this.textureArrayIndex = textureArrayIndex;
+        WidthPixels = widthPixels;
+        HeightPixels = heightPixels;
+        RowStrideBytes = rowStrideBytes;
+        PixelFormat = pixelFormat;
+        PresentationTimestampMicroseconds = presentationTimestampMicroseconds;
+        Representation = FrameRepresentation.Texture;
+        PixelBuffer = ReadOnlyMemory<byte>.Empty;
+        NativeTexturePointer = nativeTexturePointer;
+        TextureArrayIndex = textureArrayIndex;
     }
 
     /// <summary>
@@ -133,7 +131,7 @@ public sealed class CapturedFrame
             nativeTexturePointer,
             textureArrayIndex);
 
-    private static void ValidateCommon(
+    static void ValidateCommon(
         int widthPixels,
         int heightPixels,
         int rowStrideBytes,
@@ -143,7 +141,7 @@ public sealed class CapturedFrame
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(widthPixels);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(heightPixels);
 
-        int minimumStride = pixelFormat switch
+        var minimumStride = pixelFormat switch
         {
             PixelFormat.Bgra32 => widthPixels * 4,
             PixelFormat.Nv12 => widthPixels,

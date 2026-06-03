@@ -1,7 +1,4 @@
-using System;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
 
 namespace WindowStream.Core.Session.Testing;
@@ -12,27 +9,27 @@ namespace WindowStream.Core.Session.Testing;
 /// </summary>
 public sealed class FakeViewerEndpoint : IAsyncDisposable
 {
-    private readonly ChannelWriter<ControlMessage> toServer;
-    private readonly ChannelReader<ControlMessage> fromServer;
-    private bool disposed;
+    readonly ChannelWriter<ControlMessage> _toServer;
+    readonly ChannelReader<ControlMessage> _fromServer;
+    bool _disposed;
 
     internal FakeViewerEndpoint(
         ChannelWriter<ControlMessage> toServer,
         ChannelReader<ControlMessage> fromServer)
     {
-        this.toServer = toServer;
-        this.fromServer = fromServer;
+        _toServer = toServer;
+        _fromServer = fromServer;
     }
 
     public async Task SendAsync(ControlMessage message, CancellationToken cancellationToken)
     {
-        await toServer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        await _toServer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<TMessage> ReceiveAsync<TMessage>(CancellationToken cancellationToken)
         where TMessage : ControlMessage
     {
-        ControlMessage message = await ReceiveAsync(cancellationToken).ConfigureAwait(false);
+        var message = await ReceiveAsync(cancellationToken).ConfigureAwait(false);
         if (message is not TMessage typed)
         {
             throw new InvalidOperationException(
@@ -45,19 +42,19 @@ public sealed class FakeViewerEndpoint : IAsyncDisposable
     {
         try
         {
-            return await fromServer.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return await _fromServer.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (ChannelClosedException)
         {
-            throw new System.IO.EndOfStreamException("The server disconnected.");
+            throw new EndOfStreamException("The server disconnected.");
         }
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
-        toServer.TryComplete();
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
+        _toServer.TryComplete();
         return ValueTask.CompletedTask;
     }
 }

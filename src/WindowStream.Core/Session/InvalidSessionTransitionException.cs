@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Session;
 
 public sealed class InvalidSessionTransitionException : InvalidOperationException

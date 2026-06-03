@@ -1,50 +1,52 @@
 #if WINDOWS
-using System;
-using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Channels;
-using Silk.NET.Direct3D11;
-using SilkDxgi = Silk.NET.DXGI;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
-using Windows.Graphics.DirectX.Direct3D11;
+using Silk.NET.Direct3D11;
 using WindowStream.Core.Encode;
+using SilkDxgi = Silk.NET.DXGI;
 
 namespace WindowStream.Core.Capture.Windows;
 
 public sealed class WgcCapture : IWindowCapture
 {
-    private readonly GraphicsCaptureItem item;
-    private readonly Direct3D11CaptureFramePool framePool;
-    private readonly GraphicsCaptureSession session;
-    private readonly Channel<object> frameChannel =
+    // Retained to keep the WGC capture item alive for the session's lifetime so its
+    // Closed event keeps firing; the session does not own a managed reference to it.
+    // ReSharper disable once NotAccessedField.Local
+    readonly GraphicsCaptureItem _item;
+    readonly Direct3D11CaptureFramePool _framePool;
+    readonly GraphicsCaptureSession _session;
+
+    readonly Channel<object> _frameChannel =
         Channel.CreateBounded<object>(new BoundedChannelOptions(8)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
         });
-    private readonly CancellationToken cancellationToken;
-    private readonly long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-    private bool disposed;
 
-    public WindowHandle handle { get; }
-    public CaptureOptions options { get; }
+    readonly CancellationToken _cancellationToken;
+    readonly long _startTicks = Stopwatch.GetTimestamp();
+    bool _disposed;
+
+    public WindowHandle Handle { get; }
+    public CaptureOptions Options { get; }
     public IAsyncEnumerable<CapturedFrame> Frames { get; }
 
-    private readonly Direct3D11DeviceManager deviceManager;
-    private readonly WgcFrameConverter frameConverter;
-    private readonly bool ownsDeviceManager;
-    private readonly IFrameTexturePool? sharedFrameTexturePool;
+    readonly Direct3D11DeviceManager _deviceManager;
+    readonly WgcFrameConverter _frameConverter;
+    readonly bool _ownsDeviceManager;
+    readonly IFrameTexturePool? _sharedFrameTexturePool;
 
     // NV12 ring — 3 individual NV12 textures allocated lazily and recreated on resize.
-    private const int RingSize = 3;
-    private readonly nint[] nativeNv12TexturePointers = new nint[RingSize];
-    private int nextRingSlot;
-    private int ringWidth;
-    private int ringHeight;
-    private D3D11VideoProcessorColorConverter? colorConverter;
+    const int RingSize = 3;
+    readonly nint[] _nativeNv12TexturePointers = new nint[RingSize];
+    int _nextRingSlot;
+    int _ringWidth;
+    int _ringHeight;
+    D3D11VideoProcessorColorConverter? _colorConverter;
 
     public WgcCapture(
         WindowHandle handle,
@@ -55,63 +57,63 @@ public sealed class WgcCapture : IWindowCapture
         IFrameTexturePool? sharedFrameTexturePool,
         CancellationToken cancellationToken)
     {
-        this.handle = handle;
-        this.options = options;
-        this.item = item;
-        this.deviceManager = deviceManager ?? throw new ArgumentNullException(nameof(deviceManager));
-        this.ownsDeviceManager = ownsDeviceManager;
-        this.sharedFrameTexturePool = sharedFrameTexturePool;
-        this.cancellationToken = cancellationToken;
+        Handle = handle;
+        Options = options;
+        _item = item;
+        _deviceManager = deviceManager ?? throw new ArgumentNullException(nameof(deviceManager));
+        _ownsDeviceManager = ownsDeviceManager;
+        _sharedFrameTexturePool = sharedFrameTexturePool;
+        _cancellationToken = cancellationToken;
 
-        frameConverter = new WgcFrameConverter(AcquireNv12Slot);
+        _frameConverter = new WgcFrameConverter(AcquireNv12Slot);
 
         item.Closed += OnItemClosed;
         // Use CreateFreeThreaded so FrameArrived fires on any thread without a DispatcherQueue
-        framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+        _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             deviceManager.WinRtDevice,
             DirectXPixelFormat.B8G8R8A8UIntNormalized,
             numberOfBuffers: 2,
             size: item.Size);
-        framePool.FrameArrived += OnFrameArrived;
-        session = framePool.CreateCaptureSession(item);
-        session.StartCapture();
+        _framePool.FrameArrived += OnFrameArrived;
+        _session = _framePool.CreateCaptureSession(item);
+        _session.StartCapture();
 
         Frames = ReadAsync(cancellationToken);
     }
 
-    private void OnItemClosed(GraphicsCaptureItem sender, object args)
+    void OnItemClosed(GraphicsCaptureItem sender, object args)
     {
-        frameChannel.Writer.TryComplete(new WindowGoneException(handle));
+        _frameChannel.Writer.TryComplete(new WindowGoneException(Handle));
     }
 
-    private void OnFrameArrived(Direct3D11CaptureFramePool pool, object args)
+    void OnFrameArrived(Direct3D11CaptureFramePool pool, object args)
     {
         try
         {
-            using Direct3D11CaptureFrame frame = pool.TryGetNextFrame();
+            using var frame = pool.TryGetNextFrame();
             if (frame is null)
             {
                 return;
             }
-            CapturedFrame converted = frameConverter.Convert(frame, startTicks);
-            frameChannel.Writer.TryWrite(converted);
+            var converted = _frameConverter.Convert(frame, _startTicks);
+            _frameChannel.Writer.TryWrite(converted);
         }
 #pragma warning disable CA1031 // top-level WGC frame-arrived callback; exception is forwarded to channel as completion fault
         catch (Exception exception)
         {
-            frameChannel.Writer.TryComplete(new WindowCaptureException("WGC frame conversion failed.", exception));
+            _frameChannel.Writer.TryComplete(new WindowCaptureException("WGC frame conversion failed.", exception));
         }
 #pragma warning restore CA1031
     }
 
-    private async IAsyncEnumerable<CapturedFrame> ReadAsync(
+    async IAsyncEnumerable<CapturedFrame> ReadAsync(
         [EnumeratorCancellation] CancellationToken enumeratorCancellation = default)
     {
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, enumeratorCancellation);
-        while (await frameChannel.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false))
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            _cancellationToken, enumeratorCancellation);
+        while (await _frameChannel.Reader.WaitToReadAsync(linked.Token).ConfigureAwait(false))
         {
-            while (frameChannel.Reader.TryRead(out object? next))
+            while (_frameChannel.Reader.TryRead(out var next))
             {
                 if (next is CapturedFrame frame)
                 {
@@ -126,21 +128,21 @@ public sealed class WgcCapture : IWindowCapture
     }
 
     /// <summary>
-    /// Lazily initialises (or re-initialises on dimension change) the 3-element NV12 texture
+    /// Lazily initializes (or re-initializes on dimension change) the 3-element NV12 texture
     /// ring and the <see cref="D3D11VideoProcessorColorConverter"/>. Called from
     /// <see cref="AcquireNv12Slot"/> inside the WGC <c>FrameArrived</c> callback.
     /// </summary>
-    private unsafe void EnsureNv12RingAndConverter(int width, int height)
+    unsafe void EnsureNv12RingAndConverter(int width, int height)
     {
         // NV12 requires both texture dimensions to be even (chroma plane is
         // height/2 rows × width bytes; D3D11 CreateTexture2D rejects odd
         // dimensions with E_INVALIDARG). WGC frame dimensions track the
         // captured window's client area in physical pixels, which can be odd
-        // at non-integer DPI scales (e.g. 175% on a 600×500 window → 1050×875).
-        int evenWidth = RoundUpToEven(width);
-        int evenHeight = RoundUpToEven(height);
+        // at noninteger DPI scales (e.g. 175% on a 600×500 window → 1050×875).
+        var evenWidth = RoundUpToEven(width);
+        var evenHeight = RoundUpToEven(height);
 
-        if (colorConverter is not null && ringWidth == evenWidth && ringHeight == evenHeight)
+        if (_colorConverter is not null && _ringWidth == evenWidth && _ringHeight == evenHeight)
         {
             return;
         }
@@ -148,9 +150,9 @@ public sealed class WgcCapture : IWindowCapture
         // Dimensions changed (or first call) — dispose existing ring and converter.
         DisposeNv12RingAndConverter();
 
-        ID3D11Device* device = (ID3D11Device*)deviceManager.NativeDevicePointer;
+        var device = (ID3D11Device*)_deviceManager.NativeDevicePointer;
 
-        Texture2DDesc description = new Texture2DDesc
+        var description = new Texture2DDesc
         {
             Width = (uint)evenWidth,
             Height = (uint)evenHeight,
@@ -164,128 +166,128 @@ public sealed class WgcCapture : IWindowCapture
             MiscFlags = 0,
         };
 
-        for (int slotIndex = 0; slotIndex < RingSize; slotIndex++)
+        for (var slotIndex = 0; slotIndex < RingSize; slotIndex++)
         {
             ID3D11Texture2D* texture = null;
-            int hresult = device->CreateTexture2D(ref description, (SubresourceData*)null, ref texture);
+            var hresult = device->CreateTexture2D(in description, null, ref texture);
             if (hresult < 0)
             {
                 // Release any textures already allocated before throwing.
-                for (int releaseIndex = 0; releaseIndex < slotIndex; releaseIndex++)
+                for (var releaseIndex = 0; releaseIndex < slotIndex; releaseIndex++)
                 {
-                    if (nativeNv12TexturePointers[releaseIndex] != 0)
+                    if (_nativeNv12TexturePointers[releaseIndex] != 0)
                     {
-                        ((ID3D11Texture2D*)nativeNv12TexturePointers[releaseIndex])->Release();
-                        nativeNv12TexturePointers[releaseIndex] = 0;
+                        ((ID3D11Texture2D*)_nativeNv12TexturePointers[releaseIndex])->Release();
+                        _nativeNv12TexturePointers[releaseIndex] = 0;
                     }
                 }
                 throw new WindowCaptureException(
                     "CreateTexture2D (NV12 ring) failed. HRESULT: 0x"
-                    + ((uint)hresult).ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
+                    + hresult.ToString("X8", CultureInfo.InvariantCulture));
             }
-            nativeNv12TexturePointers[slotIndex] = (nint)texture;
+            _nativeNv12TexturePointers[slotIndex] = (nint)texture;
         }
 
-        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, evenWidth, evenHeight);
-        ringWidth = evenWidth;
-        ringHeight = evenHeight;
-        nextRingSlot = 0;
+        _colorConverter = new D3D11VideoProcessorColorConverter(_deviceManager, evenWidth, evenHeight);
+        _ringWidth = evenWidth;
+        _ringHeight = evenHeight;
+        _nextRingSlot = 0;
     }
 
-    private static int RoundUpToEven(int value) => (value + 1) & ~1;
+    static int RoundUpToEven(int value) => (value + 1) & ~1;
 
     /// <summary>
-    /// Disposes the NV12 ring textures and the colour converter, resetting ring state.
+    /// Disposes the NV12 ring textures and the color converter, resetting ring state.
     /// </summary>
-    private unsafe void DisposeNv12RingAndConverter()
+    unsafe void DisposeNv12RingAndConverter()
     {
-        colorConverter?.Dispose();
-        colorConverter = null;
+        _colorConverter?.Dispose();
+        _colorConverter = null;
 
-        for (int slotIndex = 0; slotIndex < RingSize; slotIndex++)
+        for (var slotIndex = 0; slotIndex < RingSize; slotIndex++)
         {
-            if (nativeNv12TexturePointers[slotIndex] != 0)
+            if (_nativeNv12TexturePointers[slotIndex] != 0)
             {
-                ((ID3D11Texture2D*)nativeNv12TexturePointers[slotIndex])->Release();
-                nativeNv12TexturePointers[slotIndex] = 0;
+                ((ID3D11Texture2D*)_nativeNv12TexturePointers[slotIndex])->Release();
+                _nativeNv12TexturePointers[slotIndex] = 0;
             }
         }
 
-        ringWidth = 0;
-        ringHeight = 0;
-        nextRingSlot = 0;
+        _ringWidth = 0;
+        _ringHeight = 0;
+        _nextRingSlot = 0;
     }
 
     /// <summary>
-    /// Lazily initialises (or re-initialises on dimension change) only the
+    /// Lazily initializes (or re-initializes on dimension change) only the
     /// <see cref="D3D11VideoProcessorColorConverter"/>, without allocating the NV12 ring.
     /// Used when an external <see cref="IFrameTexturePool"/> supplies the destination textures.
     /// </summary>
-    private void EnsureColorConverter(int width, int height)
+    void EnsureColorConverter(int width, int height)
     {
         // Round to even to mirror EnsureNv12RingAndConverter — the M4 path's
         // pool textures are encoder-sized (already even in practice), but the
         // converter's content desc should match the texture exactly.
-        int evenWidth = RoundUpToEven(width);
-        int evenHeight = RoundUpToEven(height);
+        var evenWidth = RoundUpToEven(width);
+        var evenHeight = RoundUpToEven(height);
 
-        if (colorConverter is not null && ringWidth == evenWidth && ringHeight == evenHeight)
+        if (_colorConverter is not null && _ringWidth == evenWidth && _ringHeight == evenHeight)
         {
             return;
         }
 
 #pragma warning disable CA1031 // best-effort dispose of old converter before recreating; failure is non-fatal
-        try { colorConverter?.Dispose(); } catch { }
+        try { _colorConverter?.Dispose(); } catch { /* best-effort dispose before recreate; failure is non-fatal */ }
 #pragma warning restore CA1031
-        colorConverter = new D3D11VideoProcessorColorConverter(deviceManager, evenWidth, evenHeight);
-        ringWidth = evenWidth;
-        ringHeight = evenHeight;
+        _colorConverter = new D3D11VideoProcessorColorConverter(_deviceManager, evenWidth, evenHeight);
+        _ringWidth = evenWidth;
+        _ringHeight = evenHeight;
     }
 
     /// <summary>
-    /// Acquires the next NV12 destination texture and the active colour converter.
+    /// Acquires the next NV12 destination texture and the active color converter.
     /// When an external <see cref="IFrameTexturePool"/> was supplied (M4 path), the
     /// texture comes from the encoder's <c>hw_frames_ctx</c> pool; otherwise the
     /// M3 hand-rolled ring is used.
     /// Returns the texture pointer, array index, and converter.
     /// </summary>
-    private (nint texturePointer, int arrayIndex, D3D11VideoProcessorColorConverter converter) AcquireNv12Slot(
+    (nint texturePointer, int arrayIndex, D3D11VideoProcessorColorConverter converter) AcquireNv12Slot(
         int width, int height)
     {
-        if (sharedFrameTexturePool is not null)
+        if (_sharedFrameTexturePool is not null)
         {
             // M4 path: NV12 textures come from the encoder's hw_frames_ctx pool.
             EnsureColorConverter(width, height);
-            sharedFrameTexturePool.AcquireFrameTexture(out nint poolTexturePointer, out int poolSubresourceIndex);
-            return (poolTexturePointer, poolSubresourceIndex, colorConverter!);
+            _sharedFrameTexturePool.AcquireFrameTexture(out var poolTexturePointer, out var poolSubresourceIndex);
+            return (poolTexturePointer, poolSubresourceIndex, _colorConverter!);
         }
 
         // M3 fallback path: hand-rolled NV12 ring inside this capture.
         EnsureNv12RingAndConverter(width, height);
-        int slot = nextRingSlot;
-        nextRingSlot = (nextRingSlot + 1) % RingSize;
-        return (nativeNv12TexturePointers[slot], 0, colorConverter!);
+        var slot = _nextRingSlot;
+        _nextRingSlot = (_nextRingSlot + 1) % RingSize;
+        return (_nativeNv12TexturePointers[slot], 0, _colorConverter!);
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return ValueTask.CompletedTask;
         }
-        disposed = true;
+        _disposed = true;
 #pragma warning disable CA1031 // best-effort dispose in async teardown; failures must not propagate from DisposeAsync
-        try { session.Dispose(); } catch { }
-        try { framePool.Dispose(); } catch { }
+        try { _session.Dispose(); } catch { /* best-effort teardown; must not propagate from DisposeAsync */ }
+        try { _framePool.Dispose(); } catch { /* best-effort teardown; must not propagate from DisposeAsync */ }
 #pragma warning restore CA1031
         DisposeNv12RingAndConverter();
-        if (ownsDeviceManager)
+        if (_ownsDeviceManager)
         {
 #pragma warning disable CA1031 // best-effort dispose in async teardown; failures must not propagate from DisposeAsync
-            try { deviceManager.Dispose(); } catch { }
+            try { _deviceManager.Dispose(); } catch { /* best-effort teardown; must not propagate from DisposeAsync */ }
 #pragma warning restore CA1031
         }
-        frameChannel.Writer.TryComplete();
+        _frameChannel.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }
 }

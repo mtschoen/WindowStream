@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Observability;
 using WindowStream.Server.Observability;
 using Xunit;
@@ -31,7 +30,7 @@ public class ServerStateReducerTests
     {
         ServerStateReducer reducer = new();
         reducer.Apply(new PipelineEvent.OpenStreamReceived(StreamId: 1, WindowId: 7));
-        StreamStateRow row = reducer.State.Streams[1];
+        var row = reducer.State.Streams[1];
         Assert.Equal(7UL, row.WindowId);
         Assert.Equal(StageStatus.Pending, row.WorkerSpawn);
     }

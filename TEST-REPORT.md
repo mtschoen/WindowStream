@@ -1,10 +1,14 @@
-# WindowStream test report — 2026-05-17
+# WindowStream test report — 2026-06-03
 
-Status:   PASS (coverage) · IN PROGRESS (lint gate — see "Lint rollout" below)
-Mode:     close-the-gap (establishing the superset lint gate is the active task)
-Tests:    663 passed, 3 skipped (total 666)
-Git:      ead4fc8 (main, post T12 PipelineEvent landing)
-          lint rollout on branch linter-rollout (worktree off main @ 17687d2)
+Status:   PASS (coverage + Roslyn/Roslynator gate) + jb inspectcode deep gate
+          896 -> 0 (all findings cleared; the 5 previously-documented MAUI/CCW
+          "exceptions" were re-verified this pass and removed - they did not
+          actually affect coverage)
+Mode:     close-the-gap (jb inspectcode deep gate - reached zero)
+Tests:    Core.Tests 338 + Server.Tests 44 pass at 100% coverage
+Git:      branch chore/jb-inspectcode-cleanup (off main @ 283c4de); Rider naming
+          rename + delete-unused on top of 07c9ae7. Roslyn analyzer gate landed on
+          main via PR #12 (db396b2)
 
 .NET (Coverlet — line + branch + method, 100% gate)
   WindowStream.Core      — 100% line, 100% branch, 100% method
@@ -13,6 +17,13 @@ Git:      ead4fc8 (main, post T12 PipelineEvent landing)
   20 `[ExcludeFromCodeCoverage]` annotations across 11 production files
   (native I/O wrappers — D3D11/COM, FFmpeg, raw sockets — per AGENTS.md
   rationale.)
+  Server.Tests coverage `<Include>` anchored to `WindowStream.Server.ViewModels.*`
+  (was a loose `*ViewModels*` glob): the CsWinRT AOT CCW-vtable class
+  `WinRT.WindowStreamServerVtableClasses.…SessionViewModelWinRTTypeDetails`
+  matched the glob by name and pulled 10 lines of uncovered generated marshalling
+  glue into the denominator (90.29%). It lacks `[GeneratedCode]`, so the
+  attribute-based exclusion missed it. Pre-existing at HEAD 1bee5b2, not a
+  regression from the naming work; fixed here so the 100% gate is honest.
 
 Viewer (Kover with JaCoCo backend — line + branch, 100% gate)
   app (portable + gxr flavors) — 100% line (661/661), 100% branch (225/225)
@@ -68,6 +79,61 @@ Coverage: 100% line / 100% branch / 100% method held after all fixes
 
 Done (committed): format sweep · enable analyzers+policy · adopt fleet conventions
   +Roslynator · fix all CA/RCS findings → 0 (coverage held at 100%)
-Remaining: _camelCase rename (jb cleanupcode) · jb inspectcode → 0 · CI lint job
-  · PostToolUse hook · aislop (config + hook + gate, DISABLED until aislop ships a
-  C# engine) · open PR
+
+## jb inspectcode deep gate (branch chore/jb-inspectcode-cleanup, 2026-06-03)
+
+Burn-down: 896 -> 0 findings. Build -warnaserror stays 0/0; Core 338 + Server 44
+pass at 100% line/branch/method.
+
+- Phase 1 (commit 093582c): scoped ReSharper cleanupcode (RedundanciesOnly
+  profile) removed 474 - RedundantUsingDirective (389), RedundantNameQualifier
+  (74), ArrangeThisQualifier (8) and assorted. One over-removal in CliServices.cs
+  (the no-build cleanup analyzed the non-WINDOWS TFM) fixed by scoping the usings
+  under #if WINDOWS.
+- Phase 2 (commit 79a68c0): CsWinRT1028 (3 ViewModels to partial) + CS9191
+  (10 ref to in at D3D11 COM sites).
+- Phase 3 (hand-fix pass): cleared 61 (412 -> 351) - the "mechanical but
+  cleanup-tool-unsafe" and "small correctness" categories, hand-fixed per site so
+  the (nint)0 overload-resolution trap and named-argument stripping were avoided.
+  Covered RedundantCast 26 (incl. the (nint)0 Assert.Equal asserts - generic
+  inference still binds nint, build 0/0 confirms), RedundantSuppressNullable 12,
+  RedundantArgumentDefaultValue 4, RedundantExplicitArrayCreation 4,
+  RedundantAssignment 4 + AssignmentInsteadOfDiscard 2, EmptyConstructor 2,
+  RedundantToStringCall 1, ConditionIsAlwaysTrueOrFalse 1, NullCoalescing 1,
+  InvalidXmlDocComment 2 (`<paramref>` in a class-level summary changed to `<c>`).
+- Phase 4 (non-naming burn-down): 351 -> 249, fixing in code where possible and
+  suppressing per-site only where feedback_inspections_refactor_over_suppress
+  sanctions it. Fixed: IntVariableOverflow 20 (dropped the redundant (uint) on
+  int.ToString("X8") - output byte-identical), EmptyGeneralCatchClause 9 (intent
+  comments; CA1031 pragmas stay the real guard), AccessToModifiedClosure 6
+  (`StrongBox<T>` rewrite), UnusedMember.Local 3, UnusedParameter.Local,
+  ConditionalAccessQualifierIsNonNullable 1. Suppressed per-case with inline
+  rationale: AccessToDisposedClosure 21 (disposables shared across cooperative
+  Task.Run loops, drained before disposal), FunctionNeverReturns 1,
+  NotAccessedField.Local 2, UnusedAutoPropertyAccessor.Local 1, UnusedVariable 1.
+  editorconfig opt-out (generated-code blind spot, .Global only):
+  NotAccessedPositionalProperty.Global 12 + UnusedAutoPropertyAccessor.Global 11.
+  naming-prep: Win32 interop names 7 + d3d11* locals 2 marked disable
+  InconsistentNaming.
+- Phase 5 (Rider semantic naming rename + delete-unused): 249 -> 5. The 244
+  naming findings (InconsistentNaming 238 + ParameterHidesMember 6) cleared by
+  Rider's "Fix inconsistent naming in solution" - private fields to `_camelCase`,
+  members/static-readonly to PascalCase per the committed FDG `.editorconfig`.
+  Wire-safe (System.Text.Json CamelCase policy keeps PascalCase members
+  serializing lowercase). One #if WINDOWS rename-miss hand-fixed (WgcCapture's
+  Handle/Options implementations).
+- Phase 6 (eliminate the last 5 "exceptions", this pass): 5 -> 0. The four
+  RedundantExtendsListEntry base types (App/AppShell/MainPage/Windows-App
+  `.xaml.cs`) and the one Xaml.RedundantNamespaceAlias (`Platforms/Windows/App.xaml`
+  `xmlns:local`) were re-verified and removed. Build stays 0/0 and
+  WindowStreamServer holds 100% line/branch/method with them gone. The earlier
+  belief that they protected coverage was stale: the real cause (the CsWinRT
+  CCW-vtable class lacking `[GeneratedCode]`, pulled into the denominator by the
+  loose `*ViewModels*` glob) had already been fixed by anchoring the coverage scope
+  (see the coverage note above), so the base types were genuinely redundant. No
+  suppressions, no exceptions.
+
+Remaining: 0 findings.
+
+Remaining (other tracks): CI lint job (wire the jb gate) · PostToolUse hook ·
+  aislop (score 8/100 baseline, separate task) · open PR

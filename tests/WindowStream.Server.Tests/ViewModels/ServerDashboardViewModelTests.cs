@@ -1,9 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Threading;
-using System.Threading.Tasks;
 using Serilog.Events;
+using Serilog.Parsing;
 using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
 using WindowStream.Core.Session.Testing;
@@ -17,9 +14,9 @@ public sealed class ServerDashboardViewModelTests
 {
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private static readonly Serilog.Parsing.MessageTemplateParser MessageTemplateParser = new();
+    static readonly MessageTemplateParser MessageTemplateParser = new();
 
-    private static LogEvent MakeLogEvent(string message = "test message")
+    static LogEvent MakeLogEvent(string message = "test message")
     {
         return new LogEvent(
             DateTimeOffset.UtcNow,
@@ -29,7 +26,7 @@ public sealed class ServerDashboardViewModelTests
             Array.Empty<LogEventProperty>());
     }
 
-    private static ServerDashboardViewModel MakeViewModel(InAppDashboardSink? sink = null, ISessionHostLauncher? launcher = null)
+    static ServerDashboardViewModel MakeViewModel(InAppDashboardSink? sink = null, ISessionHostLauncher? launcher = null)
         => new(launcher ?? new FakeSessionHostLauncher(), sink ?? new InAppDashboardSink(capacity: 16));
 
     // ── constructor + snapshot-replay ────────────────────────────────────────
@@ -40,7 +37,7 @@ public sealed class ServerDashboardViewModelTests
         InAppDashboardSink sink = new(capacity: 16);
         sink.Emit(MakeLogEvent("first entry"));
 
-        ServerDashboardViewModel viewModel = MakeViewModel(sink);
+        var viewModel = MakeViewModel(sink);
 
         Assert.Single(viewModel.RecentEvents);
         Assert.Equal("first entry", viewModel.RecentEvents[0].Message);
@@ -53,7 +50,7 @@ public sealed class ServerDashboardViewModelTests
         sink.Emit(MakeLogEvent("alpha"));
         sink.Emit(MakeLogEvent("beta"));
 
-        ServerDashboardViewModel viewModel = MakeViewModel(sink);
+        var viewModel = MakeViewModel(sink);
 
         Assert.Equal(2, viewModel.RecentEvents.Count);
         Assert.Equal("alpha", viewModel.RecentEvents[0].Message);
@@ -65,7 +62,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Initial_Server_Status_Is_Starting()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         Assert.Equal("Starting…", viewModel.ServerStatus);
     }
@@ -73,7 +70,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Initial_Tcp_And_Udp_Ports_Are_Zero()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         Assert.Equal(0, viewModel.TcpPort);
         Assert.Equal(0, viewModel.UdpPort);
@@ -82,7 +79,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Initial_Connected_Viewer_Is_Null()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         Assert.Null(viewModel.ConnectedViewer);
     }
@@ -90,7 +87,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Initial_Active_Stream_Count_Is_Zero()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         Assert.Equal(0, viewModel.ActiveStreamCount);
     }
@@ -98,7 +95,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Initial_Available_Window_Count_Is_Zero()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         Assert.Equal(0, viewModel.AvailableWindowCount);
     }
@@ -108,7 +105,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Listening_Event_Updates_Server_Status_To_Serving()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         viewModel.ApplyEvent(new PipelineEvent.Listening(TcpPort: 9000, UdpPort: 9001));
 
@@ -118,7 +115,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Listening_Event_Updates_Tcp_And_Udp_Ports()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         viewModel.ApplyEvent(new PipelineEvent.Listening(TcpPort: 7777, UdpPort: 7778));
 
@@ -129,7 +126,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Viewer_Accepted_Updates_Connected_Viewer()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         viewModel.ApplyEvent(new PipelineEvent.ViewerAccepted("10.0.0.5:51001"));
 
@@ -139,7 +136,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Viewer_Disconnected_Clears_Connected_Viewer()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
         viewModel.ApplyEvent(new PipelineEvent.ViewerAccepted("10.0.0.5:51001"));
 
         viewModel.ApplyEvent(new PipelineEvent.ViewerDisconnected("10.0.0.5:51001", "closed"));
@@ -150,7 +147,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Window_Appeared_Increments_Available_Window_Count()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
 
         viewModel.ApplyEvent(new PipelineEvent.WindowAppeared(1UL, "Notepad", "notepad", 800, 600));
 
@@ -160,7 +157,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Apply_Open_Stream_Then_Stream_Stopped_Updates_Active_Stream_Count()
     {
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
         viewModel.ApplyEvent(new PipelineEvent.OpenStreamReceived(StreamId: 1, WindowId: 42UL));
         Assert.Equal(1, viewModel.ActiveStreamCount);
 
@@ -177,7 +174,7 @@ public sealed class ServerDashboardViewModelTests
         // Ensures OnSinkEvent catch-fallback runs AppendEntry synchronously when
         // BeginInvokeOnMainThread is unavailable (headless xUnit).
         InAppDashboardSink sink = new(capacity: 16);
-        ServerDashboardViewModel viewModel = MakeViewModel(sink);
+        var viewModel = MakeViewModel(sink);
 
         sink.Emit(MakeLogEvent("live event"));
 
@@ -190,7 +187,7 @@ public sealed class ServerDashboardViewModelTests
     {
         // Ensures ApplyEvent catch-fallback calls RaiseAll synchronously, covering
         // the non-null PropertyChanged?.Invoke branch in headless xUnit.
-        ServerDashboardViewModel viewModel = MakeViewModel();
+        var viewModel = MakeViewModel();
         List<string?> raisedProperties = new();
         viewModel.PropertyChanged += (_, eventArguments) => raisedProperties.Add(eventArguments.PropertyName);
 
@@ -211,10 +208,10 @@ public sealed class ServerDashboardViewModelTests
     public void Recent_Events_Capped_At_200_Entries()
     {
         InAppDashboardSink sink = new(capacity: 210);
-        for (int index = 0; index < 205; index++)
+        for (var index = 0; index < 205; index++)
             sink.Emit(MakeLogEvent($"entry {index}"));
 
-        ServerDashboardViewModel viewModel = MakeViewModel(sink);
+        var viewModel = MakeViewModel(sink);
 
         Assert.Equal(200, viewModel.RecentEvents.Count);
     }
@@ -245,7 +242,7 @@ public sealed class ServerDashboardViewModelTests
     public async Task Start_Serving_Async_Calls_Launcher_Launch_Async()
     {
         FakeSessionHostLauncher launcher = new();
-        ServerDashboardViewModel viewModel = MakeViewModel(launcher: launcher);
+        var viewModel = MakeViewModel(launcher: launcher);
 
         await viewModel.StartServingAsync(CancellationToken.None);
 
@@ -257,18 +254,18 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Formats_Timestamp()
     {
-        DateTimeOffset timestamp = new DateTimeOffset(2026, 5, 17, 14, 30, 45, 123, TimeSpan.Zero);
-        LogEntry entry = new(timestamp, WindowStream.Core.Observability.Severity.Info, "Log", null, "hello", null);
+        var timestamp = new DateTimeOffset(2026, 5, 17, 14, 30, 45, 123, TimeSpan.Zero);
+        LogEntry entry = new(timestamp, Severity.Info, "Log", null, "hello", null);
         LogEntryViewModel viewModel = new(entry);
 
-        string local = timestamp.LocalDateTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        var local = timestamp.LocalDateTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
         Assert.Equal(local, viewModel.Timestamp);
     }
 
     [Fact]
     public void Log_Entry_View_Model_Uppercases_Severity()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Warning, "Log", null, "msg", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Warning, "Log", null, "msg", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("WARNING", viewModel.Severity);
@@ -277,7 +274,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Error_Severity_Color_Is_Red()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Error, "Log", null, "msg", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Error, "Log", null, "msg", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("#FF6060", viewModel.SeverityColor);
@@ -286,7 +283,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Warning_Severity_Color_Is_Amber()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Warning, "Log", null, "msg", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Warning, "Log", null, "msg", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("#FFC040", viewModel.SeverityColor);
@@ -295,7 +292,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Info_Severity_Color_Is_Grey()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Info, "Log", null, "msg", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Info, "Log", null, "msg", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("#C0C0C0", viewModel.SeverityColor);
@@ -304,7 +301,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Exposes_Event_Type_And_Stream_Id()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Info, "CaptureStarted", 42, "msg", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Info, "CaptureStarted", 42, "msg", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("CaptureStarted", viewModel.EventType);
@@ -314,7 +311,7 @@ public sealed class ServerDashboardViewModelTests
     [Fact]
     public void Log_Entry_View_Model_Exposes_Message()
     {
-        LogEntry entry = new(DateTimeOffset.UtcNow, WindowStream.Core.Observability.Severity.Info, "Log", null, "hello world", null);
+        LogEntry entry = new(DateTimeOffset.UtcNow, Severity.Info, "Log", null, "hello world", null);
         LogEntryViewModel viewModel = new(entry);
 
         Assert.Equal("hello world", viewModel.Message);
@@ -322,7 +319,7 @@ public sealed class ServerDashboardViewModelTests
 
     // ── private test helpers ──────────────────────────────────────────────────
 
-    private sealed class CancellingSessionHostLauncher : ISessionHostLauncher
+    sealed class CancellingSessionHostLauncher : ISessionHostLauncher
     {
         public Task LaunchAsync(CancellationToken cancellationToken) =>
             Task.FromCanceled(cancellationToken.IsCancellationRequested
@@ -330,16 +327,16 @@ public sealed class ServerDashboardViewModelTests
                 : throw new InvalidOperationException("token must be cancelled"));
     }
 
-    private sealed class ThrowingSessionHostLauncher : ISessionHostLauncher
+    sealed class ThrowingSessionHostLauncher : ISessionHostLauncher
     {
-        private readonly string message;
+        readonly string _message;
 
         public ThrowingSessionHostLauncher(string message)
         {
-            this.message = message;
+            _message = message;
         }
 
         public Task LaunchAsync(CancellationToken cancellationToken) =>
-            throw new InvalidOperationException(message);
+            throw new InvalidOperationException(_message);
     }
 }

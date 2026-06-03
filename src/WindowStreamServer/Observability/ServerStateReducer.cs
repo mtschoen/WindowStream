@@ -44,7 +44,7 @@ public sealed class ServerStateReducer
 
             PipelineEvent.WindowAppeared => State with { WindowCount = State.WindowCount + 1 },
 
-            PipelineEvent.WindowDisappeared => State with { WindowCount = System.Math.Max(0, State.WindowCount - 1) },
+            PipelineEvent.WindowDisappeared => State with { WindowCount = Math.Max(0, State.WindowCount - 1) },
 
             PipelineEvent.OpenStreamReceived open => State with
             {
@@ -112,9 +112,9 @@ public sealed class ServerStateReducer
         };
     }
 
-    private ServerState UpdateStream(int streamId, Func<StreamStateRow, StreamStateRow> update)
+    ServerState UpdateStream(int streamId, Func<StreamStateRow, StreamStateRow> update)
     {
-        if (!State.Streams.TryGetValue(streamId, out StreamStateRow? existing))
+        if (!State.Streams.TryGetValue(streamId, out var existing))
             return State;
 
         return State with

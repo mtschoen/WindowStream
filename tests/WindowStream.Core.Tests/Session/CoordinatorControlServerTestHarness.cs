@@ -1,10 +1,6 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
@@ -20,7 +16,7 @@ namespace WindowStream.Core.Tests.Session;
 /// the callback parameters into thread-safe collections so tests can assert
 /// against them after a short settle interval.
 /// </summary>
-internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
+sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
 {
     public CoordinatorControlServer Server { get; }
     public FakeTcpConnectionAcceptor TcpAcceptor { get; }
@@ -36,10 +32,10 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
     public ConcurrentQueue<(int StreamId, KeyEventMessage Message)> KeyInjections { get; } = new();
     public Task RunTask { get; }
 
-    private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
-    private bool disposed;
+    readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
+    bool _disposed;
 
-    private CoordinatorControlServerTestHarness(
+    CoordinatorControlServerTestHarness(
         CoordinatorControlServer server,
         FakeTcpConnectionAcceptor tcpAcceptor,
         WorkerSupervisor supervisor,
@@ -63,38 +59,41 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
         int heartbeatTimeoutMilliseconds = 30_000,
         int serverVersion = 2)
     {
-        FakeTcpConnectionAcceptor tcpAcceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
-        FakeWorkerLauncher launcher = new FakeWorkerLauncher();
-        WorkerSupervisor supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams);
+        var tcpAcceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        var launcher = new FakeWorkerLauncher();
+        var supervisor = new WorkerSupervisor(launcher, maximumConcurrentStreams);
 
-        FakeForegroundApi foregroundApi = new FakeForegroundApi();
-        FocusRelay focusRelay = new FocusRelay(foregroundApi);
+        var foregroundApi = new FakeForegroundApi();
+        var focusRelay = new FocusRelay(foregroundApi);
 
-        CoordinatorOptions options = new CoordinatorOptions(
+        var options = new CoordinatorOptions(
             HeartbeatIntervalMilliseconds: heartbeatIntervalMilliseconds,
             HeartbeatTimeoutMilliseconds: heartbeatTimeoutMilliseconds,
             ServerVersion: serverVersion,
             MaximumConcurrentStreams: maximumConcurrentStreams);
 
-        CoordinatorControlServerTestHarness? harnessReference = null;
-        Func<WindowDescriptor[]> getCurrentWindows = () =>
-            harnessReference!.Windows.ToArray();
+        // StrongBox holds the forward reference so the lambdas capture a variable
+        // that is never reassigned (only its .Value is set after construction),
+        // dissolving AccessToModifiedClosure without suppression.
+        StrongBox<CoordinatorControlServerTestHarness> harnessBox = new();
+        var getCurrentWindows = () =>
+            harnessBox.Value!.Windows.ToArray();
         Func<ulong, long?> resolveWindowIdToHwnd = windowId =>
-            harnessReference!.WindowToHwnd.TryGetValue(windowId, out long hwnd) ? hwnd : null;
+            harnessBox.Value!.WindowToHwnd.TryGetValue(windowId, out var hwnd) ? hwnd : null;
         Func<ulong, EncoderOptions?> resolveWindowIdToEncoderOptions = windowId =>
-            harnessReference!.WindowToEncoder.TryGetValue(windowId, out EncoderOptions? options) ? options : null;
-        Func<int> getUdpPort = () => harnessReference!.UdpPort;
+            harnessBox.Value!.WindowToEncoder.TryGetValue(windowId, out var encoderOptions) ? encoderOptions : null;
+        var getUdpPort = () => harnessBox.Value!.UdpPort;
         Func<int, WorkerCommandTag, Task> sendWorkerCommand = (streamId, tag) =>
         {
-            harnessReference!.WorkerCommands.Enqueue((streamId, tag));
+            harnessBox.Value!.WorkerCommands.Enqueue((streamId, tag));
             return Task.CompletedTask;
         };
         Action<int, KeyEventMessage> injectKeyForStream = (streamId, message) =>
         {
-            harnessReference!.KeyInjections.Enqueue((streamId, message));
+            harnessBox.Value!.KeyInjections.Enqueue((streamId, message));
         };
 
-        CoordinatorControlServer server = new CoordinatorControlServer(
+        var server = new CoordinatorControlServer(
             options,
             tcpAcceptor,
             supervisor,
@@ -107,11 +106,11 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
             injectKeyForStream,
             TimeProvider.System);
 
-        Task runTask = Task.Run(() => server.RunAsync(0, CancellationToken.None));
+        var runTask = Task.Run(() => server.RunAsync(0, CancellationToken.None));
 
-        CoordinatorControlServerTestHarness instance = new CoordinatorControlServerTestHarness(
+        var instance = new CoordinatorControlServerTestHarness(
             server, tcpAcceptor, supervisor, launcher, focusRelay, foregroundApi, runTask);
-        harnessReference = instance;
+        harnessBox.Value = instance;
         return instance;
     }
 
@@ -124,7 +123,7 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
         CancellationToken cancellationToken,
         IPAddress? remoteIpAddress = null)
     {
-        FakeViewerEndpoint viewer = ConnectViewer(remoteIpAddress);
+        var viewer = ConnectViewer(remoteIpAddress);
         await viewer.SendAsync(
             new HelloMessage(ViewerVersion: 2, DisplayCapabilities: new DisplayCapabilities(1920, 1080, new[] { "h264" })),
             cancellationToken).ConfigureAwait(false);
@@ -134,12 +133,12 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        disposed = true;
-        await cancellation.CancelAsync();
+        if (_disposed) return;
+        _disposed = true;
+        await _cancellation.CancelAsync();
         await Server.DisposeAsync().ConfigureAwait(false);
         await Supervisor.DisposeAsync().ConfigureAwait(false);
-        cancellation.Dispose();
+        _cancellation.Dispose();
     }
 
     /// <summary>
@@ -151,7 +150,7 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
 
         public Task<IWorkerHandle> LaunchAsync(WorkerLaunchArguments arguments, CancellationToken cancellationToken)
         {
-            FakeWorkerHandle handle = new FakeWorkerHandle();
+            var handle = new FakeWorkerHandle();
             Launched.Add(handle);
             return Task.FromResult<IWorkerHandle>(handle);
         }
@@ -159,17 +158,17 @@ internal sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
 
     public sealed class FakeWorkerHandle : IWorkerHandle
     {
-        private readonly TaskCompletionSource<int> exitSource = new();
+        readonly TaskCompletionSource<int> _exitSource = new();
 
         public Stream Pipe { get; } = new MemoryStream();
 
         public int ProcessId => 0;
 
-        public Task<int> WaitForExitAsync() => exitSource.Task;
+        public Task<int> WaitForExitAsync() => _exitSource.Task;
 
-        public void Kill() => exitSource.TrySetResult(137);
+        public void Kill() => _exitSource.TrySetResult(137);
 
-        public void SimulateEncoderFailure() => exitSource.TrySetResult(1);
+        public void SimulateEncoderFailure() => _exitSource.TrySetResult(1);
 
         public ValueTask DisposeAsync()
         {

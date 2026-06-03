@@ -12,8 +12,8 @@ public sealed record LogEntryViewModel(LogEntry Entry)
     public string Message => Entry.Message;
     public string SeverityColor => Entry.Severity switch
     {
-        WindowStream.Core.Observability.Severity.Error => "#FF6060",
-        WindowStream.Core.Observability.Severity.Warning => "#FFC040",
+        Core.Observability.Severity.Error => "#FF6060",
+        Core.Observability.Severity.Warning => "#FFC040",
         _ => "#C0C0C0",
     };
 }

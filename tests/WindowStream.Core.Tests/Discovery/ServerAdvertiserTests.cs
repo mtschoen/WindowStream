@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Discovery;
 using Xunit;
 
@@ -8,7 +5,7 @@ namespace WindowStream.Core.Tests.Discovery;
 
 public sealed class ServerAdvertiserTests
 {
-    private sealed class FakeMulticastServiceHost : IMulticastServiceHost
+    sealed class FakeMulticastServiceHost : IMulticastServiceHost
     {
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
@@ -44,10 +41,10 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task StartAsync_PublishesExpectedServiceTypeAndText()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        AdvertisementOptions options = new AdvertisementOptions("desk", 1, 1);
+        await using var host = new FakeMulticastServiceHost();
+        var options = new AdvertisementOptions("desk", 1, 1);
 
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var advertiser = new ServerAdvertiser(host);
 
         await advertiser.StartAsync(options, controlPort: 47813, CancellationToken.None);
 
@@ -64,15 +61,15 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task StartAsync_Twice_ThrowsInvalidOperation()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        await using var advertiser = new ServerAdvertiser(host);
 
         await advertiser.StartAsync(
             new AdvertisementOptions("desk", 1, 1),
             controlPort: 1,
             CancellationToken.None);
 
-        await Assert.ThrowsAsync<System.InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             advertiser.StartAsync(
                 new AdvertisementOptions("desk", 1, 1),
                 controlPort: 1,
@@ -82,8 +79,8 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task StopAsync_BeforeStart_IsNoOp()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        await using var advertiser = new ServerAdvertiser(host);
 
         await advertiser.StopAsync(CancellationToken.None);
 
@@ -93,8 +90,8 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task DisposeAsync_StopsIfStarted()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        var advertiser = new ServerAdvertiser(host);
         await advertiser.StartAsync(
             new AdvertisementOptions("desk", 1, 1),
             controlPort: 1,
@@ -108,10 +105,10 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task StartAsync_PortBelowOne_Throws()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        await using var advertiser = new ServerAdvertiser(host);
 
-        await Assert.ThrowsAsync<System.ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             advertiser.StartAsync(
                 new AdvertisementOptions("desk", 1, 1),
                 controlPort: 0,
@@ -121,24 +118,24 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public void Constructor_RejectsNullHost()
     {
-        Assert.Throws<System.ArgumentNullException>(() => new ServerAdvertiser(null!));
+        Assert.Throws<ArgumentNullException>(() => new ServerAdvertiser(null!));
     }
 
     [Fact]
     public async Task StartAsync_RejectsNullOptions()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        await using var advertiser = new ServerAdvertiser(host);
 
-        await Assert.ThrowsAsync<System.ArgumentNullException>(() =>
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             advertiser.StartAsync(null!, controlPort: 1, CancellationToken.None));
     }
 
     [Fact]
     public async Task DisposeAsync_WhenNotStarted_DoesNotCallStop()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        var advertiser = new ServerAdvertiser(host);
 
         await advertiser.DisposeAsync();
 
@@ -148,8 +145,8 @@ public sealed class ServerAdvertiserTests
     [Fact]
     public async Task DisposeAsync_Twice_IsIdempotent()
     {
-        await using FakeMulticastServiceHost host = new FakeMulticastServiceHost();
-        ServerAdvertiser advertiser = new ServerAdvertiser(host);
+        await using var host = new FakeMulticastServiceHost();
+        var advertiser = new ServerAdvertiser(host);
         await advertiser.StartAsync(new AdvertisementOptions("desk", 1, 1), controlPort: 1, CancellationToken.None);
 
         await advertiser.DisposeAsync();

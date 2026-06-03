@@ -1,13 +1,11 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
-using Microsoft.Extensions.Logging;
 using WindowStream.Core.Capture;
-using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
 #if WINDOWS
+using Microsoft.Extensions.Logging;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Hosting;
+using WindowStream.Core.Observability;
 #endif
 
 namespace WindowStream.Cli;
@@ -36,9 +34,9 @@ public sealed class CliServices : ICliServices
     {
 #if WINDOWS
         IWindowCaptureSource captureSource = new WgcCaptureSource();
-        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
         ILogger logger = loggerFactory.CreateLogger<CoordinatorLauncher>();
-        Diagnostics diagnostics = new Diagnostics(logger);
+        var diagnostics = new Diagnostics(logger);
         ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, diagnostics);
         return new CliServices(captureSource, hostLauncher, Console.Out);
 #else

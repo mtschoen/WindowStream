@@ -1,18 +1,14 @@
-using System;
-using System.IO;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace WindowStream.Core.Hosting;
 
 public sealed class StreamRouter
 {
-    private readonly Channel<TaggedChunk> sink;
+    readonly Channel<TaggedChunk> _sink;
 
     public StreamRouter(Channel<TaggedChunk> sink)
     {
-        this.sink = sink;
+        _sink = sink;
     }
 
     public async Task ReadFromPipeAsync(int streamId, Stream pipe, CancellationToken cancellationToken)
@@ -21,8 +17,8 @@ public sealed class StreamRouter
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                WorkerChunkFrame frame = await WorkerChunkPipe.ReadChunkAsync(pipe, cancellationToken).ConfigureAwait(false);
-                await sink.Writer.WriteAsync(new TaggedChunk(streamId, frame), cancellationToken).ConfigureAwait(false);
+                var frame = await WorkerChunkPipe.ReadChunkAsync(pipe, cancellationToken).ConfigureAwait(false);
+                await _sink.Writer.WriteAsync(new TaggedChunk(streamId, frame), cancellationToken).ConfigureAwait(false);
             }
         }
         catch (EndOfStreamException)

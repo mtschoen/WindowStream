@@ -1,9 +1,5 @@
-using System;
-using System.IO;
 using Microsoft.Extensions.Logging;
-using Microsoft.Maui.Hosting;
 using Serilog;
-using Serilog.Core;
 using Serilog.Extensions.Logging;
 using Serilog.Formatting.Compact;
 using WindowStream.Core.Hosting;
@@ -19,17 +15,17 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
-        MauiAppBuilder builder = MauiApp.CreateBuilder();
+        var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
         InAppDashboardSink inAppSink = new(capacity: 500);
 
-        string logsDirectory = Path.Combine(
+        var logsDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WindowStream", "logs");
         Directory.CreateDirectory(logsDirectory);
 
-        Logger serilogLogger = new LoggerConfiguration()
+        var serilogLogger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .WriteTo.File(
                 formatter: new CompactJsonFormatter(),
@@ -43,7 +39,7 @@ public static class MauiProgram
 #pragma warning disable CA2000 // CA2000: SerilogLoggerFactory(dispose:true) owns the logger lifetime; the MAUI DI container controls disposal
         SerilogLoggerFactory loggerFactory = new(serilogLogger, dispose: true);
 #pragma warning restore CA2000
-        ILogger<CoordinatorLauncher> launcherLogger = loggerFactory.CreateLogger<CoordinatorLauncher>();
+        var launcherLogger = loggerFactory.CreateLogger<CoordinatorLauncher>();
 
         Diagnostics diagnostics = new(launcherLogger);
         CoordinatorLauncher launcher = new(tcpPort: 0, diagnostics: diagnostics);

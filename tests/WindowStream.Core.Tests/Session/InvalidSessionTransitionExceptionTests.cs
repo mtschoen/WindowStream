@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Session;
 using Xunit;
 

@@ -1,8 +1,4 @@
-using System;
 using System.Buffers.Binary;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace WindowStream.Core.Transport;
 
@@ -17,7 +13,7 @@ public static class LengthPrefixFraming
     {
         ArgumentNullException.ThrowIfNull(payload);
         ValidatePayloadLength(payload.Length);
-        byte[] framed = new byte[LengthPrefixByteLength + payload.Length];
+        var framed = new byte[LengthPrefixByteLength + payload.Length];
         BinaryPrimitives.WriteUInt32BigEndian(framed.AsSpan(0, LengthPrefixByteLength), (uint)payload.Length);
         Array.Copy(payload, 0, framed, LengthPrefixByteLength, payload.Length);
         return framed;
@@ -42,15 +38,15 @@ public static class LengthPrefixFraming
         ArgumentNullException.ThrowIfNull(stream);
         cancellationToken.ThrowIfCancellationRequested();
 
-        byte[] lengthBuffer = new byte[LengthPrefixByteLength];
+        var lengthBuffer = new byte[LengthPrefixByteLength];
         await ReadExactlyAsync(stream, lengthBuffer, 0, LengthPrefixByteLength, cancellationToken).ConfigureAwait(false);
 
-        uint payloadLength = BinaryPrimitives.ReadUInt32BigEndian(lengthBuffer);
-        if (payloadLength > (uint)MaximumPayloadByteLength)
+        var payloadLength = BinaryPrimitives.ReadUInt32BigEndian(lengthBuffer);
+        if (payloadLength > MaximumPayloadByteLength)
         {
             throw new FrameTooLargeException((int)Math.Min(payloadLength, int.MaxValue), MaximumPayloadByteLength);
         }
-        byte[] payload = new byte[payloadLength];
+        var payload = new byte[payloadLength];
         if (payloadLength > 0)
         {
             await ReadExactlyAsync(stream, payload, 0, (int)payloadLength, cancellationToken).ConfigureAwait(false);
@@ -64,22 +60,22 @@ public static class LengthPrefixFraming
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        byte[] framed = Encode(payload);
+        var framed = Encode(payload);
         await stream.WriteAsync(framed.AsMemory(0, framed.Length), cancellationToken).ConfigureAwait(false);
         await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task ReadExactlyAsync(
+    static async Task ReadExactlyAsync(
         Stream stream,
         byte[] buffer,
         int offset,
         int count,
         CancellationToken cancellationToken)
     {
-        int totalRead = 0;
+        var totalRead = 0;
         while (totalRead < count)
         {
-            int readThisCall = await stream.ReadAsync(buffer.AsMemory(offset + totalRead, count - totalRead), cancellationToken).ConfigureAwait(false);
+            var readThisCall = await stream.ReadAsync(buffer.AsMemory(offset + totalRead, count - totalRead), cancellationToken).ConfigureAwait(false);
             if (readThisCall == 0)
             {
                 throw new EndOfStreamException(

@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;
 using Xunit;
@@ -13,33 +9,33 @@ public sealed class FakeWindowCaptureAccessorTests
     [Fact]
     public void CaptureOptions_ExposesTargetFramesPerSecond()
     {
-        CaptureOptions options = new CaptureOptions(targetFramesPerSecond: 30, includeCursor: true);
-        Assert.Equal(30, options.targetFramesPerSecond);
-        Assert.True(options.includeCursor);
+        var options = new CaptureOptions(TargetFramesPerSecond: 30, IncludeCursor: true);
+        Assert.Equal(30, options.TargetFramesPerSecond);
+        Assert.True(options.IncludeCursor);
     }
 
     [Fact]
     public async Task FakeWindowCapture_ExposesHandleAndOptions()
     {
-        WindowHandle handle = new WindowHandle(123);
-        CaptureOptions options = new CaptureOptions(25, false);
-        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
-        Assert.Equal(handle, capture.handle);
-        Assert.Equal(options, capture.options);
+        var handle = new WindowHandle(123);
+        var options = new CaptureOptions(25, false);
+        await using var capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        Assert.Equal(handle, capture.Handle);
+        Assert.Equal(options, capture.Options);
     }
 
     [Fact]
     public async Task FakeWindowCapture_SentinelObject_BreaksIteration()
     {
-        WindowHandle handle = new WindowHandle(1);
-        CaptureOptions options = new CaptureOptions(30, false);
-        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        var handle = new WindowHandle(1);
+        var options = new CaptureOptions(30, false);
+        await using var capture = new FakeWindowCapture(handle, options, CancellationToken.None);
 
         // Write a sentinel object (neither CapturedFrame nor Exception) to trigger yield break
-        capture.channel.Writer.TryWrite(new object());
+        capture._channel.Writer.TryWrite(new object());
 
-        List<CapturedFrame> collected = new List<CapturedFrame>();
-        await foreach (CapturedFrame frame in capture.Frames)
+        var collected = new List<CapturedFrame>();
+        await foreach (var frame in capture.Frames)
         {
             collected.Add(frame);
         }
@@ -50,22 +46,22 @@ public sealed class FakeWindowCaptureAccessorTests
     public void FakeWindowCaptureSource_NullWindows_DefaultsToEmpty()
     {
         // Constructor with null windows should not throw and ListWindows returns empty
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(null!);
+        var source = new FakeWindowCaptureSource(null);
         Assert.Empty(source.ListWindows());
     }
 
     [Fact]
     public async Task FakeWindowCapture_DisposeAsync_CompletesChannel()
     {
-        WindowHandle handle = new WindowHandle(5);
-        CaptureOptions options = new CaptureOptions(60, false);
-        FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        var handle = new WindowHandle(5);
+        var options = new CaptureOptions(60, false);
+        var capture = new FakeWindowCapture(handle, options, CancellationToken.None);
 
         await capture.DisposeAsync();
 
         // After dispose, channel should be completed — iteration should finish immediately
-        List<CapturedFrame> collected = new List<CapturedFrame>();
-        await foreach (CapturedFrame frame in capture.Frames)
+        var collected = new List<CapturedFrame>();
+        await foreach (var frame in capture.Frames)
         {
             collected.Add(frame);
         }
@@ -75,19 +71,19 @@ public sealed class FakeWindowCaptureAccessorTests
     [Fact]
     public async Task FakeWindowCapture_ExceptionWrittenAsValue_IsRethrownDuringIteration()
     {
-        WindowHandle handle = new WindowHandle(9);
-        CaptureOptions options = new CaptureOptions(60, false);
-        await using FakeWindowCapture capture = new FakeWindowCapture(handle, options, CancellationToken.None);
+        var handle = new WindowHandle(9);
+        var options = new CaptureOptions(60, false);
+        await using var capture = new FakeWindowCapture(handle, options, CancellationToken.None);
 
         // Write an Exception directly as a value (not via TryComplete) to cover the
         // "else if (next is Exception)" branch in ReadFramesAsync
-        InvalidOperationException written = new InvalidOperationException("direct-write");
-        capture.channel.Writer.TryWrite(written);
-        capture.channel.Writer.TryComplete();
+        var written = new InvalidOperationException("direct-write");
+        capture._channel.Writer.TryWrite(written);
+        capture._channel.Writer.TryComplete();
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            await foreach (CapturedFrame _ in capture.Frames) { }
+            await foreach (var _ in capture.Frames) { }
         });
     }
 }

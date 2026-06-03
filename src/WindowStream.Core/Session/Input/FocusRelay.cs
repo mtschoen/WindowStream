@@ -2,31 +2,31 @@ namespace WindowStream.Core.Session.Input;
 
 public sealed class FocusRelay
 {
-    private readonly IForegroundWindowApi api;
+    readonly IForegroundWindowApi _api;
 
     public FocusRelay(IForegroundWindowApi api)
     {
-        this.api = api;
+        _api = api;
     }
 
     public bool BringToForeground(long hwnd)
     {
-        long currentForeground = api.GetForegroundWindow();
+        var currentForeground = _api.GetForegroundWindow();
         if (currentForeground == hwnd)
         {
             return true;
         }
 
-        uint currentThread = api.GetWindowThreadProcessId(currentForeground);
-        uint myThread = api.CurrentThreadId();
-        api.AttachThreadInput(myThread, currentThread, true);
+        var currentThread = _api.GetWindowThreadProcessId(currentForeground);
+        var myThread = _api.CurrentThreadId();
+        _api.AttachThreadInput(myThread, currentThread, true);
         try
         {
-            return api.SetForegroundWindow(hwnd);
+            return _api.SetForegroundWindow(hwnd);
         }
         finally
         {
-            api.AttachThreadInput(myThread, currentThread, false);
+            _api.AttachThreadInput(myThread, currentThread, false);
         }
     }
 }

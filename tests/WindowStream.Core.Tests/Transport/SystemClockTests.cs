@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -15,9 +14,9 @@ public sealed class SystemClockTests
     [Fact]
     public void UtcNowIsCloseToSystemTime()
     {
-        DateTimeOffset before = DateTimeOffset.UtcNow;
-        DateTimeOffset reported = SystemClock.Instance.UtcNow;
-        DateTimeOffset after = DateTimeOffset.UtcNow;
+        var before = DateTimeOffset.UtcNow;
+        var reported = SystemClock.Instance.UtcNow;
+        var after = DateTimeOffset.UtcNow;
         Assert.True(reported >= before && reported <= after);
     }
 }

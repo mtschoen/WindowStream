@@ -8,7 +8,7 @@ public class WindowDescriptorTests
     [Fact]
     public void WindowDescriptor_HoldsAllFields()
     {
-        WindowDescriptor descriptor = new WindowDescriptor(
+        var descriptor = new WindowDescriptor(
             WindowId: 42,
             Hwnd: 1574208,
             ProcessId: 9876,

@@ -121,4 +121,5 @@ tools/test_*.py
 
 # ---------- aislop ----------
 .aislop/history.jsonl
+.aislop/session.jsonl
 

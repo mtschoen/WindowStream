@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -9,8 +8,8 @@ public sealed class LengthPrefixFramingEncodeTests
     [Fact]
     public void EncodePrependsBigEndianLength()
     {
-        byte[] payload = new byte[] { 0x41, 0x42, 0x43 };
-        byte[] framed = LengthPrefixFraming.Encode(payload);
+        var payload = new byte[] { 0x41, 0x42, 0x43 };
+        var framed = LengthPrefixFraming.Encode(payload);
         Assert.Equal(7, framed.Length);
         Assert.Equal(0x00, framed[0]);
         Assert.Equal(0x00, framed[1]);
@@ -24,7 +23,7 @@ public sealed class LengthPrefixFramingEncodeTests
     [Fact]
     public void EncodeAcceptsEmptyPayload()
     {
-        byte[] framed = LengthPrefixFraming.Encode(Array.Empty<byte>());
+        var framed = LengthPrefixFraming.Encode(Array.Empty<byte>());
         Assert.Equal(new byte[] { 0x00, 0x00, 0x00, 0x00 }, framed);
     }
 

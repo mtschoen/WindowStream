@@ -1,4 +1,3 @@
-using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -6,7 +5,7 @@ namespace WindowStream.Core.Protocol;
 
 public static class ControlMessageSerialization
 {
-    private static readonly JsonSerializerOptions Options = new()
+    static readonly JsonSerializerOptions Options = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -22,7 +21,7 @@ public static class ControlMessageSerialization
     {
         try
         {
-            ControlMessage? decoded = JsonSerializer.Deserialize<ControlMessage>(payload, Options);
+            var decoded = JsonSerializer.Deserialize<ControlMessage>(payload, Options);
             if (decoded is null)
             {
                 throw new MalformedMessageException("payload deserialized to null");
@@ -39,11 +38,11 @@ public static class ControlMessageSerialization
         }
     }
 
-    private sealed class ProtocolErrorCodeConverter : JsonConverter<ProtocolErrorCode>
+    sealed class ProtocolErrorCodeConverter : JsonConverter<ProtocolErrorCode>
     {
         public override ProtocolErrorCode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            string? wireName = reader.GetString();
+            var wireName = reader.GetString();
             if (wireName is null)
             {
                 throw new JsonException("null is not a valid protocol error code");
@@ -57,11 +56,11 @@ public static class ControlMessageSerialization
         }
     }
 
-    private sealed class StreamStoppedReasonConverter : JsonConverter<StreamStoppedReason>
+    sealed class StreamStoppedReasonConverter : JsonConverter<StreamStoppedReason>
     {
         public override StreamStoppedReason Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            string? wireName = reader.GetString();
+            var wireName = reader.GetString();
             if (wireName is null)
             {
                 throw new JsonException("null is not a valid stream-stopped reason");

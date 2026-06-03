@@ -1,11 +1,7 @@
 #if WINDOWS
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
-using WindowStream.Core.Transport;
 using WindowStream.Integration.Tests.Infrastructure;
 using Xunit;
 
@@ -23,9 +19,9 @@ public sealed class WorkerCrashRecoveryTests
     /// fragment and forward. The test only needs to confirm that the bytes
     /// reach the viewer; their contents do not matter.
     /// </summary>
-    private static readonly byte[] FakeNalUnitPayload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0xAB, 0xCD };
+    static readonly byte[] FakeNalUnitPayload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0xAB, 0xCD };
 
-    private static EncoderOptions DefaultEncoderOptions(int width = 320, int height = 240)
+    static EncoderOptions DefaultEncoderOptions(int width = 320, int height = 240)
         => new EncoderOptions(
             widthPixels: width,
             heightPixels: height,
@@ -45,15 +41,15 @@ public sealed class WorkerCrashRecoveryTests
     [DesktopAndNvidiaDriverFact]
     public async Task WorkerCrash_EmitsStreamStopped_SiblingUnaffected()
     {
-        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-        FakeWorkerProcessLauncher launcher = new FakeWorkerProcessLauncher();
+        var launcher = new FakeWorkerProcessLauncher();
 
-        await using CoordinatorLoopbackHarness harness = await CoordinatorLoopbackHarness.StartAsync(
+        await using var harness = await CoordinatorLoopbackHarness.StartAsync(
             workerLauncher: launcher,
             cancellationToken: cancellation.Token);
 
-        await using FakeViewer viewer = await harness.ConnectViewerAsync(cancellation.Token);
+        await using var viewer = await harness.ConnectViewerAsync(cancellation.Token);
 
         // ── Handshake ────────────────────────────────────────────────────────
 
@@ -63,7 +59,7 @@ public sealed class WorkerCrashRecoveryTests
                 DisplayCapabilities: new DisplayCapabilities(1920, 1080, new[] { "h264" })),
             cancellation.Token);
 
-        ServerHelloMessage serverHello =
+        var serverHello =
             Assert.IsType<ServerHelloMessage>(await viewer.ReceiveAsync(cancellation.Token));
         Assert.True(serverHello.UdpPort > 0);
 
@@ -73,7 +69,7 @@ public sealed class WorkerCrashRecoveryTests
 
         // ── Inject two fake windows ──────────────────────────────────────────
 
-        WindowDescriptor windowOne = new WindowDescriptor(
+        var windowOne = new WindowDescriptor(
             WindowId: 101UL,
             Hwnd: 0x1001,
             ProcessId: 0,
@@ -82,7 +78,7 @@ public sealed class WorkerCrashRecoveryTests
             PhysicalWidth: 320,
             PhysicalHeight: 240);
 
-        WindowDescriptor windowTwo = new WindowDescriptor(
+        var windowTwo = new WindowDescriptor(
             WindowId: 102UL,
             Hwnd: 0x1002,
             ProcessId: 0,
@@ -97,21 +93,21 @@ public sealed class WorkerCrashRecoveryTests
         // ── Open both streams ────────────────────────────────────────────────
 
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 101UL), cancellation.Token);
-        StreamStartedMessage startedOne =
+        var startedOne =
             Assert.IsType<StreamStartedMessage>(await viewer.ReceiveAsync(cancellation.Token));
-        int streamIdOne = startedOne.StreamId;
+        var streamIdOne = startedOne.StreamId;
         Assert.True(streamIdOne > 0);
 
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 102UL), cancellation.Token);
-        StreamStartedMessage startedTwo =
+        var startedTwo =
             Assert.IsType<StreamStartedMessage>(await viewer.ReceiveAsync(cancellation.Token));
-        int streamIdTwo = startedTwo.StreamId;
+        var streamIdTwo = startedTwo.StreamId;
         Assert.True(streamIdTwo > 0);
         Assert.NotEqual(streamIdOne, streamIdTwo);
 
         // ── Crash worker 1 (exit code 1 → EncoderFailed) ────────────────────
 
-        FakeWorkerHandle workerOne =
+        var workerOne =
             launcher.GetFakeWorker(streamIdOne)
             ?? throw new InvalidOperationException($"No fake worker registered for stream {streamIdOne}.");
 
@@ -119,18 +115,18 @@ public sealed class WorkerCrashRecoveryTests
 
         // ── Assert STREAM_STOPPED arrives for stream 1 ───────────────────────
 
-        StreamStoppedMessage stoppedMessage =
+        var stoppedMessage =
             Assert.IsType<StreamStoppedMessage>(await viewer.ReceiveAsync(cancellation.Token));
         Assert.Equal(streamIdOne, stoppedMessage.StreamId);
         Assert.Equal(StreamStoppedReason.EncoderFailed, stoppedMessage.Reason);
 
         // ── Assert sibling stream 2 is unaffected ────────────────────────────
 
-        FakeWorkerHandle workerTwo =
+        var workerTwo =
             launcher.GetFakeWorker(streamIdTwo)
             ?? throw new InvalidOperationException($"No fake worker registered for stream {streamIdTwo}.");
 
-        WorkerChunkFrame siblingFrame = new WorkerChunkFrame(
+        var siblingFrame = new WorkerChunkFrame(
             PresentationTimestampMicroseconds: 1_000_000UL,
             IsKeyframe: true,
             Payload: FakeNalUnitPayload);
@@ -138,7 +134,7 @@ public sealed class WorkerCrashRecoveryTests
         await WorkerChunkPipe.WriteChunkAsync(
             workerTwo.WorkerSidePipe, siblingFrame, cancellation.Token);
 
-        ReassembledNalUnit siblingNalUnit =
+        var siblingNalUnit =
             await viewer.ReceiveNalUnitAsync(streamIdTwo, cancellation.Token);
         Assert.Equal((uint)streamIdTwo, siblingNalUnit.StreamId);
         Assert.Equal(FakeNalUnitPayload, siblingNalUnit.NalUnit);
@@ -148,9 +144,9 @@ public sealed class WorkerCrashRecoveryTests
         // confirming stream 1's slot was freed and not reused.
 
         await viewer.SendAsync(new OpenStreamMessage(WindowId: 101UL), cancellation.Token);
-        StreamStartedMessage startedThree =
+        var startedThree =
             Assert.IsType<StreamStartedMessage>(await viewer.ReceiveAsync(cancellation.Token));
-        int streamIdThree = startedThree.StreamId;
+        var streamIdThree = startedThree.StreamId;
         Assert.True(streamIdThree > streamIdTwo, $"Expected stream id > {streamIdTwo}, got {streamIdThree}");
         Assert.NotEqual(streamIdOne, streamIdThree);
     }

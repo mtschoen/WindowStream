@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
-using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
 using Xunit;
 
@@ -8,51 +5,51 @@ namespace WindowStream.Core.Tests.Capture.Windows;
 
 public sealed class WindowEnumeratorTests
 {
-    private sealed class FakeWin32Api : IWin32Api
+    sealed class FakeWin32Api : IWin32Api
     {
-        public List<FakeWindow> windows { get; } = new();
+        public List<FakeWindow> Windows { get; } = new();
 
-        public IEnumerable<System.IntPtr> EnumerateTopLevelWindowHandles()
+        public IEnumerable<IntPtr> EnumerateTopLevelWindowHandles()
         {
-            foreach (FakeWindow window in windows)
+            foreach (var window in Windows)
             {
-                yield return window.handle;
+                yield return window.Handle;
             }
         }
 
-        public bool IsWindowVisible(System.IntPtr handle) =>
-            Find(handle)?.visible ?? false;
+        public bool IsWindowVisible(IntPtr handle) =>
+            Find(handle)?.Visible ?? false;
 
-        public string GetWindowTitle(System.IntPtr handle) =>
-            Find(handle)?.title ?? "";
+        public string GetWindowTitle(IntPtr handle) =>
+            Find(handle)?.Title ?? "";
 
-        public string GetWindowClassName(System.IntPtr handle) =>
-            Find(handle)?.className ?? "";
+        public string GetWindowClassName(IntPtr handle) =>
+            Find(handle)?.ClassName ?? "";
 
-        public (int processIdentifier, string processName) GetWindowProcess(System.IntPtr handle)
+        public (int processIdentifier, string processName) GetWindowProcess(IntPtr handle)
         {
-            FakeWindow? w = Find(handle);
-            return (w?.processIdentifier ?? 0, w?.processName ?? "");
+            var w = Find(handle);
+            return (w?.ProcessIdentifier ?? 0, w?.ProcessName ?? "");
         }
 
-        public (int widthPixels, int heightPixels) GetWindowSize(System.IntPtr handle)
+        public (int widthPixels, int heightPixels) GetWindowSize(IntPtr handle)
         {
-            FakeWindow? w = Find(handle);
-            return (w?.widthPixels ?? 0, w?.heightPixels ?? 0);
+            var w = Find(handle);
+            return (w?.WidthPixels ?? 0, w?.HeightPixels ?? 0);
         }
 
-        private FakeWindow? Find(System.IntPtr handle) => windows.Find(w => w.handle == handle);
+        FakeWindow? Find(IntPtr handle) => Windows.Find(w => w.Handle == handle);
     }
 
-    private sealed record FakeWindow(
-        System.IntPtr handle, bool visible, string title, string className,
-        int processIdentifier, string processName, int widthPixels, int heightPixels);
+    sealed record FakeWindow(
+        IntPtr Handle, bool Visible, string Title, string ClassName,
+        int ProcessIdentifier, string ProcessName, int WidthPixels, int HeightPixels);
 
     [Fact]
     public void Enumerate_YieldsOnlyVisibleTitledNonSystemWindows()
     {
-        FakeWin32Api api = new FakeWin32Api();
-        api.windows.AddRange(new[]
+        var api = new FakeWin32Api();
+        api.Windows.AddRange(new[]
         {
             new FakeWindow(new(1), true,  "Notepad",  "Notepad", 100, "notepad", 640, 480),
             new FakeWindow(new(2), false, "Hidden",   "AnyClass",101, "app",     100, 100),
@@ -62,35 +59,35 @@ public sealed class WindowEnumeratorTests
             new FakeWindow(new(6), true,  "Visible2","ProperClass",   105, "other",    800, 600),
         });
 
-        WindowEnumerator enumerator = new WindowEnumerator(api);
-        List<WindowInformation> list = enumerator.EnumerateWindows().ToList();
+        var enumerator = new WindowEnumerator(api);
+        var list = enumerator.EnumerateWindows().ToList();
 
         Assert.Equal(2, list.Count);
-        Assert.Contains(list, window => window.title == "Notepad");
-        Assert.Contains(list, window => window.title == "Visible2");
+        Assert.Contains(list, window => window.Title == "Notepad");
+        Assert.Contains(list, window => window.Title == "Visible2");
     }
 
     [Fact]
     public void Enumerate_ExcludesZeroSizedWindows()
     {
-        FakeWin32Api api = new FakeWin32Api();
-        api.windows.Add(new FakeWindow(new(1), true, "Title", "Class", 10, "p", 0, 0));
-        WindowEnumerator enumerator = new WindowEnumerator(api);
+        var api = new FakeWin32Api();
+        api.Windows.Add(new FakeWindow(new(1), true, "Title", "Class", 10, "p", 0, 0));
+        var enumerator = new WindowEnumerator(api);
         Assert.Empty(enumerator.EnumerateWindows());
     }
 
     [Fact]
     public void Enumerate_ReturnsHandleAndDimensions()
     {
-        FakeWin32Api api = new FakeWin32Api();
-        api.windows.Add(new FakeWindow(new(42), true, "T", "C", 10, "proc", 1024, 768));
-        WindowEnumerator enumerator = new WindowEnumerator(api);
+        var api = new FakeWin32Api();
+        api.Windows.Add(new FakeWindow(new(42), true, "T", "C", 10, "proc", 1024, 768));
+        var enumerator = new WindowEnumerator(api);
 
-        WindowInformation information = enumerator.EnumerateWindows().Single();
-        Assert.Equal(42, information.handle.value);
-        Assert.Equal(1024, information.widthPixels);
-        Assert.Equal(768, information.heightPixels);
-        Assert.Equal("proc", information.processName);
+        var information = enumerator.EnumerateWindows().Single();
+        Assert.Equal(42, information.Handle.Value);
+        Assert.Equal(1024, information.WidthPixels);
+        Assert.Equal(768, information.HeightPixels);
+        Assert.Equal("proc", information.ProcessName);
     }
 
     [Theory]
@@ -100,15 +97,15 @@ public sealed class WindowEnumeratorTests
     [InlineData("Windows.UI.Core.CoreWindow")]
     public void ExcludedClasses_AreFiltered(string excludedClass)
     {
-        FakeWin32Api api = new FakeWin32Api();
-        api.windows.Add(new FakeWindow(new(1), true, "T", excludedClass, 10, "p", 100, 100));
-        WindowEnumerator enumerator = new WindowEnumerator(api);
+        var api = new FakeWin32Api();
+        api.Windows.Add(new FakeWindow(new(1), true, "T", excludedClass, 10, "p", 100, 100));
+        var enumerator = new WindowEnumerator(api);
         Assert.Empty(enumerator.EnumerateWindows());
     }
 
     [Fact]
     public void Constructor_NullApi_Throws()
     {
-        Assert.Throws<System.ArgumentNullException>(() => new WindowEnumerator(null!));
+        Assert.Throws<ArgumentNullException>(() => new WindowEnumerator(null!));
     }
 }

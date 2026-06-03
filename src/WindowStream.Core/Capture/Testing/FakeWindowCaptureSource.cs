@@ -1,54 +1,50 @@
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-
 namespace WindowStream.Core.Capture.Testing;
 
 public sealed class FakeWindowCaptureSource : IWindowCaptureSource
 {
-    private readonly List<WindowInformation> windows;
-    private readonly Dictionary<WindowHandle, FakeWindowCapture> captures = new();
+    readonly List<WindowInformation> _windows;
+    readonly Dictionary<WindowHandle, FakeWindowCapture> _captures = new();
 
-    public FakeWindowCaptureSource(IEnumerable<WindowInformation> windows)
+    public FakeWindowCaptureSource(IEnumerable<WindowInformation>? windows)
     {
-        this.windows = windows?.ToList() ?? new List<WindowInformation>();
+        _windows = windows?.ToList() ?? new List<WindowInformation>();
     }
 
-    public IEnumerable<WindowInformation> ListWindows() => windows;
+    public IEnumerable<WindowInformation> ListWindows() => _windows;
 
     public FakeWindowCapture? GetCapture(WindowHandle handle) =>
-        captures.TryGetValue(handle, out FakeWindowCapture? capture) ? capture : null;
+        _captures.TryGetValue(handle, out var capture) ? capture : null;
 
     public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken)
     {
-        if (!windows.Exists(window => window.handle.Equals(handle)))
+        if (!_windows.Exists(window => window.Handle.Equals(handle)))
         {
             throw new WindowGoneException(handle);
         }
-        if (captures.TryGetValue(handle, out FakeWindowCapture? existing))
+        if (_captures.TryGetValue(handle, out var existing))
         {
             return existing;
         }
-        FakeWindowCapture capture = new FakeWindowCapture(handle, options, cancellationToken);
-        captures[handle] = capture;
+        var capture = new FakeWindowCapture(handle, options, cancellationToken);
+        _captures[handle] = capture;
         return capture;
     }
 
     public void EnqueueFrame(WindowHandle handle, CapturedFrame frame) =>
-        GetOrCreateCapture(handle).channel.Writer.TryWrite(frame);
+        GetOrCreateCapture(handle)._channel.Writer.TryWrite(frame);
 
     public void CompleteAfterEnqueued(WindowHandle handle) =>
-        GetOrCreateCapture(handle).channel.Writer.TryComplete();
+        GetOrCreateCapture(handle)._channel.Writer.TryComplete();
 
-    public void FaultAfterEnqueued(WindowHandle handle, System.Exception exception) =>
-        GetOrCreateCapture(handle).channel.Writer.TryComplete(exception);
+    public void FaultAfterEnqueued(WindowHandle handle, Exception exception) =>
+        GetOrCreateCapture(handle)._channel.Writer.TryComplete(exception);
 
-    private FakeWindowCapture GetOrCreateCapture(WindowHandle handle)
+    FakeWindowCapture GetOrCreateCapture(WindowHandle handle)
     {
-        if (!captures.TryGetValue(handle, out FakeWindowCapture? capture))
+        if (!_captures.TryGetValue(handle, out var capture))
         {
             capture = new FakeWindowCapture(handle, new CaptureOptions(60, false), CancellationToken.None);
-            captures[handle] = capture;
+            _captures[handle] = capture;
         }
         return capture;
     }

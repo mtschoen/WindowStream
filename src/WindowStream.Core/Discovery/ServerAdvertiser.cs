@@ -1,21 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace WindowStream.Core.Discovery;
 
 public sealed class ServerAdvertiser : IAsyncDisposable
 {
     public const string ServiceType = "_windowstream._tcp.local.";
 
-    private readonly IMulticastServiceHost multicastServiceHost;
-    private bool started;
-    private bool disposed;
+    readonly IMulticastServiceHost _multicastServiceHost;
+    bool _started;
+    bool _disposed;
 
     public ServerAdvertiser(IMulticastServiceHost multicastServiceHost)
     {
-        this.multicastServiceHost = multicastServiceHost
+        _multicastServiceHost = multicastServiceHost
             ?? throw new ArgumentNullException(nameof(multicastServiceHost));
     }
 
@@ -32,45 +27,45 @@ public sealed class ServerAdvertiser : IAsyncDisposable
                 controlPort,
                 "controlPort must be in [1, 65535].");
         }
-        if (started)
+        if (_started)
         {
             throw new InvalidOperationException("ServerAdvertiser has already been started.");
         }
 
-        IReadOnlyList<string> textRecords = ServiceTextRecords.Build(options);
-        await multicastServiceHost.StartAdvertisingAsync(
-            serviceInstance: options.hostname,
+        var textRecords = ServiceTextRecords.Build(options);
+        await _multicastServiceHost.StartAdvertisingAsync(
+            serviceInstance: options.Hostname,
             serviceType: ServiceType,
             port: controlPort,
             textRecords: textRecords,
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        started = true;
+        _started = true;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (!started)
+        if (!_started)
         {
             return;
         }
-        await multicastServiceHost.StopAdvertisingAsync(cancellationToken).ConfigureAwait(false);
-        started = false;
+        await _multicastServiceHost.StopAdvertisingAsync(cancellationToken).ConfigureAwait(false);
+        _started = false;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
-        disposed = true;
+        _disposed = true;
         try
         {
             await StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
-            await multicastServiceHost.DisposeAsync().ConfigureAwait(false);
+            await _multicastServiceHost.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

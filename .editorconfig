@@ -225,6 +225,24 @@ dotnet_diagnostic.CA1003.severity = none
 # span rewrite is a micro-optimisation not worth the interop risk here.
 dotnet_diagnostic.CA1838.severity = none
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ReSharper / jb-inspectcode opt-outs (the "deep gate" beyond Roslyn analyzers).
+# Each fires on correct code whose usage the solution-wide analyzer cannot trace;
+# documented per the maintaining-full-coverage escalation ladder (restructure
+# first — opt out only where no restructure can make the usage visible).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# NotAccessedPositionalProperty.Global / UnusedAutoPropertyAccessor.Global flag
+# DTO/record members that ARE consumed, but only through channels ReSharper does
+# not follow: System.Text.Json (de)serialization of wire-protocol records
+# (ErrorMessage, HelloMessage), the JSONL observability log (LogEntry,
+# PipelineEvent), XAML data binding on the MAUI dashboard rows (StreamStateRow),
+# and test-fixture records read by the harnesses. No code change makes the
+# cross-boundary usage visible. The .Local variants stay ON to catch truly-dead
+# members within a single scope.
+resharper_not_accessed_positional_property_global_highlighting = none
+resharper_unused_auto_property_accessor_global_highlighting = none
+
 #### Per-project relaxations ####
 # Test projects: CA1707 (underscores in member names) is the xUnit
 # Method_Scenario_Expected convention, and CA1861 (constant-array-arg perf) is

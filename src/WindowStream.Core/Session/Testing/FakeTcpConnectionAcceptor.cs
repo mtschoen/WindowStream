@@ -1,8 +1,5 @@
-using System;
 using System.Net;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Protocol;
 
 namespace WindowStream.Core.Session.Testing;
@@ -13,22 +10,23 @@ namespace WindowStream.Core.Session.Testing;
 /// </summary>
 public sealed class FakeTcpConnectionAcceptor : ITcpConnectionAcceptor
 {
-    private readonly Channel<IControlChannel> pendingConnections =
+    readonly Channel<IControlChannel> _pendingConnections =
         Channel.CreateUnbounded<IControlChannel>(new UnboundedChannelOptions { SingleWriter = false, SingleReader = true });
-    private readonly TimeProvider timeProvider;
-    private int localPort;
-    private bool disposed;
+
+    readonly TimeProvider _timeProvider;
+    int _localPort;
+    bool _disposed;
 
     public FakeTcpConnectionAcceptor(TimeProvider timeProvider)
     {
-        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
-    public int LocalPort => localPort;
+    public int LocalPort => _localPort;
 
     public void StartListening(int port)
     {
-        localPort = port == 0 ? 51234 : port;
+        _localPort = port == 0 ? 51234 : port;
     }
 
     /// <summary>
@@ -40,30 +38,30 @@ public sealed class FakeTcpConnectionAcceptor : ITcpConnectionAcceptor
     public FakeViewerEndpoint EnqueueIncomingConnection(IPAddress? remoteIpAddress = null)
     {
         // viewerToServer: messages the viewer writes that the server reads
-        Channel<ControlMessage> viewerToServer = Channel.CreateUnbounded<ControlMessage>(
+        var viewerToServer = Channel.CreateUnbounded<ControlMessage>(
             new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
         // serverToViewer: messages the server writes that the viewer reads
-        Channel<ControlMessage> serverToViewer = Channel.CreateUnbounded<ControlMessage>(
+        var serverToViewer = Channel.CreateUnbounded<ControlMessage>(
             new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
 
 #pragma warning disable CA2000 // ownership of FakeControlChannel transfers to the channel consumer via pendingConnections
-        FakeControlChannel serverSide = new FakeControlChannel(
-            viewerToServer.Reader, serverToViewer.Writer, timeProvider, remoteIpAddress);
+        var serverSide = new FakeControlChannel(
+            viewerToServer.Reader, serverToViewer.Writer, _timeProvider, remoteIpAddress);
 #pragma warning restore CA2000
-        FakeViewerEndpoint viewerSide = new FakeViewerEndpoint(viewerToServer.Writer, serverToViewer.Reader);
+        var viewerSide = new FakeViewerEndpoint(viewerToServer.Writer, serverToViewer.Reader);
 
-        pendingConnections.Writer.TryWrite(serverSide);
+        _pendingConnections.Writer.TryWrite(serverSide);
         return viewerSide;
     }
 
     public Task<IControlChannel> AcceptAsync(CancellationToken cancellationToken) =>
-        pendingConnections.Reader.ReadAsync(cancellationToken).AsTask();
+        _pendingConnections.Reader.ReadAsync(cancellationToken).AsTask();
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
-        pendingConnections.Writer.TryComplete();
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
+        _pendingConnections.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }
 }

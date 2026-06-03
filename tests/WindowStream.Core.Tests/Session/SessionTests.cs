@@ -1,7 +1,6 @@
-using System.Collections.Generic;
 using WindowStream.Core.Session;
-using CoreSession = WindowStream.Core.Session.Session;
 using Xunit;
+using CoreSession = WindowStream.Core.Session.Session;
 
 namespace WindowStream.Core.Tests.Session;
 
@@ -70,7 +69,7 @@ public sealed class SessionTests
     {
         CoreSession session = new();
         session.BeginCapturing();
-        InvalidSessionTransitionException exception = Assert.Throws<InvalidSessionTransitionException>(
+        var exception = Assert.Throws<InvalidSessionTransitionException>(
             () => session.BeginCapturing());
         Assert.Equal(SessionState.Capturing, exception.FromState);
         Assert.Equal(SessionState.Capturing, exception.ToState);

@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Hosting;
 using Xunit;
 
@@ -9,8 +8,8 @@ public class WorkerFrameTests
     [Fact]
     public void WorkerChunkFrame_HoldsPayloadAndMetadata()
     {
-        byte[] payload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F };
-        WorkerChunkFrame frame = new WorkerChunkFrame(
+        var payload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F };
+        var frame = new WorkerChunkFrame(
             PresentationTimestampMicroseconds: 16_667UL,
             IsKeyframe: true,
             Payload: payload);
@@ -23,7 +22,7 @@ public class WorkerFrameTests
     [Fact]
     public void WorkerCommandFrame_DefaultsAreEmpty()
     {
-        WorkerCommandFrame frame = new WorkerCommandFrame(WorkerCommandTag.Pause);
+        var frame = new WorkerCommandFrame(WorkerCommandTag.Pause);
         Assert.Equal(WorkerCommandTag.Pause, frame.Tag);
     }
 

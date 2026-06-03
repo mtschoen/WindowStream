@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Transport;
 using Xunit;
 
@@ -12,18 +8,18 @@ public sealed class LengthPrefixFramingReadTests
     [Fact]
     public async Task ReadsCompletePayloadInOneCall()
     {
-        byte[] framed = LengthPrefixFraming.Encode(new byte[] { 0xAA, 0xBB, 0xCC });
+        var framed = LengthPrefixFraming.Encode(new byte[] { 0xAA, 0xBB, 0xCC });
         using MemoryStream stream = new(framed);
-        byte[] payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
+        var payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
         Assert.Equal(new byte[] { 0xAA, 0xBB, 0xCC }, payload);
     }
 
     [Fact]
     public async Task ReassemblesAcrossMultipleReads()
     {
-        byte[] framed = LengthPrefixFraming.Encode(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 });
+        var framed = LengthPrefixFraming.Encode(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 });
         using SlowStream stream = new(framed, chunkSize: 1);
-        byte[] payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
+        var payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
         Assert.Equal(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }, payload);
     }
 
@@ -39,7 +35,7 @@ public sealed class LengthPrefixFramingReadTests
     public async Task EndOfStreamInsidePayloadThrows()
     {
         // length = 4, payload delivered as only 2 bytes
-        byte[] truncated = new byte[] { 0x00, 0x00, 0x00, 0x04, 0xAA, 0xBB };
+        var truncated = new byte[] { 0x00, 0x00, 0x00, 0x04, 0xAA, 0xBB };
         using MemoryStream stream = new(truncated);
         await Assert.ThrowsAsync<EndOfStreamException>(
             async () => await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None));
@@ -49,8 +45,8 @@ public sealed class LengthPrefixFramingReadTests
     public async Task RejectsOversizedFrame()
     {
         // length = MaximumPayloadByteLength + 1 encoded big-endian
-        uint oversize = (uint)LengthPrefixFraming.MaximumPayloadByteLength + 1;
-        byte[] header = new byte[]
+        var oversize = (uint)LengthPrefixFraming.MaximumPayloadByteLength + 1;
+        var header = new[]
         {
             (byte)((oversize >> 24) & 0xFF),
             (byte)((oversize >> 16) & 0xFF),
@@ -75,20 +71,20 @@ public sealed class LengthPrefixFramingReadTests
     [Fact]
     public async Task ReadsEmptyPayload()
     {
-        byte[] framed = LengthPrefixFraming.Encode(Array.Empty<byte>());
+        var framed = LengthPrefixFraming.Encode(Array.Empty<byte>());
         using MemoryStream stream = new(framed);
-        byte[] payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
+        var payload = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
         Assert.Empty(payload);
     }
 
     [Fact]
     public async Task WriteFrameAsyncRoundTrips()
     {
-        byte[] payload = new byte[] { 0x10, 0x20, 0x30, 0x40 };
+        var payload = new byte[] { 0x10, 0x20, 0x30, 0x40 };
         using MemoryStream stream = new();
         await LengthPrefixFraming.WriteFrameAsync(stream, payload, CancellationToken.None);
         stream.Position = 0;
-        byte[] received = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
+        var received = await LengthPrefixFraming.ReadFrameAsync(stream, CancellationToken.None);
         Assert.Equal(payload, received);
     }
 
@@ -108,33 +104,33 @@ public sealed class LengthPrefixFramingReadTests
 
     // Helper: a Stream that returns at most `chunkSize` bytes per read call, forcing the
     // reader to loop until the requested length is satisfied.
-    private sealed class SlowStream : Stream
+    sealed class SlowStream : Stream
     {
-        private readonly byte[] data;
-        private readonly int chunkSize;
-        private int position;
+        readonly byte[] _data;
+        readonly int _chunkSize;
+        int _position;
 
         public SlowStream(byte[] data, int chunkSize)
         {
-            this.data = data;
-            this.chunkSize = chunkSize;
+            _data = data;
+            _chunkSize = chunkSize;
         }
 
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => false;
-        public override long Length => data.Length;
+        public override long Length => _data.Length;
         public override long Position
         {
-            get => position;
+            get => _position;
             set => throw new NotSupportedException();
         }
         public override void Flush() { }
         public override int Read(byte[] buffer, int offset, int count)
         {
-            int actual = Math.Min(Math.Min(count, chunkSize), data.Length - position);
-            Array.Copy(data, position, buffer, offset, actual);
-            position += actual;
+            var actual = Math.Min(Math.Min(count, _chunkSize), _data.Length - _position);
+            Array.Copy(_data, _position, buffer, offset, actual);
+            _position += actual;
             return actual;
         }
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();

@@ -1,8 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Session;
 
@@ -14,10 +12,10 @@ namespace WindowStream.Server.ViewModels;
 /// just kicks off the parameterless coordinator. The selected
 /// <see cref="WindowInformation"/> is retained for display only.
 /// </summary>
-public sealed class WindowPickerViewModel : INotifyPropertyChanged
+public sealed partial class WindowPickerViewModel : INotifyPropertyChanged
 {
-    private readonly IWindowCaptureSource captureSource;
-    private readonly ISessionHostLauncher hostLauncher;
+    readonly IWindowCaptureSource _captureSource;
+    readonly ISessionHostLauncher _hostLauncher;
 
     public ObservableCollection<WindowInformation> Windows { get; } = new();
 
@@ -25,14 +23,14 @@ public sealed class WindowPickerViewModel : INotifyPropertyChanged
 
     public WindowPickerViewModel(IWindowCaptureSource captureSource, ISessionHostLauncher hostLauncher)
     {
-        this.captureSource = captureSource;
-        this.hostLauncher = hostLauncher;
+        _captureSource = captureSource;
+        _hostLauncher = hostLauncher;
     }
 
     public void Refresh()
     {
         Windows.Clear();
-        foreach (WindowInformation window in captureSource.ListWindows())
+        foreach (var window in _captureSource.ListWindows())
         {
             Windows.Add(window);
         }
@@ -43,10 +41,10 @@ public sealed class WindowPickerViewModel : INotifyPropertyChanged
     public Task StartStreamAsync(WindowInformation window, CancellationToken cancellationToken)
     {
         _ = window;
-        return hostLauncher.LaunchAsync(cancellationToken);
+        return _hostLauncher.LaunchAsync(cancellationToken);
     }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }

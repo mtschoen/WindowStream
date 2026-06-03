@@ -1,9 +1,5 @@
-using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Protocol;
 
@@ -11,11 +7,11 @@ namespace WindowStream.Core.Hosting;
 
 public sealed class WorkerSupervisor : IAsyncDisposable
 {
-    private readonly IWorkerProcessLauncher launcher;
-    private readonly int maximumConcurrentStreams;
-    private readonly ConcurrentDictionary<int, ActiveStream> activeStreams = new();
-    private int nextStreamId;
-    private bool disposed;
+    readonly IWorkerProcessLauncher _launcher;
+    readonly int _maximumConcurrentStreams;
+    readonly ConcurrentDictionary<int, ActiveStream> _activeStreams = new();
+    int _nextStreamId;
+    bool _disposed;
 
     public event EventHandler<StreamEndedEventArguments>? StreamEnded;
 
@@ -23,8 +19,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     public WorkerSupervisor(IWorkerProcessLauncher launcher, int maximumConcurrentStreams)
     {
-        this.launcher = launcher;
-        this.maximumConcurrentStreams = maximumConcurrentStreams;
+        _launcher = launcher;
+        _maximumConcurrentStreams = maximumConcurrentStreams;
     }
 
     public async Task<StreamHandle> StartStreamAsync(
@@ -33,23 +29,23 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         EncoderOptions encoderOptions,
         CancellationToken cancellationToken)
     {
-        if (activeStreams.Count >= maximumConcurrentStreams)
+        if (_activeStreams.Count >= _maximumConcurrentStreams)
         {
-            throw new EncoderCapacityException(maximumConcurrentStreams);
+            throw new EncoderCapacityException(_maximumConcurrentStreams);
         }
 
-        int streamId = Interlocked.Increment(ref nextStreamId);
-        string pipeName = $"windowstream-{Environment.ProcessId}-{streamId}";
+        var streamId = Interlocked.Increment(ref _nextStreamId);
+        var pipeName = $"windowstream-{Environment.ProcessId}-{streamId}";
 
-        WorkerLaunchArguments launchArguments = new WorkerLaunchArguments(
+        var launchArguments = new WorkerLaunchArguments(
             hwnd,
             streamId,
             pipeName,
             JsonSerializer.Serialize(encoderOptions));
-        IWorkerHandle handle = await launcher.LaunchAsync(launchArguments, cancellationToken).ConfigureAwait(false);
+        var handle = await _launcher.LaunchAsync(launchArguments, cancellationToken).ConfigureAwait(false);
 
-        ActiveStream record = new ActiveStream(streamId, windowId, handle);
-        activeStreams[streamId] = record;
+        var record = new ActiveStream(streamId, windowId, handle);
+        _activeStreams[streamId] = record;
 
         StreamStarted?.Invoke(this, new StreamStartedEventArguments(streamId, windowId, handle.Pipe, handle.ProcessId));
 
@@ -59,7 +55,7 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     public async Task StopStreamAsync(int streamId)
     {
-        if (!activeStreams.TryGetValue(streamId, out ActiveStream? record))
+        if (!_activeStreams.TryGetValue(streamId, out var record))
         {
             return;
         }
@@ -69,13 +65,13 @@ public sealed class WorkerSupervisor : IAsyncDisposable
     }
 
     public Stream? GetPipe(int streamId)
-        => activeStreams.TryGetValue(streamId, out ActiveStream? record) ? record.Handle.Pipe : null;
+        => _activeStreams.TryGetValue(streamId, out var record) ? record.Handle.Pipe : null;
 
-    private async Task MonitorAsync(ActiveStream record)
+    async Task MonitorAsync(ActiveStream record)
     {
-        int exitCode = await record.Handle.WaitForExitAsync().ConfigureAwait(false);
-        activeStreams.TryRemove(record.StreamId, out _);
-        StreamStoppedReason reason = record.Expected switch
+        var exitCode = await record.Handle.WaitForExitAsync().ConfigureAwait(false);
+        _activeStreams.TryRemove(record.StreamId, out _);
+        var reason = record.Expected switch
         {
             ExpectedExit.ClosedByViewer => StreamStoppedReason.ClosedByViewer,
             _ => exitCode switch
@@ -91,12 +87,12 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
-        disposed = true;
-        foreach (System.Collections.Generic.KeyValuePair<int, ActiveStream> pair in activeStreams)
+        _disposed = true;
+        foreach (var pair in _activeStreams)
         {
             pair.Value.Expected = ExpectedExit.ClosedByViewer;
             pair.Value.Handle.Kill();
@@ -104,13 +100,13 @@ public sealed class WorkerSupervisor : IAsyncDisposable
         }
     }
 
-    private enum ExpectedExit
+    enum ExpectedExit
     {
         Unset,
         ClosedByViewer
     }
 
-    private sealed class ActiveStream
+    sealed class ActiveStream
     {
         public ActiveStream(int streamId, ulong windowId, IWorkerHandle handle)
         {
@@ -122,6 +118,8 @@ public sealed class WorkerSupervisor : IAsyncDisposable
 
         public int StreamId { get; }
 
+        // Stream-to-window association retained for diagnostics and symmetry with StreamId.
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
         public ulong WindowId { get; }
 
         public IWorkerHandle Handle { get; }

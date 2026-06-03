@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 
 namespace WindowStream.Core.Observability;
@@ -8,24 +6,24 @@ namespace WindowStream.Core.Observability;
 // This is the one place that decides how an event maps to a log record.
 public sealed class Diagnostics
 {
-    private readonly ILogger logger;
-    private Action<PipelineEvent>? subscriber;
+    readonly ILogger _logger;
+    Action<PipelineEvent>? _subscriber;
 
     public Diagnostics(ILogger logger)
     {
-        this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public void Subscribe(Action<PipelineEvent> handler)
     {
-        subscriber = handler;
+        _subscriber = handler;
     }
 
     public void Report(PipelineEvent pipelineEvent)
     {
         ArgumentNullException.ThrowIfNull(pipelineEvent);
 
-        LogLevel logLevel = pipelineEvent.Severity switch
+        var logLevel = pipelineEvent.Severity switch
         {
             Severity.Warning => LogLevel.Warning,
             Severity.Error => LogLevel.Error,
@@ -38,7 +36,7 @@ public sealed class Diagnostics
             ["StreamId"] = pipelineEvent.StreamId,
         };
 
-        Exception? exception = pipelineEvent switch
+        var exception = pipelineEvent switch
         {
             PipelineEvent.WorkerSpawnFailed workerSpawnFailed => workerSpawnFailed.Exception,
             PipelineEvent.CaptureFailed captureFailed => captureFailed.Exception,
@@ -48,12 +46,12 @@ public sealed class Diagnostics
             _ => null,
         };
 
-        using (logger.BeginScope(scopeProperties))
+        using (_logger.BeginScope(scopeProperties))
         {
-            logger.Log(logLevel, default, pipelineEvent, exception,
-                static (state, _) => state.GetType().Name + ": " + state.ToString());
+            _logger.Log(logLevel, default, pipelineEvent, exception,
+                static (state, _) => state.GetType().Name + ": " + state);
         }
 
-        subscriber?.Invoke(pipelineEvent);
+        _subscriber?.Invoke(pipelineEvent);
     }
 }

@@ -1,4 +1,3 @@
-using System;
 using System.Buffers.Binary;
 
 namespace WindowStream.Core.Transport;
@@ -51,7 +50,7 @@ public readonly record struct PacketHeader(
                 $"destination must be at least {HeaderByteLength} bytes, got {destination.Length}",
                 nameof(destination));
         }
-        BinaryPrimitives.WriteUInt32BigEndian(destination[0..4], MagicValue);
+        BinaryPrimitives.WriteUInt32BigEndian(destination[..4], MagicValue);
         BinaryPrimitives.WriteUInt32BigEndian(destination[4..8], StreamId);
         BinaryPrimitives.WriteUInt32BigEndian(destination[8..12], Sequence);
         BinaryPrimitives.WriteUInt64BigEndian(destination[12..20], PresentationTimestampMicroseconds);
@@ -68,17 +67,17 @@ public readonly record struct PacketHeader(
             throw new MalformedPacketException(
                 $"packet is {source.Length} bytes, minimum is {HeaderByteLength}");
         }
-        uint magic = BinaryPrimitives.ReadUInt32BigEndian(source[0..4]);
+        var magic = BinaryPrimitives.ReadUInt32BigEndian(source[..4]);
         if (magic != MagicValue)
         {
             throw new MalformedPacketException($"unexpected magic: 0x{magic:X8}");
         }
-        uint streamId = BinaryPrimitives.ReadUInt32BigEndian(source[4..8]);
-        uint sequence = BinaryPrimitives.ReadUInt32BigEndian(source[8..12]);
-        ulong presentationTimestamp = BinaryPrimitives.ReadUInt64BigEndian(source[12..20]);
-        byte flags = source[20];
-        byte fragmentIndex = source[21];
-        byte fragmentTotal = source[22];
+        var streamId = BinaryPrimitives.ReadUInt32BigEndian(source[4..8]);
+        var sequence = BinaryPrimitives.ReadUInt32BigEndian(source[8..12]);
+        var presentationTimestamp = BinaryPrimitives.ReadUInt64BigEndian(source[12..20]);
+        var flags = source[20];
+        var fragmentIndex = source[21];
+        var fragmentTotal = source[22];
         if (fragmentTotal == 0)
         {
             throw new MalformedPacketException("fragmentTotal must be at least 1");

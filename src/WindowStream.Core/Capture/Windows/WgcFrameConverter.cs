@@ -1,23 +1,22 @@
 #if WINDOWS
-using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Silk.NET.Direct3D11;
 using Windows.Graphics.Capture;
+using Silk.NET.Direct3D11;
 using WinRT;
 
 namespace WindowStream.Core.Capture.Windows;
 
-internal sealed class WgcFrameConverter
+sealed class WgcFrameConverter
 {
     [ComImport, Guid("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IDirect3DDxgiInterfaceAccess
+    interface IDirect3DDxgiInterfaceAccess
     {
         IntPtr GetInterface([In] ref Guid iid);
     }
 
-    private static readonly Guid iidId3D11Texture2D =
+    static readonly Guid IidId3D11Texture2D =
         new Guid("6F15AAF2-D208-4E89-9AB4-489535D34F9C");
 
     /// <summary>
@@ -33,41 +32,41 @@ internal sealed class WgcFrameConverter
     internal delegate (nint texturePointer, int arrayIndex, D3D11VideoProcessorColorConverter converter)
         AcquireNv12SlotDelegate(int width, int height);
 
-    private static readonly bool IsFrameCountLogEnabled =
+    static readonly bool IsFrameCountLogEnabled =
         Environment.GetEnvironmentVariable("WINDOWSTREAM_FRAMECOUNT") == "1";
 
-    private readonly AcquireNv12SlotDelegate acquireNv12Slot;
+    readonly AcquireNv12SlotDelegate _acquireNv12Slot;
 
     internal WgcFrameConverter(AcquireNv12SlotDelegate acquireNv12Slot)
     {
-        this.acquireNv12Slot = acquireNv12Slot ?? throw new ArgumentNullException(nameof(acquireNv12Slot));
+        _acquireNv12Slot = acquireNv12Slot ?? throw new ArgumentNullException(nameof(acquireNv12Slot));
     }
 
     public CapturedFrame Convert(Direct3D11CaptureFrame frame, long startTicks)
     {
-        IDirect3DDxgiInterfaceAccess access =
+        var access =
             frame.Surface.As<IDirect3DDxgiInterfaceAccess>();
-        Guid id = iidId3D11Texture2D;
-        IntPtr sourceTexturePointer = access.GetInterface(ref id);
+        var id = IidId3D11Texture2D;
+        var sourceTexturePointer = access.GetInterface(ref id);
         try
         {
             unsafe
             {
-                ID3D11Texture2D* sourceTexture = (ID3D11Texture2D*)sourceTexturePointer;
+                var sourceTexture = (ID3D11Texture2D*)sourceTexturePointer;
                 Texture2DDesc description = default;
                 sourceTexture->GetDesc(ref description);
 
-                int width = (int)description.Width;
-                int height = (int)description.Height;
+                var width = (int)description.Width;
+                var height = (int)description.Height;
 
-                (nint destinationNv12Pointer, int arrayIndex, D3D11VideoProcessorColorConverter converter) =
-                    acquireNv12Slot(width, height);
+                (var destinationNv12Pointer, var arrayIndex, var converter) =
+                    _acquireNv12Slot(width, height);
 
                 converter.Convert(sourceTexturePointer, destinationNv12Pointer, arrayIndex);
 
-                long elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
-                long timestampMicroseconds = (long)(elapsedTicks * 1_000_000.0 / Stopwatch.Frequency);
-                long wallClockMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
+                var timestampMicroseconds = (long)(elapsedTicks * 1_000_000.0 / Stopwatch.Frequency);
+                var wallClockMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                 if (IsFrameCountLogEnabled)
                 {

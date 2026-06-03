@@ -3,35 +3,35 @@ using System.Runtime.CompilerServices;
 
 namespace WindowStream.Server.ViewModels;
 
-public sealed class SessionViewModel : INotifyPropertyChanged
+public sealed partial class SessionViewModel : INotifyPropertyChanged
 {
-    private SessionStatus status = SessionStatus.Starting;
-    private double framesPerSecond;
-    private int bitrateKilobitsPerSecond;
-    private string? connectedViewerEndpoint;
+    SessionStatus _status = SessionStatus.Starting;
+    double _framesPerSecond;
+    int _bitrateKilobitsPerSecond;
+    string? _connectedViewerEndpoint;
 
     public SessionStatus Status
     {
-        get => status;
-        private set => SetField(ref status, value);
+        get => _status;
+        private set => SetField(ref _status, value);
     }
 
     public double FramesPerSecond
     {
-        get => framesPerSecond;
-        private set => SetField(ref framesPerSecond, value);
+        get => _framesPerSecond;
+        private set => SetField(ref _framesPerSecond, value);
     }
 
     public int BitrateKilobitsPerSecond
     {
-        get => bitrateKilobitsPerSecond;
-        private set => SetField(ref bitrateKilobitsPerSecond, value);
+        get => _bitrateKilobitsPerSecond;
+        private set => SetField(ref _bitrateKilobitsPerSecond, value);
     }
 
     public string? ConnectedViewerEndpoint
     {
-        get => connectedViewerEndpoint;
-        private set => SetField(ref connectedViewerEndpoint, value);
+        get => _connectedViewerEndpoint;
+        private set => SetField(ref _connectedViewerEndpoint, value);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -48,7 +48,7 @@ public sealed class SessionViewModel : INotifyPropertyChanged
         ConnectedViewerEndpoint = metrics.ConnectedViewerEndpoint;
     }
 
-    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (!Equals(field, value))
         {

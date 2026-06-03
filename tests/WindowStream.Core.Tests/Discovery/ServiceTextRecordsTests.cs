@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using WindowStream.Core.Discovery;
 using Xunit;
 
@@ -9,12 +8,12 @@ public sealed class ServiceTextRecordsTests
     [Fact]
     public void Build_EmitsRequiredKeys()
     {
-        AdvertisementOptions options = new AdvertisementOptions(
-            hostname: "mtsch-desktop",
-            protocolMajorVersion: 1,
-            protocolRevision: 1);
+        var options = new AdvertisementOptions(
+            Hostname: "mtsch-desktop",
+            ProtocolMajorVersion: 1,
+            ProtocolRevision: 1);
 
-        IReadOnlyList<string> records = ServiceTextRecords.Build(options);
+        var records = ServiceTextRecords.Build(options);
 
         Assert.Contains("version=1", records);
         Assert.Contains("hostname=mtsch-desktop", records);
@@ -25,50 +24,50 @@ public sealed class ServiceTextRecordsTests
     [Fact]
     public void Build_RejectsEmptyHostname()
     {
-        AdvertisementOptions options = new AdvertisementOptions(
-            hostname: "",
-            protocolMajorVersion: 1,
-            protocolRevision: 1);
+        var options = new AdvertisementOptions(
+            Hostname: "",
+            ProtocolMajorVersion: 1,
+            ProtocolRevision: 1);
 
-        Assert.Throws<System.ArgumentException>(() => ServiceTextRecords.Build(options));
+        Assert.Throws<ArgumentException>(() => ServiceTextRecords.Build(options));
     }
 
     [Fact]
     public void Build_RejectsHostnameWithEqualsSign()
     {
-        AdvertisementOptions options = new AdvertisementOptions(
-            hostname: "bad=name",
-            protocolMajorVersion: 1,
-            protocolRevision: 1);
+        var options = new AdvertisementOptions(
+            Hostname: "bad=name",
+            ProtocolMajorVersion: 1,
+            ProtocolRevision: 1);
 
-        Assert.Throws<System.ArgumentException>(() => ServiceTextRecords.Build(options));
+        Assert.Throws<ArgumentException>(() => ServiceTextRecords.Build(options));
     }
 
     [Fact]
     public void Build_RejectsNegativeVersion()
     {
-        AdvertisementOptions options = new AdvertisementOptions(
-            hostname: "h",
-            protocolMajorVersion: -1,
-            protocolRevision: 0);
+        var options = new AdvertisementOptions(
+            Hostname: "h",
+            ProtocolMajorVersion: -1,
+            ProtocolRevision: 0);
 
-        Assert.Throws<System.ArgumentOutOfRangeException>(() => ServiceTextRecords.Build(options));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ServiceTextRecords.Build(options));
     }
 
     [Fact]
     public void Build_RejectsNegativeRevision()
     {
-        AdvertisementOptions options = new AdvertisementOptions(
-            hostname: "h",
-            protocolMajorVersion: 1,
-            protocolRevision: -1);
+        var options = new AdvertisementOptions(
+            Hostname: "h",
+            ProtocolMajorVersion: 1,
+            ProtocolRevision: -1);
 
-        Assert.Throws<System.ArgumentOutOfRangeException>(() => ServiceTextRecords.Build(options));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ServiceTextRecords.Build(options));
     }
 
     [Fact]
     public void Build_RejectsNullOptions()
     {
-        Assert.Throws<System.ArgumentNullException>(() => ServiceTextRecords.Build(null!));
+        Assert.Throws<ArgumentNullException>(() => ServiceTextRecords.Build(null!));
     }
 }

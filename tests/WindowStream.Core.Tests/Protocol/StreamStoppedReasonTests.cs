@@ -1,4 +1,3 @@
-using System;
 using WindowStream.Core.Protocol;
 using Xunit;
 
@@ -22,7 +21,7 @@ public sealed class StreamStoppedReasonTests
     [Fact]
     public void ParseThrowsForUnknownValue()
     {
-        ArgumentException exception = Assert.Throws<ArgumentException>(
+        var exception = Assert.Throws<ArgumentException>(
             () => StreamStoppedReasonNames.Parse("NOT_A_REAL_REASON"));
         Assert.Contains("NOT_A_REAL_REASON", exception.Message, StringComparison.Ordinal);
     }

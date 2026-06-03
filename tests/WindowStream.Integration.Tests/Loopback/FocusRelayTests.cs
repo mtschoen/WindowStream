@@ -1,12 +1,6 @@
 #if WINDOWS
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Protocol;
@@ -38,41 +32,25 @@ public class FocusRelayTests
     // helper dependency.
     [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern IntPtr GetForegroundWindowNative();
+    static extern IntPtr GetForegroundWindowNative();
 
     [DllImport("user32.dll", EntryPoint = "SetForegroundWindow")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindowNative(IntPtr hwnd);
+    static extern bool SetForegroundWindowNative(IntPtr hwnd);
 
     [DllImport("user32.dll", EntryPoint = "SetWindowTextW", CharSet = CharSet.Unicode)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetWindowTextNative(IntPtr hwnd, string text);
+    static extern bool SetWindowTextNative(IntPtr hwnd, string text);
 
-    [DllImport("user32.dll", EntryPoint = "IsWindowVisible")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisibleNative(IntPtr hwnd);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern uint GetWindowThreadProcessIdNative(IntPtr hwnd, out uint processId);
-
-    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
-
-    [DllImport("user32.dll", EntryPoint = "EnumWindows")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumWindowsNative(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-    private static long GetForegroundWindow() => GetForegroundWindowNative().ToInt64();
+    static long GetForegroundWindow() => GetForegroundWindowNative().ToInt64();
 
     // Encoder options used when registering fake stream entries so OPEN_STREAM
     // succeeds. Dimensions are plausible but we never actually stream video in
     // this test — we only need the coordinator to map streamId → windowId so
     // FOCUS_WINDOW can resolve the HWND.
-    private static readonly EncoderOptions DefaultEncoderOptions = new EncoderOptions(
+    static readonly EncoderOptions DefaultEncoderOptions = new EncoderOptions(
         widthPixels: 1280,
         heightPixels: 720,
         framesPerSecond: 30,
@@ -91,21 +69,21 @@ public class FocusRelayTests
         // can kill exactly the processes we created (Windows 11 Store-packaged
         // Notepad launches via a stub that exits immediately; the actual UI
         // process has a different PID).
-        HashSet<int> existingNotepadProcessIds = Process.GetProcessesByName("notepad")
+        var existingNotepadProcessIds = Process.GetProcessesByName("notepad")
             .Select(process => process.Id)
             .ToHashSet();
 
         // Also snapshot existing notepad-visible HWNDs via WGC so we can
         // identify the two new windows after both Notepad instances launch.
-        HashSet<long> existingNotepadHwnds = ListNotepadHwndsViaWgc();
+        var existingNotepadHwnds = ListNotepadHwndsViaWgc();
 
-        Process notepadOne = Process.Start(
-            new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
-            ?? throw new InvalidOperationException("Could not start first notepad.exe");
+        var notepadOne = Process.Start(
+                             new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
+                         ?? throw new InvalidOperationException("Could not start first notepad.exe");
 
-        Process notepadTwo = Process.Start(
-            new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
-            ?? throw new InvalidOperationException("Could not start second notepad.exe");
+        var notepadTwo = Process.Start(
+                             new ProcessStartInfo("notepad.exe") { UseShellExecute = true })
+                         ?? throw new InvalidOperationException("Could not start second notepad.exe");
 
         try
         {
@@ -116,7 +94,7 @@ public class FocusRelayTests
             // enumeration. This handles both single-process UWP Notepad (where
             // Process.MainWindowHandle returns the same window for both) and
             // legacy multi-process Notepad. Allow up to 6 seconds.
-            List<long> newNotepadHwnds = await WaitForNewNotepadHwndsAsync(
+            var newNotepadHwnds = await WaitForNewNotepadHwndsAsync(
                 existingNotepadHwnds,
                 requiredCount: 2,
                 timeoutMilliseconds: 6000);
@@ -125,26 +103,26 @@ public class FocusRelayTests
                 newNotepadHwnds.Count >= 2,
                 $"Expected 2 new notepad windows to appear within 6 s, found {newNotepadHwnds.Count}.");
 
-            IntPtr hwndOne = new IntPtr(newNotepadHwnds[0]);
-            IntPtr hwndTwo = new IntPtr(newNotepadHwnds[1]);
+            var hwndOne = new IntPtr(newNotepadHwnds[0]);
+            var hwndTwo = new IntPtr(newNotepadHwnds[1]);
 
             // Give both windows a distinct title so they can be told apart in
             // assertion messages and in the WGC enumerator's title field.
             SetWindowTextNative(hwndOne, "WindowStream-FocusRelayTest-NotepadOne");
             SetWindowTextNative(hwndTwo, "WindowStream-FocusRelayTest-NotepadTwo");
 
-            using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            CancellationToken cancellationToken = cancellation.Token;
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var cancellationToken = cancellation.Token;
 
-            FakeWorkerProcessLauncher fakeWorkerLauncher = new FakeWorkerProcessLauncher();
+            var fakeWorkerLauncher = new FakeWorkerProcessLauncher();
 
             // Use the real ForegroundWindowApi so the harness actually invokes
             // AttachThreadInput + SetForegroundWindow rather than the no-op stub.
             // useRealWgcEnumeration drives the 500 ms enumerator timer so
             // WINDOW_ADDED events are pushed to the viewer automatically.
-            ForegroundWindowApi realForegroundWindowApi = new ForegroundWindowApi();
+            var realForegroundWindowApi = new ForegroundWindowApi();
 
-            await using CoordinatorLoopbackHarness harness = await CoordinatorLoopbackHarness.StartAsync(
+            await using var harness = await CoordinatorLoopbackHarness.StartAsync(
                 workerLauncher: fakeWorkerLauncher,
                 useRealWgcEnumeration: true,
                 foregroundWindowApi: realForegroundWindowApi,
@@ -154,7 +132,7 @@ public class FocusRelayTests
             // BEFORE waiting for WINDOW_ADDED events. The enumerator's
             // NotifyWindowAppeared no-ops when no viewer channel is active, so
             // the viewer must be connected first to receive the push events.
-            await using FakeViewer viewer = await harness.ConnectViewerAsync(cancellationToken);
+            await using var viewer = await harness.ConnectViewerAsync(cancellationToken);
 
             await viewer.SendAsync(
                 new HelloMessage(
@@ -162,8 +140,8 @@ public class FocusRelayTests
                     DisplayCapabilities: new DisplayCapabilities(1920, 1080, new[] { "h264" })),
                 cancellationToken);
 
-            ControlMessage helloResponse = await viewer.ReceiveAsync(cancellationToken);
-            ServerHelloMessage serverHello = Assert.IsType<ServerHelloMessage>(helloResponse);
+            var helloResponse = await viewer.ReceiveAsync(cancellationToken);
+            var serverHello = Assert.IsType<ServerHelloMessage>(helloResponse);
             Assert.True(serverHello.UdpPort > 0);
 
             // Send VIEWER_READY so the coordinator populates ActiveViewerEndpoint.
@@ -174,9 +152,9 @@ public class FocusRelayTests
             // Wait for WINDOW_ADDED messages that carry the two notepad HWNDs.
             // The enumerator ticks every 500 ms; allow up to 10 seconds per window.
             // Non-notepad WINDOW_ADDED events and heartbeats are skipped.
-            WindowDescriptor notepadDescriptorOne = await WaitForWindowAddedByHwndAsync(
+            var notepadDescriptorOne = await WaitForWindowAddedByHwndAsync(
                 viewer, hwndOne.ToInt64(), cancellationToken);
-            WindowDescriptor notepadDescriptorTwo = await WaitForWindowAddedByHwndAsync(
+            var notepadDescriptorTwo = await WaitForWindowAddedByHwndAsync(
                 viewer, hwndTwo.ToInt64(), cancellationToken);
 
             // Register encoder options so OPEN_STREAM can resolve them. The WGC
@@ -191,15 +169,15 @@ public class FocusRelayTests
             // background, so we skip any interleaved non-stream messages when
             // waiting for STREAM_STARTED.
             await viewer.SendAsync(new OpenStreamMessage(notepadDescriptorOne.WindowId), cancellationToken);
-            StreamStartedMessage streamStartedOne =
+            var streamStartedOne =
                 await WaitForStreamStartedAsync(viewer, cancellationToken);
-            int streamIdOne = streamStartedOne.StreamId;
+            var streamIdOne = streamStartedOne.StreamId;
 
             // Open stream 2 against notepad 2.
             await viewer.SendAsync(new OpenStreamMessage(notepadDescriptorTwo.WindowId), cancellationToken);
-            StreamStartedMessage streamStartedTwo =
+            var streamStartedTwo =
                 await WaitForStreamStartedAsync(viewer, cancellationToken);
-            int streamIdTwo = streamStartedTwo.StreamId;
+            var streamIdTwo = streamStartedTwo.StreamId;
 
             Assert.NotEqual(streamIdOne, streamIdTwo);
 
@@ -214,12 +192,12 @@ public class FocusRelayTests
             // Poll GetForegroundWindow for up to 500 ms. Win32 focus changes are
             // asynchronous — the AttachThreadInput dance can succeed while the OS
             // still defers the actual foreground assignment by a few frames.
-            long expectedHwnd = hwndTwo.ToInt64();
-            bool focusLanded = false;
-            Stopwatch pollStopwatch = Stopwatch.StartNew();
+            var expectedHwnd = hwndTwo.ToInt64();
+            var focusLanded = false;
+            var pollStopwatch = Stopwatch.StartNew();
             while (pollStopwatch.ElapsedMilliseconds < 500)
             {
-                long currentForeground = GetForegroundWindow();
+                var currentForeground = GetForegroundWindow();
                 if (currentForeground == expectedHwnd)
                 {
                     focusLanded = true;
@@ -245,7 +223,7 @@ public class FocusRelayTests
             // Kill every notepad.exe process that was not already running before
             // this test launched. Covers both the launcher stub and the UI process
             // on Windows 11 Store-packaged Notepad.
-            foreach (Process candidate in Process.GetProcessesByName("notepad"))
+            foreach (var candidate in Process.GetProcessesByName("notepad"))
             {
                 if (existingNotepadProcessIds.Contains(candidate.Id))
                 {
@@ -278,12 +256,12 @@ public class FocusRelayTests
     /// currently visible to WGC whose process name is "notepad". Returns the set
     /// of HWNDs as <c>long</c> values for easy comparison.
     /// </summary>
-    private static HashSet<long> ListNotepadHwndsViaWgc()
+    static HashSet<long> ListNotepadHwndsViaWgc()
     {
-        WgcCaptureSource captureSource = new WgcCaptureSource();
+        var captureSource = new WgcCaptureSource();
         return captureSource.ListWindows()
-            .Where(window => window.processName.Equals("notepad", StringComparison.OrdinalIgnoreCase))
-            .Select(window => window.handle.value)
+            .Where(window => window.ProcessName.Equals("notepad", StringComparison.OrdinalIgnoreCase))
+            .Select(window => window.Handle.Value)
             .ToHashSet();
     }
 
@@ -293,20 +271,20 @@ public class FocusRelayTests
     /// present in <paramref name="existingHwnds"/>). Returns the new HWNDs once
     /// the count is reached or the timeout elapses.
     /// </summary>
-    private static async Task<List<long>> WaitForNewNotepadHwndsAsync(
+    static async Task<List<long>> WaitForNewNotepadHwndsAsync(
         HashSet<long> existingHwnds,
         int requiredCount,
         int timeoutMilliseconds)
     {
-        WgcCaptureSource captureSource = new WgcCaptureSource();
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        var captureSource = new WgcCaptureSource();
+        var stopwatch = Stopwatch.StartNew();
         while (stopwatch.ElapsedMilliseconds < timeoutMilliseconds)
         {
-            List<long> newHwnds = captureSource.ListWindows()
-                .Where(window => window.processName.Equals("notepad", StringComparison.OrdinalIgnoreCase)
-                                 && !existingHwnds.Contains(window.handle.value)
-                                 && window.widthPixels > 0)
-                .Select(window => window.handle.value)
+            var newHwnds = captureSource.ListWindows()
+                .Where(window => window.ProcessName.Equals("notepad", StringComparison.OrdinalIgnoreCase)
+                                 && !existingHwnds.Contains(window.Handle.Value)
+                                 && window.WidthPixels > 0)
+                .Select(window => window.Handle.Value)
                 .Distinct()
                 .ToList();
 
@@ -318,11 +296,11 @@ public class FocusRelayTests
         }
         // Return whatever was found even if below required count; the assertion
         // in the caller will report the shortfall clearly.
-        WgcCaptureSource finalSource = new WgcCaptureSource();
+        var finalSource = new WgcCaptureSource();
         return finalSource.ListWindows()
-            .Where(window => window.processName.Equals("notepad", StringComparison.OrdinalIgnoreCase)
-                             && !existingHwnds.Contains(window.handle.value))
-            .Select(window => window.handle.value)
+            .Where(window => window.ProcessName.Equals("notepad", StringComparison.OrdinalIgnoreCase)
+                             && !existingHwnds.Contains(window.Handle.Value))
+            .Select(window => window.Handle.Value)
             .Distinct()
             .ToList();
     }
@@ -336,17 +314,17 @@ public class FocusRelayTests
     /// Throws <see cref="InvalidOperationException"/> if any other message arrives
     /// (e.g. an <see cref="ErrorMessage"/>).
     /// </summary>
-    private static async Task<StreamStartedMessage> WaitForStreamStartedAsync(
+    static async Task<StreamStartedMessage> WaitForStreamStartedAsync(
         FakeViewer viewer,
         CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeoutSource =
+        using var timeoutSource =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(TimeSpan.FromSeconds(10));
 
         while (true)
         {
-            ControlMessage message = await viewer.ReceiveAsync(timeoutSource.Token);
+            var message = await viewer.ReceiveAsync(timeoutSource.Token);
             switch (message)
             {
                 case StreamStartedMessage started:
@@ -369,18 +347,18 @@ public class FocusRelayTests
     /// arrives whose HWND equals <paramref name="targetHwnd"/>. Skips heartbeats
     /// and WINDOW_ADDED events for other windows.
     /// </summary>
-    private static async Task<WindowDescriptor> WaitForWindowAddedByHwndAsync(
+    static async Task<WindowDescriptor> WaitForWindowAddedByHwndAsync(
         FakeViewer viewer,
         long targetHwnd,
         CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeoutSource =
+        using var timeoutSource =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(TimeSpan.FromSeconds(10));
 
         while (true)
         {
-            ControlMessage message = await viewer.ReceiveAsync(timeoutSource.Token);
+            var message = await viewer.ReceiveAsync(timeoutSource.Token);
             if (message is WindowAddedMessage added && added.Window.Hwnd == targetHwnd)
             {
                 return added.Window;

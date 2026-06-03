@@ -1,6 +1,4 @@
 #if WINDOWS
-using System.Threading;
-using System.Threading.Tasks;
 using Silk.NET.Direct3D11;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
@@ -13,8 +11,8 @@ namespace WindowStream.Integration.Tests.Encode;
 
 public sealed class FFmpegNvencEncoderPoolOrderingTests
 {
-    private const int WidthPixels = 640;
-    private const int HeightPixels = 360;
+    const int WidthPixels = 640;
+    const int HeightPixels = 360;
 
     /// <summary>
     /// Acquires two pool frames, then encodes them in the OPPOSITE order
@@ -27,8 +25,8 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
     [Trait("Category", "Integration")]
     public async Task OutOfOrderEncode_Succeeds()
     {
-        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
-        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        using var deviceManager = new Direct3D11DeviceManager();
+        await using var encoder = new FFmpegNvencEncoder();
         encoder.Configure(
             new EncoderOptions(
                 widthPixels: WidthPixels,
@@ -39,14 +37,14 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
                 safetyKeyframeIntervalSeconds: 2),
             deviceManager);
 
-        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+        var patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
             deviceManager, WidthPixels, HeightPixels);
         try
         {
             // Acquire two distinct pool textures.
-            encoder.AcquireFrameTexture(out nint texturePointerA, out int subresourceIndexA);
+            encoder.AcquireFrameTexture(out var texturePointerA, out var subresourceIndexA);
             CopyPatternInto(deviceManager, patternTexturePointer, texturePointerA, subresourceIndexA);
-            CapturedFrame frameA = CapturedFrame.FromTexture(
+            var frameA = CapturedFrame.FromTexture(
                 widthPixels: WidthPixels,
                 heightPixels: HeightPixels,
                 rowStrideBytes: WidthPixels,
@@ -55,9 +53,9 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
                 nativeTexturePointer: texturePointerA,
                 textureArrayIndex: subresourceIndexA);
 
-            encoder.AcquireFrameTexture(out nint texturePointerB, out int subresourceIndexB);
+            encoder.AcquireFrameTexture(out var texturePointerB, out var subresourceIndexB);
             CopyPatternInto(deviceManager, patternTexturePointer, texturePointerB, subresourceIndexB);
-            CapturedFrame frameB = CapturedFrame.FromTexture(
+            var frameB = CapturedFrame.FromTexture(
                 widthPixels: WidthPixels,
                 heightPixels: HeightPixels,
                 rowStrideBytes: WidthPixels,
@@ -76,7 +74,7 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
         {
             unsafe
             {
-                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                var patternTexture = (ID3D11Texture2D*)patternTexturePointer;
                 patternTexture->Release();
             }
         }
@@ -92,8 +90,8 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
     [Trait("Category", "Integration")]
     public async Task AcquireReleaseAcquireEncode_Succeeds()
     {
-        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
-        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        using var deviceManager = new Direct3D11DeviceManager();
+        await using var encoder = new FFmpegNvencEncoder();
         encoder.Configure(
             new EncoderOptions(
                 widthPixels: WidthPixels,
@@ -104,18 +102,18 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
                 safetyKeyframeIntervalSeconds: 2),
             deviceManager);
 
-        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+        var patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
             deviceManager, WidthPixels, HeightPixels);
         try
         {
             // Acquire frame A and immediately release it (simulating pause-skip).
-            encoder.AcquireFrameTexture(out nint texturePointerA, out int subresourceIndexA);
+            encoder.AcquireFrameTexture(out var texturePointerA, out var subresourceIndexA);
             encoder.ReleaseFrameTexture(texturePointerA, subresourceIndexA);
 
             // Acquire frame B and encode normally.
-            encoder.AcquireFrameTexture(out nint texturePointerB, out int subresourceIndexB);
+            encoder.AcquireFrameTexture(out var texturePointerB, out var subresourceIndexB);
             CopyPatternInto(deviceManager, patternTexturePointer, texturePointerB, subresourceIndexB);
-            CapturedFrame frameB = CapturedFrame.FromTexture(
+            var frameB = CapturedFrame.FromTexture(
                 widthPixels: WidthPixels,
                 heightPixels: HeightPixels,
                 rowStrideBytes: WidthPixels,
@@ -131,7 +129,7 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
         {
             unsafe
             {
-                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                var patternTexture = (ID3D11Texture2D*)patternTexturePointer;
                 patternTexture->Release();
             }
         }
@@ -149,33 +147,34 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
     [Trait("Category", "LongRunning")]
     public async Task ThreeConcurrentEncoders_SurviveThirtySeconds()
     {
-        const int DurationSeconds = 30;
-        const int FramesPerSecond = 30;
-        const int TotalFrames = DurationSeconds * FramesPerSecond;
+        const int durationSeconds = 30;
+        const int framesPerSecond = 30;
+        const int totalFrames = durationSeconds * framesPerSecond;
 
-        using CancellationTokenSource overallTimeout =
-            new CancellationTokenSource(System.TimeSpan.FromSeconds(DurationSeconds + 10));
+        using var overallTimeout =
+            new CancellationTokenSource(TimeSpan.FromSeconds(durationSeconds + 10));
 
-        Task[] encoderTasks = new Task[3];
-        for (int encoderIndex = 0; encoderIndex < 3; encoderIndex++)
+        var encoderTasks = new Task[3];
+        for (var encoderIndex = 0; encoderIndex < 3; encoderIndex++)
         {
-            int capturedEncoderIndex = encoderIndex;
+            // overallTimeout is awaited (Task.WhenAll) before its using disposes.
+            // ReSharper disable AccessToDisposedClosure
             encoderTasks[encoderIndex] = Task.Run(
-                () => RunEncoderForFrames(TotalFrames, FramesPerSecond, capturedEncoderIndex, overallTimeout.Token),
+                () => RunEncoderForFrames(totalFrames, framesPerSecond, overallTimeout.Token),
                 overallTimeout.Token);
+            // ReSharper restore AccessToDisposedClosure
         }
 
         await Task.WhenAll(encoderTasks).ConfigureAwait(false);
     }
 
-    private static async Task RunEncoderForFrames(
+    static async Task RunEncoderForFrames(
         int totalFrames,
         int framesPerSecond,
-        int encoderIndex,
         CancellationToken cancellationToken)
     {
-        using Direct3D11DeviceManager deviceManager = new Direct3D11DeviceManager();
-        await using FFmpegNvencEncoder encoder = new FFmpegNvencEncoder();
+        using var deviceManager = new Direct3D11DeviceManager();
+        await using var encoder = new FFmpegNvencEncoder();
         encoder.Configure(
             new EncoderOptions(
                 widthPixels: WidthPixels,
@@ -186,19 +185,19 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
                 safetyKeyframeIntervalSeconds: 2),
             deviceManager);
 
-        nint patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
+        var patternTexturePointer = Nv12TextureFactory.CreateQuadrantPatternTexture(
             deviceManager, WidthPixels, HeightPixels);
         try
         {
-            long frameDurationMicroseconds = 1_000_000L / framesPerSecond;
+            var frameDurationMicroseconds = 1_000_000L / framesPerSecond;
             encoder.RequestKeyframe();
-            for (int frameIndex = 0; frameIndex < totalFrames; frameIndex++)
+            for (var frameIndex = 0; frameIndex < totalFrames; frameIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                encoder.AcquireFrameTexture(out nint poolTexturePointer, out int poolSubresourceIndex);
+                encoder.AcquireFrameTexture(out var poolTexturePointer, out var poolSubresourceIndex);
                 CopyPatternInto(deviceManager, patternTexturePointer, poolTexturePointer, poolSubresourceIndex);
-                CapturedFrame textureFrame = CapturedFrame.FromTexture(
+                var textureFrame = CapturedFrame.FromTexture(
                     widthPixels: WidthPixels,
                     heightPixels: HeightPixels,
                     rowStrideBytes: WidthPixels,
@@ -213,13 +212,13 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
         {
             unsafe
             {
-                ID3D11Texture2D* patternTexture = (ID3D11Texture2D*)patternTexturePointer;
+                var patternTexture = (ID3D11Texture2D*)patternTexturePointer;
                 patternTexture->Release();
             }
         }
     }
 
-    private static void CopyPatternInto(
+    static void CopyPatternInto(
         Direct3D11DeviceManager deviceManager,
         nint patternTexturePointer,
         nint destinationTexturePointer,
@@ -227,14 +226,14 @@ public sealed class FFmpegNvencEncoderPoolOrderingTests
     {
         unsafe
         {
-            ID3D11DeviceContext* context = (ID3D11DeviceContext*)deviceManager.NativeContextPointer;
+            var context = (ID3D11DeviceContext*)deviceManager.NativeContextPointer;
             context->CopySubresourceRegion(
                 (ID3D11Resource*)destinationTexturePointer,
                 (uint)destinationSubresourceIndex,
                 0u, 0u, 0u,
                 (ID3D11Resource*)patternTexturePointer,
                 0u,
-                (Box*)null);
+                null);
         }
     }
 }

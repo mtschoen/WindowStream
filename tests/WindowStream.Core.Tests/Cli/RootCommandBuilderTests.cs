@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.CommandLine;
-using System.CommandLine.Parsing;
-using System.IO;
-using System.Threading.Tasks;
 using WindowStream.Cli;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;

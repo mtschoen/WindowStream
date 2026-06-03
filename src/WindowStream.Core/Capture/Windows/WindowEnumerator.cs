@@ -1,32 +1,29 @@
-using System;
-using System.Collections.Generic;
-
 namespace WindowStream.Core.Capture.Windows;
 
 public sealed class WindowEnumerator : IWindowEnumerator
 {
-    private readonly IWin32Api win32Api;
+    readonly IWin32Api _win32Api;
 
     public WindowEnumerator(IWin32Api win32Api)
     {
-        this.win32Api = win32Api ?? throw new ArgumentNullException(nameof(win32Api));
+        _win32Api = win32Api ?? throw new ArgumentNullException(nameof(win32Api));
     }
 
     public IEnumerable<WindowInformation> EnumerateWindows()
     {
-        foreach (IntPtr handle in win32Api.EnumerateTopLevelWindowHandles())
+        foreach (var handle in _win32Api.EnumerateTopLevelWindowHandles())
         {
-            bool visible = win32Api.IsWindowVisible(handle);
-            string title = win32Api.GetWindowTitle(handle);
-            string className = win32Api.GetWindowClassName(handle);
-            (int widthPixels, int heightPixels) size = win32Api.GetWindowSize(handle);
+            var visible = _win32Api.IsWindowVisible(handle);
+            var title = _win32Api.GetWindowTitle(handle);
+            var className = _win32Api.GetWindowClassName(handle);
+            var size = _win32Api.GetWindowSize(handle);
 
             if (!WindowEnumerationFilters.PassesFilters(
                 visible, title, className, size.widthPixels, size.heightPixels))
             {
                 continue;
             }
-            (int processIdentifier, string processName) process = win32Api.GetWindowProcess(handle);
+            var process = _win32Api.GetWindowProcess(handle);
             yield return new WindowInformation(
                 new WindowHandle(handle.ToInt64()),
                 title,

@@ -1,5 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;
 using WindowStream.Core.Session.Testing;
@@ -43,7 +41,7 @@ public sealed class WindowPickerViewModelTests
     [Fact]
     public void Refresh_Raises_Property_Changed_For_Windows()
     {
-        var captureSource = new FakeWindowCaptureSource(System.Array.Empty<WindowInformation>());
+        var captureSource = new FakeWindowCaptureSource(Array.Empty<WindowInformation>());
         var launcher = new FakeSessionHostLauncher();
         var viewModel = new WindowPickerViewModel(captureSource, launcher);
         string? lastChanged = null;

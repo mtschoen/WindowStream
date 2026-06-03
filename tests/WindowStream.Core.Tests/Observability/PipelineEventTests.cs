@@ -18,7 +18,7 @@ public class PipelineEventTests
     [Fact]
     public void WorkerSpawnFailed_Has_Error_Severity_And_Carries_StreamId()
     {
-        var exception = new System.InvalidOperationException("worker boom");
+        var exception = new InvalidOperationException("worker boom");
         PipelineEvent.WorkerSpawnFailed evt = new(StreamId: 7, Exception: exception);
         Assert.Equal(Severity.Error, evt.Severity);
         Assert.Equal(7, evt.StreamId);
@@ -127,7 +127,7 @@ public class PipelineEventTests
     [Fact]
     public void CaptureFailed_Has_Error_Severity_And_Exception()
     {
-        System.InvalidOperationException exception = new("capture boom");
+        InvalidOperationException exception = new("capture boom");
         PipelineEvent.CaptureFailed evt = new(StreamId: 5, Exception: exception);
         Assert.Equal(Severity.Error, evt.Severity);
         Assert.Same(exception, evt.Exception);
@@ -145,7 +145,7 @@ public class PipelineEventTests
     [Fact]
     public void EncodeFailed_Has_Error_Severity_And_Exception()
     {
-        System.InvalidOperationException exception = new("encode boom");
+        InvalidOperationException exception = new("encode boom");
         PipelineEvent.EncodeFailed evt = new(StreamId: 5, Exception: exception);
         Assert.Equal(Severity.Error, evt.Severity);
         Assert.Same(exception, evt.Exception);
@@ -171,7 +171,7 @@ public class PipelineEventTests
     [Fact]
     public void ProbeFailed_Has_Error_With_Null_StreamId()
     {
-        System.InvalidOperationException exception = new("probe boom");
+        InvalidOperationException exception = new("probe boom");
         PipelineEvent.ProbeFailed evt = new(WindowId: 42UL, Hwnd: 131072L, Exception: exception);
         Assert.Equal(Severity.Error, evt.Severity);
         Assert.Null(evt.StreamId);
@@ -183,7 +183,7 @@ public class PipelineEventTests
     [Fact]
     public void EnumerationFailed_Has_Warning_And_Exception()
     {
-        System.InvalidOperationException exception = new("enum boom");
+        InvalidOperationException exception = new("enum boom");
         PipelineEvent.EnumerationFailed evt = new(exception);
         Assert.Equal(Severity.Warning, evt.Severity);
         Assert.Null(evt.StreamId);

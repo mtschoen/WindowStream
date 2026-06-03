@@ -1,8 +1,6 @@
 #if WINDOWS
-using System;
-using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Windows.Graphics.Capture;
 using WindowStream.Core.Encode;
 using WinRT;
@@ -16,7 +14,7 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
     [ComImport]
     [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IGraphicsCaptureItemInterop
+    interface IGraphicsCaptureItemInterop
     {
         [PreserveSig]
         int CreateForWindow(
@@ -27,32 +25,32 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
 
     [DllImport("combase.dll", PreserveSig = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern int RoGetActivationFactory(
+    static extern int RoGetActivationFactory(
         IntPtr hstring,
         [In] ref Guid iid,
         out IntPtr factory);
 
     [DllImport("combase.dll", PreserveSig = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern int WindowsCreateString(
+    static extern int WindowsCreateString(
         [MarshalAs(UnmanagedType.LPWStr)] string sourceString,
         uint length,
         out IntPtr hstring);
 
     [DllImport("combase.dll", PreserveSig = true, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern int WindowsDeleteString(IntPtr hstring);
+    static extern int WindowsDeleteString(IntPtr hstring);
 
-    private readonly IWindowEnumerator enumerator;
+    readonly IWindowEnumerator _enumerator;
 
     public WgcCaptureSource() : this(new WindowEnumerator(new Win32Api())) { }
 
     public WgcCaptureSource(IWindowEnumerator enumerator)
     {
-        this.enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
+        _enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
     }
 
-    public IEnumerable<WindowInformation> ListWindows() => enumerator.EnumerateWindows();
+    public IEnumerable<WindowInformation> ListWindows() => _enumerator.EnumerateWindows();
 
     public IWindowCapture Start(WindowHandle handle, CaptureOptions options, CancellationToken cancellationToken) =>
         Start(handle, options, sharedDeviceManager: null, sharedFrameTexturePool: null, cancellationToken);
@@ -70,9 +68,9 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
             throw new WindowCaptureException("Windows.Graphics.Capture is not supported on this OS build.");
         }
 
-        GraphicsCaptureItem item = CreateItemForWindow(new IntPtr(handle.value), handle);
-        Direct3D11DeviceManager deviceManager = sharedDeviceManager ?? new Direct3D11DeviceManager();
-        bool ownsDeviceManager = sharedDeviceManager is null;
+        var item = CreateItemForWindow(new IntPtr(handle.Value), handle);
+        var deviceManager = sharedDeviceManager ?? new Direct3D11DeviceManager();
+        var ownsDeviceManager = sharedDeviceManager is null;
         try
         {
             return new WgcCapture(handle, options, item, deviceManager, ownsDeviceManager, sharedFrameTexturePool, cancellationToken);
@@ -85,54 +83,55 @@ public sealed class WgcCaptureSource : IWindowCaptureSource
     }
 #pragma warning restore CA1822
 
-    private static readonly Guid iidIUnknown = new Guid("00000000-0000-0000-C000-000000000046");
-    private static readonly Guid iidInterop = new Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
-    // IInspectable GUID — WinRT objects are requested via IInspectable
-    private static readonly Guid iidIInspectable = new Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90");
+    static readonly Guid IidIUnknown = new Guid("00000000-0000-0000-C000-000000000046");
 
-    private static GraphicsCaptureItem CreateItemForWindow(IntPtr windowHandle, WindowHandle handle)
+    static readonly Guid IidInterop = new Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356");
+    // IInspectable GUID — WinRT objects are requested via IInspectable
+    static readonly Guid IidIInspectable = new Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90");
+
+    static GraphicsCaptureItem CreateItemForWindow(IntPtr windowHandle, WindowHandle handle)
     {
         const string classId = "Windows.Graphics.Capture.GraphicsCaptureItem";
-        _ = WindowsCreateString(classId, (uint)classId.Length, out IntPtr hstring);
+        _ = WindowsCreateString(classId, (uint)classId.Length, out var hstring);
         try
         {
             // Get activation factory as IUnknown, then QI for IGraphicsCaptureItemInterop
-            Guid iUnknown = iidIUnknown;
-            int hr = RoGetActivationFactory(hstring, ref iUnknown, out IntPtr factoryPointer);
+            var iUnknown = IidIUnknown;
+            var hr = RoGetActivationFactory(hstring, ref iUnknown, out var factoryPointer);
             if (hr < 0)
             {
-                throw new WindowCaptureException("RoGetActivationFactory failed. HRESULT: 0x" + ((uint)hr).ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
+                throw new WindowCaptureException("RoGetActivationFactory failed. HRESULT: 0x" + hr.ToString("X8", CultureInfo.InvariantCulture));
             }
 
             // QueryInterface for IGraphicsCaptureItemInterop
             unsafe
             {
-                void** vtable = *(void***)factoryPointer;
+                var vtable = *(void***)factoryPointer;
                 // QueryInterface is slot 0 of IUnknown vtable
-                delegate* unmanaged<IntPtr, Guid*, IntPtr*, int> qi =
+                var qi =
                     (delegate* unmanaged<IntPtr, Guid*, IntPtr*, int>)vtable[0];
-                Guid interopIid = iidInterop;
+                var interopIid = IidInterop;
                 IntPtr interopPointer;
-                int qiHr = qi(factoryPointer, &interopIid, &interopPointer);
+                var qiHr = qi(factoryPointer, &interopIid, &interopPointer);
                 Marshal.Release(factoryPointer);
                 if (qiHr < 0)
                 {
-                    throw new WindowCaptureException("Failed to obtain IGraphicsCaptureItemInterop via QI. HRESULT: 0x" + ((uint)qiHr).ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
+                    throw new WindowCaptureException("Failed to obtain IGraphicsCaptureItemInterop via QI. HRESULT: 0x" + qiHr.ToString("X8", CultureInfo.InvariantCulture));
                 }
 
-                IGraphicsCaptureItemInterop interop = (IGraphicsCaptureItemInterop)
+                var interop = (IGraphicsCaptureItemInterop)
                     Marshal.GetObjectForIUnknown(interopPointer);
                 Marshal.Release(interopPointer);
 
-                Guid iid = iidIInspectable;
+                var iid = IidIInspectable;
                 try
                 {
-                    int createHr = interop.CreateForWindow(windowHandle, ref iid, out IntPtr itemPointer);
+                    var createHr = interop.CreateForWindow(windowHandle, ref iid, out var itemPointer);
                     if (createHr < 0)
                     {
-                        throw new WindowCaptureException("CreateForWindow failed. HRESULT: 0x" + ((uint)createHr).ToString("X8", System.Globalization.CultureInfo.InvariantCulture));
+                        throw new WindowCaptureException("CreateForWindow failed. HRESULT: 0x" + createHr.ToString("X8", CultureInfo.InvariantCulture));
                     }
-                    GraphicsCaptureItem item = MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
+                    var item = MarshalInterface<GraphicsCaptureItem>.FromAbi(itemPointer);
                     Marshal.Release(itemPointer);
                     return item;
                 }

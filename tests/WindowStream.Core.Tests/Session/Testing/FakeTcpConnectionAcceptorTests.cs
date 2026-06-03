@@ -1,6 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
-using WindowStream.Core.Session;
 using WindowStream.Core.Session.Testing;
 using Xunit;
 
@@ -17,7 +14,7 @@ public sealed class FakeTcpConnectionAcceptorTests
     [Fact]
     public async Task StartListening_WithZeroPort_AssignsDefaultPort()
     {
-        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using var acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         Assert.True(acceptor.LocalPort > 0);
     }
@@ -25,7 +22,7 @@ public sealed class FakeTcpConnectionAcceptorTests
     [Fact]
     public async Task StartListening_WithExplicitPort_UsesRequestedPort()
     {
-        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using var acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(9876);
         Assert.Equal(9876, acceptor.LocalPort);
     }
@@ -33,11 +30,11 @@ public sealed class FakeTcpConnectionAcceptorTests
     [Fact]
     public async Task EnqueueIncomingConnection_AllowsAccept()
     {
-        await using FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        await using var acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
 
-        FakeViewerEndpoint viewer = acceptor.EnqueueIncomingConnection();
-        IControlChannel channel = await acceptor.AcceptAsync(CancellationToken.None);
+        var viewer = acceptor.EnqueueIncomingConnection();
+        var channel = await acceptor.AcceptAsync(CancellationToken.None);
 
         await using (viewer)
         await using (channel)
@@ -49,7 +46,7 @@ public sealed class FakeTcpConnectionAcceptorTests
     [Fact]
     public async Task DisposeAsync_IsIdempotent()
     {
-        FakeTcpConnectionAcceptor acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
+        var acceptor = new FakeTcpConnectionAcceptor(TimeProvider.System);
         acceptor.StartListening(0);
         await acceptor.DisposeAsync();
         await acceptor.DisposeAsync();

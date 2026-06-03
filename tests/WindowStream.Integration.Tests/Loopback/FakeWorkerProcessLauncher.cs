@@ -1,9 +1,5 @@
 #if WINDOWS
-using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Hosting;
 
 namespace WindowStream.Integration.Tests.Loopback;
@@ -17,14 +13,14 @@ namespace WindowStream.Integration.Tests.Loopback;
 /// half of an in-memory duplex stream pair. Tests drive the other half via
 /// <see cref="GetFakeWorker"/> to inject encoded chunks and observe commands.
 /// </summary>
-internal sealed class FakeWorkerProcessLauncher : IWorkerProcessLauncher
+sealed class FakeWorkerProcessLauncher : IWorkerProcessLauncher
 {
-    private readonly ConcurrentDictionary<int, FakeWorkerHandle> handlesByStreamId = new();
+    readonly ConcurrentDictionary<int, FakeWorkerHandle> _handlesByStreamId = new();
 
     public Task<IWorkerHandle> LaunchAsync(WorkerLaunchArguments arguments, CancellationToken cancellationToken)
     {
-        FakeWorkerHandle handle = new FakeWorkerHandle(arguments);
-        handlesByStreamId[arguments.StreamId] = handle;
+        var handle = new FakeWorkerHandle(arguments);
+        _handlesByStreamId[arguments.StreamId] = handle;
         return Task.FromResult<IWorkerHandle>(handle);
     }
 
@@ -34,7 +30,7 @@ internal sealed class FakeWorkerProcessLauncher : IWorkerProcessLauncher
     /// for the supplied stream id.
     /// </summary>
     public FakeWorkerHandle? GetFakeWorker(int streamId)
-        => handlesByStreamId.TryGetValue(streamId, out FakeWorkerHandle? handle) ? handle : null;
+        => _handlesByStreamId.TryGetValue(streamId, out var handle) ? handle : null;
 }
 
 /// <summary>
@@ -47,34 +43,34 @@ internal sealed class FakeWorkerProcessLauncher : IWorkerProcessLauncher
 /// <see cref="WindowStream.Core.Hosting.WorkerChunkPipe.ReadCommandAsync"/> to
 /// observe pause/resume/keyframe commands.
 /// </summary>
-internal sealed class FakeWorkerHandle : IWorkerHandle
+sealed class FakeWorkerHandle : IWorkerHandle
 {
-    private readonly DuplexPipePair pipePair;
-    private readonly TaskCompletionSource<int> exitSource = new TaskCompletionSource<int>();
-    private bool disposed;
+    readonly DuplexPipePair _pipePair;
+    readonly TaskCompletionSource<int> _exitSource = new TaskCompletionSource<int>();
+    bool _disposed;
 
     public FakeWorkerHandle(WorkerLaunchArguments arguments)
     {
         Arguments = arguments;
-        pipePair = new DuplexPipePair();
+        _pipePair = new DuplexPipePair();
     }
 
     public WorkerLaunchArguments Arguments { get; }
 
     /// <summary>The supervisor-facing pipe (mirrors what a NamedPipeServerStream provides).</summary>
-    public Stream Pipe => pipePair.SupervisorSide;
+    public Stream Pipe => _pipePair.SupervisorSide;
 
     /// <summary>The test-facing pipe; write encoded chunks here, read commands from here.</summary>
-    public Stream WorkerSidePipe => pipePair.WorkerSide;
+    public Stream WorkerSidePipe => _pipePair.WorkerSide;
 
     public int ProcessId => 0;
 
-    public Task<int> WaitForExitAsync() => exitSource.Task;
+    public Task<int> WaitForExitAsync() => _exitSource.Task;
 
     public void Kill()
     {
-        if (disposed) return;
-        exitSource.TrySetResult(0);
+        if (_disposed) return;
+        _exitSource.TrySetResult(0);
     }
 
     /// <summary>
@@ -85,8 +81,8 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
     /// </summary>
     public void SimulateEncoderFailure()
     {
-        if (disposed) return;
-        exitSource.TrySetResult(1);
+        if (_disposed) return;
+        _exitSource.TrySetResult(1);
     }
 
     /// <summary>
@@ -97,18 +93,18 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
     /// </summary>
     public void SimulateCaptureFailed()
     {
-        if (disposed) return;
-        exitSource.TrySetResult(2);
+        if (_disposed) return;
+        _exitSource.TrySetResult(2);
     }
 
     public ValueTask DisposeAsync()
     {
-        if (disposed) return ValueTask.CompletedTask;
-        disposed = true;
-        exitSource.TrySetResult(0);
+        if (_disposed) return ValueTask.CompletedTask;
+        _disposed = true;
+        _exitSource.TrySetResult(0);
         #pragma warning disable CA1031 // best-effort pipe disposal — stream may already be closed
-        try { pipePair.SupervisorSide.Dispose(); } catch { /* best-effort */ }
-        try { pipePair.WorkerSide.Dispose(); } catch { /* best-effort */ }
+        try { _pipePair.SupervisorSide.Dispose(); } catch { /* best-effort */ }
+        try { _pipePair.WorkerSide.Dispose(); } catch { /* best-effort */ }
         #pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
@@ -120,14 +116,14 @@ internal sealed class FakeWorkerHandle : IWorkerHandle
 /// so the test thread and the coordinator thread can concurrently write/read
 /// without blocking each other.
 /// </summary>
-internal sealed class DuplexPipePair
+sealed class DuplexPipePair
 {
     public DuplexPipePair()
     {
         // supervisorWritesPipe: supervisor → worker (commands)
         // workerWritesPipe: worker → supervisor (chunks)
-        BlockingByteStream supervisorWritesPipe = new BlockingByteStream();
-        BlockingByteStream workerWritesPipe = new BlockingByteStream();
+        var supervisorWritesPipe = new BlockingByteStream();
+        var workerWritesPipe = new BlockingByteStream();
 
         SupervisorSide = new DuplexStream(readSource: workerWritesPipe, writeSink: supervisorWritesPipe);
         WorkerSide = new DuplexStream(readSource: supervisorWritesPipe, writeSink: workerWritesPipe);
@@ -139,18 +135,18 @@ internal sealed class DuplexPipePair
 
 /// <summary>
 /// Composes two underlying streams into one bidirectional <see cref="Stream"/>:
-/// reads pull from <paramref name="readSource"/>, writes push to <paramref name="writeSink"/>.
+/// reads pull from <c>readSource</c>, writes push to <c>writeSink</c>.
 /// </summary>
-internal sealed class DuplexStream : Stream
+sealed class DuplexStream : Stream
 {
-    private readonly Stream readSource;
-    private readonly Stream writeSink;
-    private bool disposed;
+    readonly Stream _readSource;
+    readonly Stream _writeSink;
+    bool _disposed;
 
     public DuplexStream(Stream readSource, Stream writeSink)
     {
-        this.readSource = readSource;
-        this.writeSink = writeSink;
+        _readSource = readSource;
+        _writeSink = writeSink;
     }
 
     public override bool CanRead => true;
@@ -163,41 +159,41 @@ internal sealed class DuplexStream : Stream
         set => throw new NotSupportedException();
     }
 
-    public override void Flush() => writeSink.Flush();
+    public override void Flush() => _writeSink.Flush();
 
     public override Task FlushAsync(CancellationToken cancellationToken)
-        => writeSink.FlushAsync(cancellationToken);
+        => _writeSink.FlushAsync(cancellationToken);
 
     public override int Read(byte[] buffer, int offset, int count)
-        => readSource.Read(buffer, offset, count);
+        => _readSource.Read(buffer, offset, count);
 
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        => readSource.ReadAsync(buffer, cancellationToken);
+        => _readSource.ReadAsync(buffer, cancellationToken);
 
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        => readSource.ReadAsync(buffer, offset, count, cancellationToken);
+        => _readSource.ReadAsync(buffer, offset, count, cancellationToken);
 
     public override void Write(byte[] buffer, int offset, int count)
-        => writeSink.Write(buffer, offset, count);
+        => _writeSink.Write(buffer, offset, count);
 
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        => writeSink.WriteAsync(buffer, cancellationToken);
+        => _writeSink.WriteAsync(buffer, cancellationToken);
 
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        => writeSink.WriteAsync(buffer, offset, count, cancellationToken);
+        => _writeSink.WriteAsync(buffer, offset, count, cancellationToken);
 
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
 
     protected override void Dispose(bool disposing)
     {
-        if (disposed) return;
-        disposed = true;
+        if (_disposed) return;
+        _disposed = true;
         if (disposing)
         {
             #pragma warning disable CA1031 // best-effort stream disposal — underlying stream may already be closed
-            try { readSource.Dispose(); } catch { /* best-effort */ }
-            try { writeSink.Dispose(); } catch { /* best-effort */ }
+            try { _readSource.Dispose(); } catch { /* best-effort */ }
+            try { _writeSink.Dispose(); } catch { /* best-effort */ }
             #pragma warning restore CA1031
         }
         base.Dispose(disposing);
@@ -209,13 +205,13 @@ internal sealed class DuplexStream : Stream
 /// Reads block until a writer produces data; writes never block (unbounded).
 /// Closing signals EOF to readers (returns 0 once the queue drains).
 /// </summary>
-internal sealed class BlockingByteStream : Stream
+sealed class BlockingByteStream : Stream
 {
-    private readonly System.Collections.Generic.Queue<byte[]> chunks = new();
-    private readonly object syncRoot = new object();
-    private byte[]? currentChunk;
-    private int currentChunkOffset;
-    private bool closed;
+    readonly Queue<byte[]> _chunks = new();
+    readonly object _syncRoot = new object();
+    byte[]? _currentChunk;
+    int _currentChunkOffset;
+    bool _closed;
 
     public override bool CanRead => true;
     public override bool CanWrite => true;
@@ -233,28 +229,28 @@ internal sealed class BlockingByteStream : Stream
 
     public override int Read(byte[] buffer, int offset, int count)
     {
-        lock (syncRoot)
+        lock (_syncRoot)
         {
-            while (currentChunk is null || currentChunkOffset >= currentChunk.Length)
+            while (_currentChunk is null || _currentChunkOffset >= _currentChunk.Length)
             {
-                if (chunks.Count > 0)
+                if (_chunks.Count > 0)
                 {
-                    currentChunk = chunks.Dequeue();
-                    currentChunkOffset = 0;
+                    _currentChunk = _chunks.Dequeue();
+                    _currentChunkOffset = 0;
                 }
-                else if (closed)
+                else if (_closed)
                 {
                     return 0;
                 }
                 else
                 {
-                    Monitor.Wait(syncRoot);
+                    Monitor.Wait(_syncRoot);
                 }
             }
-            int available = currentChunk.Length - currentChunkOffset;
-            int copyLength = Math.Min(count, available);
-            Array.Copy(currentChunk, currentChunkOffset, buffer, offset, copyLength);
-            currentChunkOffset += copyLength;
+            var available = _currentChunk.Length - _currentChunkOffset;
+            var copyLength = Math.Min(count, available);
+            Array.Copy(_currentChunk, _currentChunkOffset, buffer, offset, copyLength);
+            _currentChunkOffset += copyLength;
             return copyLength;
         }
     }
@@ -264,14 +260,14 @@ internal sealed class BlockingByteStream : Stream
         // Off-thread the synchronous read so an awaiting consumer doesn't pin a
         // pool thread while waiting for the producer.
         cancellationToken.ThrowIfCancellationRequested();
-        using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+        using var registration = cancellationToken.Register(() =>
         {
-            lock (syncRoot) { Monitor.PulseAll(syncRoot); }
+            lock (_syncRoot) { Monitor.PulseAll(_syncRoot); }
         });
         return await Task.Run(() =>
         {
-            byte[] arrayBuffer = new byte[buffer.Length];
-            int read = Read(arrayBuffer, 0, arrayBuffer.Length);
+            var arrayBuffer = new byte[buffer.Length];
+            var read = Read(arrayBuffer, 0, arrayBuffer.Length);
             cancellationToken.ThrowIfCancellationRequested();
             arrayBuffer.AsSpan(0, read).CopyTo(buffer.Span);
             return read;
@@ -284,13 +280,13 @@ internal sealed class BlockingByteStream : Stream
     public override void Write(byte[] buffer, int offset, int count)
     {
         if (count <= 0) return;
-        byte[] copy = new byte[count];
+        var copy = new byte[count];
         Array.Copy(buffer, offset, copy, 0, count);
-        lock (syncRoot)
+        lock (_syncRoot)
         {
-            ObjectDisposedException.ThrowIf(closed, nameof(BlockingByteStream));
-            chunks.Enqueue(copy);
-            Monitor.PulseAll(syncRoot);
+            ObjectDisposedException.ThrowIf(_closed, nameof(BlockingByteStream));
+            _chunks.Enqueue(copy);
+            Monitor.PulseAll(_syncRoot);
         }
     }
 
@@ -303,12 +299,12 @@ internal sealed class BlockingByteStream : Stream
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         if (buffer.Length == 0) return ValueTask.CompletedTask;
-        byte[] copy = buffer.ToArray();
-        lock (syncRoot)
+        var copy = buffer.ToArray();
+        lock (_syncRoot)
         {
-            ObjectDisposedException.ThrowIf(closed, nameof(BlockingByteStream));
-            chunks.Enqueue(copy);
-            Monitor.PulseAll(syncRoot);
+            ObjectDisposedException.ThrowIf(_closed, nameof(BlockingByteStream));
+            _chunks.Enqueue(copy);
+            Monitor.PulseAll(_syncRoot);
         }
         return ValueTask.CompletedTask;
     }
@@ -318,10 +314,10 @@ internal sealed class BlockingByteStream : Stream
 
     protected override void Dispose(bool disposing)
     {
-        lock (syncRoot)
+        lock (_syncRoot)
         {
-            closed = true;
-            Monitor.PulseAll(syncRoot);
+            _closed = true;
+            Monitor.PulseAll(_syncRoot);
         }
         base.Dispose(disposing);
     }

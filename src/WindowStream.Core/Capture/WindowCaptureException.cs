@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Capture;
 
 public class WindowCaptureException : Exception

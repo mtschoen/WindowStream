@@ -1,5 +1,3 @@
-using System;
-
 namespace WindowStream.Core.Protocol;
 
 public static class ProtocolErrorCodeNames

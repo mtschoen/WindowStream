@@ -1,14 +1,9 @@
 #if WINDOWS
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Discovery;
@@ -33,57 +28,62 @@ namespace WindowStream.Core.Hosting;
 [ExcludeFromCodeCoverage(Justification = "Production composition; exercised by Phase 4 integration tests.")]
 public sealed class CoordinatorLauncher : ISessionHostLauncher
 {
-    private readonly int tcpPort;
-    private readonly Diagnostics diagnostics;
+    readonly int _tcpPort;
+    readonly Diagnostics _diagnostics;
 
     public CoordinatorLauncher(int tcpPort, Diagnostics diagnostics)
     {
-        this.tcpPort = tcpPort;
-        this.diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
+        _tcpPort = tcpPort;
+        _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
     }
 
     public async Task LaunchAsync(CancellationToken cancellationToken)
     {
-        WgcCaptureSource captureSource = new WgcCaptureSource();
-        WindowIdentityRegistry registry = new WindowIdentityRegistry();
+        var captureSource = new WgcCaptureSource();
+        var registry = new WindowIdentityRegistry();
 
         ConcurrentDictionary<ulong, long> windowIdToHwnd = new();
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor = new();
         ConcurrentDictionary<int, ulong> streamIdToWindowId = new();
 
-        string executablePath = Process.GetCurrentProcess().MainModule?.FileName
-            ?? throw new InvalidOperationException("could not determine current executable path");
-        WorkerProcessLauncher workerLauncher = new WorkerProcessLauncher(executablePath);
-        await using WorkerSupervisor supervisor = new WorkerSupervisor(
+        var executablePath = Process.GetCurrentProcess().MainModule?.FileName
+                             ?? throw new InvalidOperationException("could not determine current executable path");
+        var workerLauncher = new WorkerProcessLauncher(executablePath);
+        await using var supervisor = new WorkerSupervisor(
             workerLauncher, maximumConcurrentStreams: 8);
 
-        Channel<TaggedChunk> routerOutput = Channel.CreateUnbounded<TaggedChunk>();
-        Channel<TaggedChunk> shedderOutput = Channel.CreateBounded<TaggedChunk>(
+        var routerOutput = Channel.CreateUnbounded<TaggedChunk>();
+        var shedderOutput = Channel.CreateBounded<TaggedChunk>(
             new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.DropOldest });
-        StreamRouter router = new StreamRouter(routerOutput);
-        LoadShedder shedder = new LoadShedder(routerOutput, shedderOutput, perStreamMaximumQueueDepth: 8);
+        var router = new StreamRouter(routerOutput);
+        var shedder = new LoadShedder(routerOutput, shedderOutput, perStreamMaximumQueueDepth: 8);
 
-        await using UdpVideoSenderAdapter udpSender = new UdpVideoSenderAdapter();
+        await using var udpSender = new UdpVideoSenderAdapter();
         await udpSender.BindAsync(new IPEndPoint(IPAddress.Any, 0), cancellationToken)
             .ConfigureAwait(false);
-        TcpConnectionAcceptorAdapter tcpAcceptor = new TcpConnectionAcceptorAdapter(TimeProvider.System);
+        var tcpAcceptor = new TcpConnectionAcceptorAdapter(TimeProvider.System);
 
-        ForegroundWindowApi foregroundApi = new ForegroundWindowApi();
-        FocusRelay focusRelay = new FocusRelay(foregroundApi);
+        var foregroundApi = new ForegroundWindowApi();
+        var focusRelay = new FocusRelay(foregroundApi);
 
-        CoordinatorOptions coordinatorOptions = new CoordinatorOptions(
+        var coordinatorOptions = new CoordinatorOptions(
             HeartbeatIntervalMilliseconds: 2000,
             HeartbeatTimeoutMilliseconds: 10000,
             ServerVersion: 2,
             MaximumConcurrentStreams: 8);
 
         Func<ulong, long?> resolveHwnd = windowId =>
-            windowIdToHwnd.TryGetValue(windowId, out long handle) ? handle : null;
+            windowIdToHwnd.TryGetValue(windowId, out var handle) ? handle : null;
 
         Func<ulong, EncoderOptions?> resolveEncoderOptions = windowId =>
             ResolveEncoderOptionsFromDescriptor(windowId, windowIdToDescriptor);
 
-        await using CoordinatorControlServer controlServer = new CoordinatorControlServer(
+        // udpSender/supervisor are await-using disposables shared with these control-server
+        // delegates (and the Task.Run loops below); all run during the server's active phase
+        // and are disposed only after the loops drain at scope exit. The analyzer cannot
+        // prove this; per feedback_inspections_refactor_over_suppress (sanctioned Task.Run case).
+        // ReSharper disable AccessToDisposedClosure
+        await using var controlServer = new CoordinatorControlServer(
             options: coordinatorOptions,
             tcpAcceptor: tcpAcceptor,
             supervisor: supervisor,
@@ -93,7 +93,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             getUdpPort: () => udpSender.LocalPort,
             sendWorkerCommand: async (streamId, tag) =>
             {
-                Stream? pipe = supervisor.GetPipe(streamId);
+                var pipe = supervisor.GetPipe(streamId);
                 if (pipe is not null)
                 {
                     await WorkerChunkPipe.WriteCommandAsync(
@@ -103,9 +103,9 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             focusRelay: focusRelay,
             injectKeyForStream: (streamId, message) =>
             {
-                if (streamIdToWindowId.TryGetValue(streamId, out ulong windowId))
+                if (streamIdToWindowId.TryGetValue(streamId, out var windowId))
                 {
-                    long? hwnd = resolveHwnd(windowId);
+                    var hwnd = resolveHwnd(windowId);
                     if (hwnd is not null)
                     {
                         focusRelay.BringToForeground(hwnd.Value);
@@ -116,49 +116,50 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             timeProvider: TimeProvider.System);
 
         // Hook supervisor stream lifecycle for routing and diagnostics.
-        supervisor.StreamStarted += (_, arguments) =>
+        supervisor.StreamStarted += (sender, arguments) =>
         {
             streamIdToWindowId[arguments.StreamId] = arguments.WindowId;
             _ = router.ReadFromPipeAsync(arguments.StreamId, arguments.Pipe, cancellationToken);
-            diagnostics.Report(new PipelineEvent.WorkerSpawned(arguments.StreamId, arguments.WorkerProcessId));
+            _diagnostics.Report(new PipelineEvent.WorkerSpawned(arguments.StreamId, arguments.WorkerProcessId));
         };
         supervisor.StreamEnded += (_, arguments) =>
         {
-            streamIdToWindowId.TryRemove(arguments.StreamId, out ulong _);
-            diagnostics.Report(new PipelineEvent.StreamStopped(arguments.StreamId, arguments.Reason.ToString()));
+            streamIdToWindowId.TryRemove(arguments.StreamId, out var _);
+            _diagnostics.Report(new PipelineEvent.StreamStopped(arguments.StreamId, arguments.Reason.ToString()));
         };
 
         // Subscribe to viewer connect/disconnect events from the control server.
         controlServer.ViewerConnected += (_, arguments) =>
         {
-            diagnostics.Report(new PipelineEvent.ViewerAccepted(arguments.Endpoint));
+            _diagnostics.Report(new PipelineEvent.ViewerAccepted(arguments.Endpoint));
         };
         controlServer.ViewerDisconnected += (_, arguments) =>
         {
-            diagnostics.Report(new PipelineEvent.ViewerDisconnected(arguments.Endpoint, arguments.Reason));
+            _diagnostics.Report(new PipelineEvent.ViewerDisconnected(arguments.Endpoint, arguments.Reason));
         };
 
         // Spin up loops: load shedder, fragmenter+UDP sender, window enumerator.
-        Task shedderLoop = Task.Run(() => shedder.RunAsync(cancellationToken), cancellationToken);
-        Task fragmenterLoop = Task.Run(
+        var shedderLoop = Task.Run(() => shedder.RunAsync(cancellationToken), cancellationToken);
+        var fragmenterLoop = Task.Run(
             () => RunFragmenterLoopAsync(shedderOutput, udpSender, controlServer, cancellationToken),
             cancellationToken);
-        Task enumerationLoop = Task.Run(
+        var enumerationLoop = Task.Run(
             () => RunEnumerationLoopAsync(
                 captureSource, registry, controlServer, windowIdToHwnd, windowIdToDescriptor,
-                diagnostics, cancellationToken),
+                _diagnostics, cancellationToken),
             cancellationToken);
+        // ReSharper restore AccessToDisposedClosure
 
         // mDNS advertise — instance name = MachineName, version=2 per spec.
-        AdvertisementOptions advertisementOptions = new AdvertisementOptions(
-            hostname: Environment.MachineName,
-            protocolMajorVersion: 2,
-            protocolRevision: 0);
+        var advertisementOptions = new AdvertisementOptions(
+            Hostname: Environment.MachineName,
+            ProtocolMajorVersion: 2,
+            ProtocolRevision: 0);
 #pragma warning disable CA2000 // ownership of MakaretuMulticastServiceHost transfers to ServerAdvertiser which is await-using
-        await using ServerAdvertiser advertiser = new ServerAdvertiser(new MakaretuMulticastServiceHost());
+        await using var advertiser = new ServerAdvertiser(new MakaretuMulticastServiceHost());
 #pragma warning restore CA2000
 
-        Task controlServerTask = controlServer.RunAsync(tcpPort, cancellationToken);
+        var controlServerTask = controlServer.RunAsync(_tcpPort, cancellationToken);
         // The acceptor is bound after RunAsync triggers StartListening — wait one
         // turn for that to settle, then read the assigned port.
         // (RunAsync calls tcpAcceptor.StartListening synchronously before its
@@ -166,7 +167,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         await advertiser.StartAsync(advertisementOptions, controlServer.TcpPort, cancellationToken)
             .ConfigureAwait(false);
 
-        diagnostics.Report(new PipelineEvent.Listening(controlServer.TcpPort, udpSender.LocalPort));
+        _diagnostics.Report(new PipelineEvent.Listening(controlServer.TcpPort, udpSender.LocalPort));
 
         try
         {
@@ -189,37 +190,37 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
     /// reader thread for up to 5 seconds per window, causing OPEN_STREAM requests to pile
     /// up and hang the viewer.
     /// </summary>
-    private static EncoderOptions? ResolveEncoderOptionsFromDescriptor(
+    static EncoderOptions? ResolveEncoderOptionsFromDescriptor(
         ulong windowId,
         ConcurrentDictionary<ulong, WindowDescriptor> windowIdToDescriptor)
     {
-        if (!windowIdToDescriptor.TryGetValue(windowId, out WindowDescriptor? descriptor))
+        if (!windowIdToDescriptor.TryGetValue(windowId, out var descriptor))
         {
             return null;
         }
 
         // NV12 requires even dimensions — round DOWN.
-        int physicalWidth = descriptor.PhysicalWidth - (descriptor.PhysicalWidth % 2);
-        int physicalHeight = descriptor.PhysicalHeight - (descriptor.PhysicalHeight % 2);
+        var physicalWidth = descriptor.PhysicalWidth - (descriptor.PhysicalWidth % 2);
+        var physicalHeight = descriptor.PhysicalHeight - (descriptor.PhysicalHeight % 2);
         if (physicalWidth <= 0 || physicalHeight <= 0)
         {
             return null;
         }
 
-        int gopLength = 30;
-        string? gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
-        if (gopOverride is not null && int.TryParse(gopOverride, out int parsedGop) && parsedGop >= 1)
+        var gopLength = 30;
+        var gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
+        if (gopOverride is not null && int.TryParse(gopOverride, out var parsedGop) && parsedGop >= 1)
         {
             gopLength = parsedGop;
         }
 
-        int framesPerSecond = 60;
-        string? fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
-        if (fpsOverride is not null && int.TryParse(fpsOverride, out int parsedFps) && parsedFps >= 1)
+        var framesPerSecond = 60;
+        var fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
+        if (fpsOverride is not null && int.TryParse(fpsOverride, out var parsedFps) && parsedFps >= 1)
         {
             framesPerSecond = parsedFps;
         }
-        int bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
+        var bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
 
         return new EncoderOptions(
             widthPixels: physicalWidth,
@@ -230,24 +231,24 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             safetyKeyframeIntervalSeconds: 1);
     }
 
-    private static async Task RunFragmenterLoopAsync(
+    static async Task RunFragmenterLoopAsync(
         Channel<TaggedChunk> shedderOutput,
         UdpVideoSenderAdapter udpSender,
         CoordinatorControlServer controlServer,
         CancellationToken cancellationToken)
     {
-        int sequence = 0;
+        var sequence = 0;
         try
         {
-            await foreach (TaggedChunk chunk in shedderOutput.Reader.ReadAllAsync(cancellationToken))
+            await foreach (var chunk in shedderOutput.Reader.ReadAllAsync(cancellationToken))
             {
-                IPEndPoint? destination = controlServer.ActiveViewerEndpoint;
+                var destination = controlServer.ActiveViewerEndpoint;
                 if (destination is null)
                 {
                     continue;
                 }
-                int currentSequence = Interlocked.Increment(ref sequence) - 1;
-                foreach (FragmentedPacket packet in NalFragmenter.Fragment(
+                var currentSequence = Interlocked.Increment(ref sequence) - 1;
+                foreach (var packet in NalFragmenter.Fragment(
                     streamId: chunk.StreamId,
                     sequence: currentSequence,
                     presentationTimestampMicroseconds: (long)chunk.Frame.PresentationTimestampMicroseconds,
@@ -265,7 +266,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         }
     }
 
-    private static async Task RunEnumerationLoopAsync(
+    static async Task RunEnumerationLoopAsync(
         WgcCaptureSource captureSource,
         WindowIdentityRegistry registry,
         CoordinatorControlServer controlServer,
@@ -274,7 +275,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         Diagnostics diagnostics,
         CancellationToken cancellationToken)
     {
-        using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
@@ -292,39 +293,39 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                 }
 #pragma warning restore CA1031
 
-                foreach (WindowEnumerationEvent enumerationEvent in registry.Diff(snapshot))
+                foreach (var enumerationEvent in registry.Diff(snapshot))
                 {
                     switch (enumerationEvent)
                     {
                         case WindowAppeared appeared:
-                            windowIdToHwnd[appeared.WindowId] = appeared.Information.handle.value;
-                            WindowDescriptor descriptor = new WindowDescriptor(
+                            windowIdToHwnd[appeared.WindowId] = appeared.Information.Handle.Value;
+                            var descriptor = new WindowDescriptor(
                                 WindowId: appeared.WindowId,
-                                Hwnd: appeared.Information.handle.value,
+                                Hwnd: appeared.Information.Handle.Value,
                                 ProcessId: 0,
-                                ProcessName: appeared.Information.processName,
-                                Title: appeared.Information.title,
-                                PhysicalWidth: appeared.Information.widthPixels,
-                                PhysicalHeight: appeared.Information.heightPixels);
+                                ProcessName: appeared.Information.ProcessName,
+                                Title: appeared.Information.Title,
+                                PhysicalWidth: appeared.Information.WidthPixels,
+                                PhysicalHeight: appeared.Information.HeightPixels);
                             windowIdToDescriptor[appeared.WindowId] = descriptor;
                             controlServer.NotifyWindowAppeared(descriptor);
                             diagnostics.Report(new PipelineEvent.WindowAppeared(
                                 appeared.WindowId,
-                                appeared.Information.title,
-                                appeared.Information.processName,
-                                appeared.Information.widthPixels,
-                                appeared.Information.heightPixels));
+                                appeared.Information.Title,
+                                appeared.Information.ProcessName,
+                                appeared.Information.WidthPixels,
+                                appeared.Information.HeightPixels));
                             break;
                         case WindowDisappeared gone:
-                            windowIdToHwnd.TryRemove(gone.WindowId, out long _);
-                            windowIdToDescriptor.TryRemove(gone.WindowId, out WindowDescriptor? _);
+                            windowIdToHwnd.TryRemove(gone.WindowId, out var _);
+                            windowIdToDescriptor.TryRemove(gone.WindowId, out var _);
                             controlServer.NotifyWindowDisappeared(gone.WindowId);
                             diagnostics.Report(new PipelineEvent.WindowDisappeared(gone.WindowId));
                             break;
                         case WindowChanged changed:
-                            if (windowIdToDescriptor.TryGetValue(changed.WindowId, out WindowDescriptor? existing))
+                            if (windowIdToDescriptor.TryGetValue(changed.WindowId, out var existing))
                             {
-                                WindowDescriptor updated = existing with
+                                var updated = existing with
                                 {
                                     Title = changed.NewTitle ?? existing.Title,
                                     PhysicalWidth = changed.NewWidthPixels ?? existing.PhysicalWidth,

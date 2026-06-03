@@ -1,8 +1,4 @@
 #if WINDOWS
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
@@ -25,15 +21,15 @@ public sealed class PauseResumeTests
     [DesktopAndNvidiaDriverFact]
     public async Task PauseForwardsCommandToWorker_AndResumeForwardsCommand_AndKeyframeArrivesAtViewer()
     {
-        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-        FakeWorkerProcessLauncher fakeWorkerLauncher = new FakeWorkerProcessLauncher();
+        var fakeWorkerLauncher = new FakeWorkerProcessLauncher();
 
-        await using CoordinatorLoopbackHarness harness = await CoordinatorLoopbackHarness.StartAsync(
+        await using var harness = await CoordinatorLoopbackHarness.StartAsync(
             workerLauncher: fakeWorkerLauncher,
             cancellationToken: cancellation.Token);
 
-        await using FakeViewer viewer = await harness.ConnectViewerAsync(cancellation.Token);
+        await using var viewer = await harness.ConnectViewerAsync(cancellation.Token);
 
         // ── Step 1: handshake ────────────────────────────────────────────────
         await viewer.SendAsync(
@@ -42,8 +38,8 @@ public sealed class PauseResumeTests
                 DisplayCapabilities: new DisplayCapabilities(1920, 1080, new[] { "h264" })),
             cancellation.Token);
 
-        ControlMessage helloResponse = await viewer.ReceiveAsync(cancellation.Token);
-        ServerHelloMessage serverHello = Assert.IsType<ServerHelloMessage>(helloResponse);
+        var helloResponse = await viewer.ReceiveAsync(cancellation.Token);
+        var serverHello = Assert.IsType<ServerHelloMessage>(helloResponse);
         Assert.True(serverHello.UdpPort > 0);
 
         // ── Step 2: register the viewer's UDP endpoint ───────────────────────
@@ -52,8 +48,8 @@ public sealed class PauseResumeTests
             cancellation.Token);
 
         // ── Step 3: inject a fake window ─────────────────────────────────────
-        ulong windowId = 42UL;
-        WindowDescriptor windowDescriptor = new WindowDescriptor(
+        var windowId = 42UL;
+        var windowDescriptor = new WindowDescriptor(
             WindowId: windowId,
             Hwnd: 0x1234L,
             ProcessId: 0,
@@ -61,7 +57,7 @@ public sealed class PauseResumeTests
             Title: "Fake Window",
             PhysicalWidth: 640,
             PhysicalHeight: 480);
-        EncoderOptions encoderOptions = new EncoderOptions(
+        var encoderOptions = new EncoderOptions(
             widthPixels: 640,
             heightPixels: 480,
             framesPerSecond: 30,
@@ -72,14 +68,14 @@ public sealed class PauseResumeTests
 
         // ── Step 4: open a stream ────────────────────────────────────────────
         await viewer.SendAsync(new OpenStreamMessage(windowId), cancellation.Token);
-        StreamStartedMessage streamStarted = Assert.IsType<StreamStartedMessage>(
+        var streamStarted = Assert.IsType<StreamStartedMessage>(
             await viewer.ReceiveAsync(cancellation.Token));
         Assert.Equal(windowId, streamStarted.WindowId);
-        int actualStreamId = streamStarted.StreamId;
+        var actualStreamId = streamStarted.StreamId;
 
         // Obtain the fake worker's test-side pipe now that the stream is open.
         FakeWorkerHandle? fakeWorker = null;
-        for (int attempt = 0; attempt < 20 && fakeWorker is null; attempt++)
+        for (var attempt = 0; attempt < 20 && fakeWorker is null; attempt++)
         {
             fakeWorker = fakeWorkerLauncher.GetFakeWorker(actualStreamId);
             if (fakeWorker is null)
@@ -88,49 +84,49 @@ public sealed class PauseResumeTests
             }
         }
         Assert.NotNull(fakeWorker);
-        Stream workerSidePipe = fakeWorker!.WorkerSidePipe;
+        var workerSidePipe = fakeWorker.WorkerSidePipe;
 
         // ── Step 5: emit one IDR + one non-IDR so the viewer has baseline data ─
-        byte[] fakeIdrPayload = new byte[] { 0x65, 0x88, 0x01 }; // NAL type 5 = IDR slice
-        byte[] fakePPayload = new byte[] { 0x41, 0x9A, 0x02 };   // NAL type 1 = non-IDR slice
+        var fakeIdrPayload = new byte[] { 0x65, 0x88, 0x01 }; // NAL type 5 = IDR slice
+        var fakePPayload = new byte[] { 0x41, 0x9A, 0x02 };   // NAL type 1 = non-IDR slice
 
         await WorkerChunkPipe.WriteChunkAsync(
             workerSidePipe,
             new WorkerChunkFrame(PresentationTimestampMicroseconds: 0UL, IsKeyframe: true, Payload: fakeIdrPayload),
             cancellation.Token);
-        ReassembledNalUnit idrUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
+        var idrUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
         Assert.True(idrUnit.IsIdrFrame, "first chunk should be marked as IDR");
 
         await WorkerChunkPipe.WriteChunkAsync(
             workerSidePipe,
             new WorkerChunkFrame(PresentationTimestampMicroseconds: 33_333UL, IsKeyframe: false, Payload: fakePPayload),
             cancellation.Token);
-        ReassembledNalUnit nonIdrUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
+        var nonIdrUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
         Assert.False(nonIdrUnit.IsIdrFrame, "second chunk should not be marked as IDR");
 
         // ── Step 6: pause — verify the Pause command reaches the worker pipe ──
         await viewer.SendAsync(new PauseStreamMessage(actualStreamId), cancellation.Token);
 
-        WorkerCommandFrame pauseCommand = await WorkerChunkPipe.ReadCommandAsync(workerSidePipe, cancellation.Token);
+        var pauseCommand = await WorkerChunkPipe.ReadCommandAsync(workerSidePipe, cancellation.Token);
         Assert.Equal(WorkerCommandTag.Pause, pauseCommand.Tag);
 
         // ── Step 7: resume — verify the Resume command reaches the worker pipe ─
         await viewer.SendAsync(new ResumeStreamMessage(actualStreamId), cancellation.Token);
 
-        WorkerCommandFrame resumeCommand = await WorkerChunkPipe.ReadCommandAsync(workerSidePipe, cancellation.Token);
+        var resumeCommand = await WorkerChunkPipe.ReadCommandAsync(workerSidePipe, cancellation.Token);
         Assert.Equal(WorkerCommandTag.Resume, resumeCommand.Tag);
 
         // ── Step 8: worker emits an IDR chunk to simulate the post-resume keyframe ─
         // On the real worker side, WorkerCommandHandler.ExecuteAsync calls
         // encoder.RequestKeyframe() on Resume, which causes the next encoded NAL to
         // be an IDR frame. We simulate that here by injecting an IDR-flagged chunk.
-        byte[] postResumeIdrPayload = new byte[] { 0x65, 0x88, 0x03 }; // IDR slice
+        var postResumeIdrPayload = new byte[] { 0x65, 0x88, 0x03 }; // IDR slice
         await WorkerChunkPipe.WriteChunkAsync(
             workerSidePipe,
             new WorkerChunkFrame(PresentationTimestampMicroseconds: 66_666UL, IsKeyframe: true, Payload: postResumeIdrPayload),
             cancellation.Token);
 
-        ReassembledNalUnit postResumeUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
+        var postResumeUnit = await viewer.ReceiveNalUnitAsync(actualStreamId, cancellation.Token);
         Assert.True(postResumeUnit.IsIdrFrame, "post-resume chunk should be marked as IDR (keyframe)");
     }
 }

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
 using WindowStream.Cli;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;
@@ -17,9 +14,9 @@ public sealed class CliServicesTests
     {
         IWindowCaptureSource captureSource = new FakeWindowCaptureSource(new List<WindowInformation>());
         ISessionHostLauncher hostLauncher = new FakeSessionHostLauncher();
-        StringWriter output = new StringWriter();
+        var output = new StringWriter();
 
-        CliServices services = new CliServices(captureSource, hostLauncher, output);
+        var services = new CliServices(captureSource, hostLauncher, output);
 
         Assert.Same(captureSource, services.CaptureSource);
         Assert.Same(hostLauncher, services.HostLauncher);

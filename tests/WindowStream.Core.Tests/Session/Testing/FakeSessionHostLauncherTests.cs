@@ -1,5 +1,3 @@
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Session.Testing;
 using Xunit;
 

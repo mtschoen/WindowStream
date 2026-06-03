@@ -4,4 +4,4 @@ namespace WindowStream.Cli.Commands;
 /// Arguments for the v2 <c>serve</c> command. Parameterless — the viewer
 /// selects the window remotely via OPEN_STREAM after connecting.
 /// </summary>
-public sealed record ServeArguments();
+public sealed record ServeArguments;

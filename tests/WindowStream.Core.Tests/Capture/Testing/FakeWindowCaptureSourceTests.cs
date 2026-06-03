@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Capture.Testing;
 using Xunit;
@@ -14,23 +9,23 @@ public sealed class FakeWindowCaptureSourceTests
     [Fact]
     public void ListWindows_ReturnsConfiguredEntries()
     {
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(
+        var source = new FakeWindowCaptureSource(
             new[]
             {
                 new WindowInformation(new WindowHandle(1), "Notepad", "notepad.exe", 640, 480),
                 new WindowInformation(new WindowHandle(2), "VS", "devenv.exe", 1920, 1080),
             });
 
-        List<WindowInformation> list = source.ListWindows().ToList();
+        var list = source.ListWindows().ToList();
 
         Assert.Equal(2, list.Count);
-        Assert.Equal("Notepad", list[0].title);
+        Assert.Equal("Notepad", list[0].Title);
     }
 
     [Fact]
     public void Start_UnknownHandle_ThrowsWindowGone()
     {
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(System.Array.Empty<WindowInformation>());
+        var source = new FakeWindowCaptureSource(Array.Empty<WindowInformation>());
         Assert.Throws<WindowGoneException>(() =>
             source.Start(new WindowHandle(99), new CaptureOptions(60, false), CancellationToken.None));
     }
@@ -38,80 +33,80 @@ public sealed class FakeWindowCaptureSourceTests
     [Fact]
     public async Task Start_EmitsConfiguredFrames_ThenCompletes()
     {
-        WindowInformation window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(new[] { window });
-        source.EnqueueFrame(window.handle, BuildSolidFrame(4, 2, 0x11));
-        source.EnqueueFrame(window.handle, BuildSolidFrame(4, 2, 0x22));
-        source.CompleteAfterEnqueued(window.handle);
+        var window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
+        var source = new FakeWindowCaptureSource(new[] { window });
+        source.EnqueueFrame(window.Handle, BuildSolidFrame(4, 2, 0x11));
+        source.EnqueueFrame(window.Handle, BuildSolidFrame(4, 2, 0x22));
+        source.CompleteAfterEnqueued(window.Handle);
 
-        await using IWindowCapture capture = source.Start(
-            window.handle, new CaptureOptions(60, false), CancellationToken.None);
+        await using var capture = source.Start(
+            window.Handle, new CaptureOptions(60, false), CancellationToken.None);
 
-        List<CapturedFrame> collected = new List<CapturedFrame>();
-        await foreach (CapturedFrame frame in capture.Frames.WithCancellation(CancellationToken.None))
+        var collected = new List<CapturedFrame>();
+        await foreach (var frame in capture.Frames.WithCancellation(CancellationToken.None))
         {
             collected.Add(frame);
         }
         Assert.Equal(2, collected.Count);
-        Assert.Equal(0x11, collected[0].pixelBuffer.Span[0]);
-        Assert.Equal(0x22, collected[1].pixelBuffer.Span[0]);
+        Assert.Equal(0x11, collected[0].PixelBuffer.Span[0]);
+        Assert.Equal(0x22, collected[1].PixelBuffer.Span[0]);
     }
 
     [Fact]
     public async Task Start_HonorsCancellation()
     {
-        WindowInformation window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(new[] { window });
-        using CancellationTokenSource cancellation = new CancellationTokenSource();
-        await using IWindowCapture capture = source.Start(
-            window.handle, new CaptureOptions(60, false), cancellation.Token);
+        var window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
+        var source = new FakeWindowCaptureSource(new[] { window });
+        using var cancellation = new CancellationTokenSource();
+        await using var capture = source.Start(
+            window.Handle, new CaptureOptions(60, false), cancellation.Token);
         await cancellation.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
-            await foreach (CapturedFrame _ in capture.Frames.WithCancellation(cancellation.Token)) { }
+            await foreach (var _ in capture.Frames.WithCancellation(cancellation.Token)) { }
         });
     }
 
     [Fact]
     public async Task Start_WindowGoneMidStream_ThrowsWindowGone()
     {
-        WindowInformation window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(new[] { window });
-        source.EnqueueFrame(window.handle, BuildSolidFrame(4, 2, 0x33));
-        source.FaultAfterEnqueued(window.handle, new WindowGoneException(window.handle));
+        var window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
+        var source = new FakeWindowCaptureSource(new[] { window });
+        source.EnqueueFrame(window.Handle, BuildSolidFrame(4, 2, 0x33));
+        source.FaultAfterEnqueued(window.Handle, new WindowGoneException(window.Handle));
 
-        await using IWindowCapture capture = source.Start(
-            window.handle, new CaptureOptions(60, false), CancellationToken.None);
+        await using var capture = source.Start(
+            window.Handle, new CaptureOptions(60, false), CancellationToken.None);
 
         await Assert.ThrowsAsync<WindowGoneException>(async () =>
         {
-            await foreach (CapturedFrame _ in capture.Frames) { }
+            await foreach (var _ in capture.Frames) { }
         });
     }
 
     [Fact]
     public void GetCapture_ReturnsNull_WhenHandleNotStarted()
     {
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(System.Array.Empty<WindowInformation>());
-        FakeWindowCapture? capture = source.GetCapture(new WindowHandle(999));
+        var source = new FakeWindowCaptureSource(Array.Empty<WindowInformation>());
+        var capture = source.GetCapture(new WindowHandle(999));
         Assert.Null(capture);
     }
 
     [Fact]
     public void GetCapture_ReturnsCapture_AfterStart()
     {
-        WindowInformation window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
-        FakeWindowCaptureSource source = new FakeWindowCaptureSource(new[] { window });
-        source.Start(window.handle, new CaptureOptions(30, false), CancellationToken.None);
-        FakeWindowCapture? capture = source.GetCapture(window.handle);
+        var window = new WindowInformation(new WindowHandle(1), "W", "p", 4, 2);
+        var source = new FakeWindowCaptureSource(new[] { window });
+        source.Start(window.Handle, new CaptureOptions(30, false), CancellationToken.None);
+        var capture = source.GetCapture(window.Handle);
         Assert.NotNull(capture);
     }
 
-    private static CapturedFrame BuildSolidFrame(int width, int height, byte value)
+    static CapturedFrame BuildSolidFrame(int width, int height, byte value)
     {
-        byte[] buffer = new byte[width * 4 * height];
-        System.Array.Fill(buffer, value);
+        var buffer = new byte[width * 4 * height];
+        Array.Fill(buffer, value);
         return new CapturedFrame(width, height, width * 4, PixelFormat.Bgra32, 0, buffer);
     }
 }

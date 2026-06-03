@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
 namespace WindowStream.Core.Protocol;
 
 public sealed record DisplayCapabilities(
@@ -23,7 +19,7 @@ public sealed record DisplayCapabilities(
         HashCode hashCode = new();
         hashCode.Add(MaximumWidth);
         hashCode.Add(MaximumHeight);
-        foreach (string codec in SupportedCodecs)
+        foreach (var codec in SupportedCodecs)
         {
             hashCode.Add(codec);
         }

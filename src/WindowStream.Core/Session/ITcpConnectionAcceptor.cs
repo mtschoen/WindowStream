@@ -1,9 +1,6 @@
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace WindowStream.Core.Session;
 
-public interface ITcpConnectionAcceptor : System.IAsyncDisposable
+public interface ITcpConnectionAcceptor : IAsyncDisposable
 {
     int LocalPort { get; }
     void StartListening(int port);

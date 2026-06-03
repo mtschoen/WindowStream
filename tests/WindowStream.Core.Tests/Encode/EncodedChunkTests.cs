@@ -1,6 +1,5 @@
-using System;
-using Xunit;
 using WindowStream.Core.Encode;
+using Xunit;
 
 namespace WindowStream.Core.Tests.Encode;
 
@@ -9,21 +8,21 @@ public sealed class EncodedChunkTests
     [Fact]
     public void Constructor_PopulatesProperties()
     {
-        byte[] payload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67 };
-        EncodedChunk chunk = new EncodedChunk(
+        var payload = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x67 };
+        var chunk = new EncodedChunk(
             payload,
             isKeyframe: true,
             presentationTimestampMicroseconds: 1234);
-        Assert.True(chunk.isKeyframe);
-        Assert.Equal(5, chunk.payload.Length);
-        Assert.Equal(1234L, chunk.presentationTimestampMicroseconds);
+        Assert.True(chunk.IsKeyframe);
+        Assert.Equal(5, chunk.Payload.Length);
+        Assert.Equal(1234L, chunk.PresentationTimestampMicroseconds);
     }
 
     [Fact]
     public void Constructor_EmptyPayload_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
-            new EncodedChunk(System.Array.Empty<byte>(), false, 0));
+            new EncodedChunk(Array.Empty<byte>(), false, 0));
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class EncodedChunkTests
     [Fact]
     public void Constructor_ZeroTimestamp_IsValid()
     {
-        EncodedChunk chunk = new EncodedChunk(new byte[] { 1 }, false, 0);
-        Assert.Equal(0L, chunk.presentationTimestampMicroseconds);
+        var chunk = new EncodedChunk(new byte[] { 1 }, false, 0);
+        Assert.Equal(0L, chunk.PresentationTimestampMicroseconds);
     }
 }

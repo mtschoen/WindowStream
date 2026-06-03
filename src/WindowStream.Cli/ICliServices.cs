@@ -1,4 +1,3 @@
-using System.IO;
 using WindowStream.Core.Capture;
 using WindowStream.Core.Session;
 
