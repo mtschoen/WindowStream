@@ -36,7 +36,10 @@ dotnet_style_qualification_for_method = false:warning
 dotnet_style_qualification_for_event = false:warning
 dotnet_style_predefined_type_for_locals_parameters_members = true:warning
 dotnet_style_predefined_type_for_member_access = true:warning
-dotnet_style_require_accessibility_modifiers = omit_if_default:suggestion
+# Drop redundant/default accessibility modifiers (e.g. `private` on class members).
+# Enforced as `warning` (-> build error via TreatWarningsAsErrors): omitting implicit
+# modifiers is a hard project preference, not a soft suggestion.
+dotnet_style_require_accessibility_modifiers = omit_if_default:warning
 dotnet_style_readonly_field = true:suggestion
 dotnet_style_object_initializer = true:suggestion
 dotnet_style_collection_initializer = true:suggestion

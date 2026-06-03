@@ -108,10 +108,13 @@ jq -r '[.runs[0].results[].ruleId]|group_by(.)|map({r:.[0],n:length})|sort_by(-.
   Fix pattern: move the conditionally-needed usings INSIDE the `#if WINDOWS` block - satisfies both the
   compiler (present under WINDOWS) and the inspection (absent under non-WINDOWS). Always rebuild
   `-warnaserror` after any cleanup pass; the build is the only reliable catch.
-- **Do NOT use "Built-in: Full Cleanup".** It converts explicit types to `var` (against codebase style),
-  STRIPS named-argument labels (`widthPixels: 3` -> `3`, hurting test readability and not even flagged),
-  and removes `(nint)0` casts in ways that can change `Assert.Equal` overload resolution. Tested and
-  reverted. Use the scoped `RedundanciesOnly` profile instead.
+- **Do NOT use "Built-in: Full Cleanup".** It STRIPS named-argument labels (`widthPixels: 3` -> `3`,
+  hurting test readability and not even flagged), and removes `(nint)0` casts in ways that can change
+  `Assert.Equal` overload resolution. Tested and reverted. Use the scoped `RedundanciesOnly` profile
+  instead. (NOTE: an earlier version of this note also warned that Full Cleanup converts explicit types
+  to `var` "against codebase style" - that was wrong. `var` IS the codebase style: `.editorconfig`
+  sets `csharp_style_var_* = true` and `dotnet_style_require_accessibility_modifiers = omit_if_default`,
+  so converting explicit types to `var` and dropping redundant modifiers moves code TOWARD the config.)
 - **The scoped profile's `CSRemoveCodeRedundancies` element silently no-op'd** (wrong key; the earlier
   `LoggerException` is the tell), which is why RedundantCast (26) and friends survived Phase 1. Getting
   those needs either the correct cleanup key or careful hand-fixes (see below).
