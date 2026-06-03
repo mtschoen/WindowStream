@@ -46,9 +46,29 @@ public sealed class WorkerProcessIntegrationTests
             $"latency-clock.html not found at {latencyClockPath}");
         var latencyClockUri = "file:///" + latencyClockPath.Replace('\\', '/');
 
+        // CRITICAL: the latency clock only keeps WGC fed while Chromium keeps
+        // painting. When the Edge window is occluded (covered by the test
+        // runner's console) or backgrounded, Chromium's painter throttling
+        // suspends requestAnimationFrame until the window is shown again - and
+        // WGC delivers a frame only on content change, so the worker's capture
+        // loop is starved and emits zero encoded chunks (the read times out with
+        // the encoder open but silent). The flags below disable every
+        // background/occlusion throttle so the clock paints regardless of window
+        // visibility, keeping the test deterministic in headless/CI runs. This
+        // is the chrome-launcher/Puppeteer "flags for tools" set plus the
+        // Windows-specific native-occlusion painter stop:
+        //   --disable-background-timer-throttling       slows timers in bg
+        //   --disable-backgrounding-occluded-windows    occluded != background
+        //   --disable-renderer-backgrounding            no bg priority drop
+        //   --disable-features=CalculateNativeWinOcclusion  Windows occlusion
+        //                                                   painter suspend
         var captureTarget = Process.Start(new ProcessStartInfo("msedge.exe")
         {
-            Arguments = $"--app=\"{latencyClockUri}\" --new-window --no-first-run --disable-extensions",
+            Arguments = $"--app=\"{latencyClockUri}\" --new-window --no-first-run --disable-extensions "
+                        + "--disable-background-timer-throttling "
+                        + "--disable-backgrounding-occluded-windows "
+                        + "--disable-renderer-backgrounding "
+                        + "--disable-features=CalculateNativeWinOcclusion",
             UseShellExecute = true
         }) ?? throw new InvalidOperationException("Could not start msedge.exe");
 

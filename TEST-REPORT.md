@@ -6,9 +6,21 @@ Status:   PASS (coverage + Roslyn/Roslynator gate) + jb inspectcode deep gate
           actually affect coverage)
 Mode:     close-the-gap (jb inspectcode deep gate - reached zero)
 Tests:    Core.Tests 338 + Server.Tests 44 pass at 100% coverage
-Git:      branch chore/jb-inspectcode-cleanup (off main @ 283c4de); Rider naming
-          rename + delete-unused on top of 07c9ae7. Roslyn analyzer gate landed on
-          main via PR #12 (db396b2)
+Git:      main @ a776975 (jb-inspectcode-cleanup PR #13 merged) + this commit:
+          fix WorkerEmitsChunksThroughPipe Edge-capture frame starvation. Roslyn
+          analyzer gate landed on main via PR #12 (db396b2); jb deep gate via #13.
+
+Integration fix (this commit): WorkerEmitsChunksThroughPipe was failing
+  deterministically (worker pipe read timed out at 30s; encoder opened but emitted
+  zero chunks). Root cause: commit 06595c7 swapped the capture target from
+  notepad+frame-nudger to an Edge --app latency clock relying on requestAnimationFrame.
+  When the Edge window is occluded by the test runner's console, Chromium painter
+  throttling suspends rAF until the window is shown, so WGC (delivers only on content
+  change) is starved and the worker's capture loop blocks. Fix: launch Edge with the
+  chrome-launcher/Puppeteer anti-throttle flags (--disable-background-timer-throttling,
+  --disable-backgrounding-occluded-windows, --disable-renderer-backgrounding,
+  --disable-features=CalculateNativeWinOcclusion). Now passes 3/3 in ~7s (was 36s
+  timeout); full integration suite 41 passed / 3 skipped.
 
 .NET (Coverlet — line + branch + method, 100% gate)
   WindowStream.Core      — 100% line, 100% branch, 100% method
@@ -37,10 +49,10 @@ Viewer (Kover with JaCoCo backend — line + branch, 100% gate)
 Per-suite test counts
   WindowStream.Core.Tests          338 passed     0 skipped
   WindowStream.Server.Tests         44 passed     0 skipped
-  WindowStream.Integration.Tests    38 passed     3 skipped
+  WindowStream.Integration.Tests    41 passed     3 skipped
   viewer :app:testPortableDebugUnitTest          243 passed     0 skipped
                                    ─────         ─────
-                                   663 total       3 skipped
+                                   666 total       3 skipped
 
 Coverage commands
   dotnet test                                            # .NET (Coverlet)
