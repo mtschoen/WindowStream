@@ -217,6 +217,13 @@ adb shell am force-stop com.mtschoen.windowstream.viewer
 
 - **Static windows emit ≤1 frame.** WGC only delivers frames on content change. Notepad with no typing + no cursor = one frame then silence. Pick a
   window with active content (terminal with spinner, video player, editor with cursor) or v1.x will need to enable cursor capture / timed RedrawWindow.
+- **Background browser/game windows self-throttle, and it is TIME-PROGRESSIVE.** A Chromium/Electron/game window that animates via requestAnimationFrame
+  keeps feeding WGC only while it keeps painting. Once backgrounded/occluded for a while it stops: measured (spike `wgc-frame-delivery-map`) ~full rate at
+  6s background but **1 frame then silence at 30s** background. This starves capture identically to a static window. For Edge `--app` capture targets
+  (e.g. integration tests) pass the anti-throttle flags `--disable-background-timer-throttling --disable-backgrounding-occluded-windows
+  --disable-renderer-backgrounding --disable-features=CalculateNativeWinOcclusion`. For arbitrary production targets we cannot relaunch with flags - see
+  `docs/HANDOFF-background-capture-detection.md` for the planned frame-starvation detector. (Minimized = 0 frames always; offscreen-but-not-minimized
+  composes fine.)
 - **Windows 11 Store-packaged apps** (Notepad, Terminal) use a launcher process that exits immediately; `Process.Start` returns a stub. Not a demo
   issue but affects test cleanup — snapshot existing PIDs, kill new ones in `finally`.
 

@@ -123,3 +123,4 @@ tools/test_*.py
 .aislop/history.jsonl
 .aislop/session.jsonl
 
+.claude/spikes/
