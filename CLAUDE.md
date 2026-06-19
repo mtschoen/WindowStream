@@ -1,3 +1,1 @@
-# WindowStream
-
 @AGENTS.md
