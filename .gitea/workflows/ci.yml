@@ -33,7 +33,11 @@ jobs:
           restore-keys: windows-nuget-
       - name: Restore
         shell: pwsh
-        run: dotnet restore
+        # -r win-x64 forces NuGet to fetch the Microsoft.NETCore.App.Runtime.win-x64
+        # runtime pack the MAUI/WindowsAppSDK server build requires. A plain restore only
+        # resolves it when the runner package cache is already warm; on a cold cache the
+        # subsequent build fails with NETSDK1112. Restoring with the RID makes it deterministic.
+        run: dotnet restore -r win-x64
       - name: Build
         shell: pwsh
         run: dotnet build -c Release --no-restore
