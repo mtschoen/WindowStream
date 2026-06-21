@@ -39,6 +39,15 @@ Pick a window on your PC, encode it live with NVENC, ship the frames over LAN, a
 release builds, rough edges, known latency issues, no packaging for non-developers yet. Built in two YOLO-mode sessions with
 [Claude Code](https://claude.com/claude-code).
 
+## Vision
+
+WindowStream is the first slice of a broader idea: a distributed peripheral mesh - Synergy's keyboard/mouse-sharing model generalized to
+screens, HMDs, audio, controllers, and input devices. v1 deliberately proves one use-case (a Windows window as a first-class XR panel) end
+to end before the mesh vision expands, favoring concrete types over speculative framework abstractions, with extensibility through additive
+protocol messages. The acceptance bar is "good enough to code in" - the target workload is productivity apps (editors, terminals, git GUIs),
+not motion-to-photon-sensitive content like games. Philosophy is fail-loudly, recover-manually: restart-the-app is an acceptable recovery
+path for a proof-of-concept.
+
 ## What works today
 
 - **PC side:** Windows 11 + .NET 8 + NVIDIA NVENC. Pick any top-level window by handle, capture it with Windows.Graphics.Capture, encode
@@ -46,8 +55,8 @@ release builds, rough edges, known latency issues, no packaging for non-develope
 - **Galaxy XR viewer** (`gxr` Gradle flavor): immersive `SpatialExternalSurface` panel via Jetpack XR. Floats in world space.
 - **Quest 3 / Android phone / tablet / Galaxy Fold viewer** (`portable` flavor): plain `SurfaceView` renders the stream as a 2D window
   in Horizon OS home space or on a phone screen.
-- **Multi-window:** run N server processes on the PC (one per window), the viewer's multi-select picker discovers all of them via mDNS,
-  tap "Connect to N" and tiles them into a grid.
+- **Multi-window:** one coordinator process per PC advertises all its capturable windows over mDNS; the viewer's picker opens as many as
+  you like, each as its own panel (the portable flavor can also span multiple servers). Each active stream runs in an isolated worker process.
 - **Input relay:** paired Bluetooth keyboard → the viewer → the control channel → Win32 `SendInput` into the focused PC window. Soft
   keyboard also works on the Fold with an on-screen preview bar.
 - **Auto-discovery:** server advertises `_windowstream._tcp` via Makaretu.Dns mDNS; viewer discovers via Android NSD.
@@ -62,7 +71,7 @@ release builds, rough edges, known latency issues, no packaging for non-develope
 - **FFmpeg DLLs.** The server grabs FFmpeg 7.x native DLLs from `$(ProgramFiles)\obs-studio\bin\64bit\` as a stopgap. If you don't have
   OBS installed, the server won't start.
 - **Keyboard polish.** Soft-keyboard Enter doesn't clear the buffer, backspace-on-empty doesn't relay. US layouts only. Modifier-key
-  state machine is pending. See [multi-window followups doc](docs/superpowers/specs/2026-04-20-multi-window-followups.md).
+  state machine is pending.
 - **Per-stream input routing.** In multi-window mode, keyboard input only reaches the first selected server. Tap-to-focus on a specific
   panel is a future pass.
 - **No release APK.** Sideload via `adb install -r` from a debug build.
@@ -71,19 +80,16 @@ release builds, rough edges, known latency issues, no packaging for non-develope
 
 ## Architecture
 
-See the full design document:
-[`docs/superpowers/specs/2026-04-19-windowstream-design.md`](docs/superpowers/specs/2026-04-19-windowstream-design.md).
+See [`AGENTS.md`](AGENTS.md) for the current architecture and server-side pipeline. Briefly:
 
-Briefly:
-
-- **Protocol:** TCP for control (`CLIENT_HELLO`, `SERVER_HELLO`, `VIEWER_READY`, `STREAM_STARTED`, `REQUEST_KEYFRAME`, `HEARTBEAT`,
+- **Protocol:** TCP for control (`HELLO`, `SERVER_HELLO`, `VIEWER_READY`, `OPEN_STREAM`, `STREAM_STARTED`, `REQUEST_KEYFRAME`, `HEARTBEAT`,
   `KEY_EVENT`, all JSON-framed with a length prefix) + UDP for video (fragmented H.264 payloads with sequence/stream headers).
-- **Server:** `WindowStream.Core` (capture / encode / session state, multi-targeted `net8.0` + `net8.0-windows10.0.19041.0`) +
-  `WindowStream.Cli` (Windows-only CLI harness wiring real WGC capture, FFmpeg NVENC encoder, and TCP/UDP adapters).
+- **Server:** `WindowStream.Core` (capture / encode / session state + the coordinator/worker hosting layer, multi-targeted `net8.0` +
+  `net8.0-windows10.0.19041.0`) + `WindowStream.Cli` (one binary, three verbs: `serve` coordinator, `worker`, `list`).
 - **Viewer:** single Gradle Android module, two flavors (`gxr`, `portable`). Shared code for discovery, control protocol, UDP transport,
   MediaCodec decode. Flavor-specific LAUNCHER activity.
 - **Tests:** 100% line + branch coverage gate enforced on `WindowStream.Core` via Coverlet and on the viewer via Kover (lifecycle entry
-  points + synthetic kotlinx continuation branches excluded with documented rationale). Integration tests cover NVENC init + SessionHost
+  points + synthetic kotlinx continuation branches excluded with documented rationale). Integration tests cover NVENC init + coordinator/worker
   loopback on Windows; a Gradle Managed Device test exercises the full viewer pipeline on a Pixel 6 API 36 emulator.
 
 ## Running it
@@ -95,8 +101,8 @@ dotnet restore
 dotnet build
 # list candidate source windows
 dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- list
-# serve a window by HWND
-dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve --hwnd <handle>
+# start the coordinator (the viewer picks which window to stream)
+dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve
 ```
 
 Note the TCP/UDP ports printed in the banner, add Windows Firewall allow rules for them, make sure your LAN is on the `Private` network

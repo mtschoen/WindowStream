@@ -203,9 +203,9 @@ windows, and spawns each picked window as its own movable `SpatialExternalSurfac
 resize –/+). Multiple windows stream concurrently. Minimize pauses the stream and shrinks the panel (the surface stays mounted — no decoder churn);
 restore resumes it; resize is viewer-side panel scaling (not source-window resize). Architecture: `SpatialWindowManager` holds pure panel state
 (unit-tested); the Activity owns per-window runtime resources; `SpatialWindowManagerScene` renders the Compose-for-XR scene (coverage-excluded). Dep
-is now Jetpack XR `1.0.0-alpha13` — the old alpha04 `createSplitEngineBridge` icon-crash no longer applies. **HMD behaviour is unverified as of
-2026-05-29** (built + unit-tested only); see `docs/HANDOFF-xr-window-manager.md` for the on-head verification checklist and the plan at
-`docs/superpowers/plans/2026-05-29-xr-spatial-window-manager.md`.
+is now Jetpack XR `1.0.0-alpha13` — the old alpha04 `createSplitEngineBridge` icon-crash no longer applies. **HMD-verified 2026-05-29**
+(built, unit-tested, and confirmed on-head: 2 windows streaming live video concurrently). The on-head checklist + plan docs have since been
+retired.
 
 Force-stop any flavor with:
 
@@ -309,9 +309,10 @@ Project-specific test notes:
 ## DPI handling
 
 Server-side responsibility. Read source window DPI via `GetDpiForWindow`, configure the encoder to match WGC's physical output, and advertise
-`width`/`height` as physical pixels in `STREAM_STARTED`. `dpiScale` is optional informational metadata. Expect per-platform tuning (Windows
-WinForms/WPF/MAUI/Qt all handle scaling differently; macOS has its own backing-scale-factor weirdness; cross-platform consistency is a v2 concern). See
-the protocol's DPI handling section in `docs/superpowers/specs/2026-04-19-windowstream-design.md`.
+`width`/`height` as physical pixels in `STREAM_STARTED`. `dpiScale` is optional informational metadata. `GetWindowRect`/`GetClientRect` differ
+from WGC's actual captured frame size by a few pixels (window chrome, shadows, DPI rounding), so probe WGC for one frame and configure the
+encoder from the real `CapturedFrame` dimensions rather than the window rect. Expect per-platform tuning (Windows WinForms/WPF/MAUI/Qt all
+handle scaling differently; macOS has its own backing-scale-factor weirdness; cross-platform consistency is a v2 concern).
 
 ## Coverage gate configuration
 
