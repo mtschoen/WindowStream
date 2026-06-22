@@ -1,4 +1,5 @@
 using System.Net;
+using WindowStream.Core.Capture.Detection;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
@@ -175,7 +176,14 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
             finally
             {
                 await viewerCancellation.CancelAsync().ConfigureAwait(false);
-                try { await heartbeatTask.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                try
+                {
+                    await heartbeatTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Normal shutdown - heartbeat is cancelled when viewer disconnects.
+                }
             }
         }
         catch (OperationCanceledException)
@@ -409,6 +417,26 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         _ = SendOnActiveChannelAsync(
             channel,
             new WindowUpdatedMessage(windowId, newTitle, newWidthPixels, newHeightPixels));
+    }
+
+    public void NotifyStreamStalled(int streamId, StallCause cause)
+    {
+        var channel = SnapshotActiveChannel();
+        if (channel is null)
+        {
+            return;
+        }
+        _ = SendOnActiveChannelAsync(channel, new StreamStalledMessage(streamId, cause));
+    }
+
+    public void NotifyStreamResumed(int streamId)
+    {
+        var channel = SnapshotActiveChannel();
+        if (channel is null)
+        {
+            return;
+        }
+        _ = SendOnActiveChannelAsync(channel, new StreamResumedMessage(streamId));
     }
 
     IControlChannel? SnapshotActiveChannel()

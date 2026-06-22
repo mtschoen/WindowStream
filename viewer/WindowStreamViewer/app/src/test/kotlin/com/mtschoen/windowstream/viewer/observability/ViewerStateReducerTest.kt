@@ -1,6 +1,8 @@
 package com.mtschoen.windowstream.viewer.observability
 
+import com.mtschoen.windowstream.viewer.control.StallCause
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -215,6 +217,35 @@ class ViewerStateReducerTest {
     fun `FramesPresenting with no matching row is a no-op`() {
         val reducer = ViewerStateReducer()
         reducer.apply(PipelineEvent.FramesPresenting(sid = 99, fps = 30.0))
+        assertTrue(reducer.state.streams.isEmpty())
+    }
+
+    @Test
+    fun `SourceStalled then SourceResumed toggles isStalled and stallCause`() {
+        val reducer = ViewerStateReducer()
+        reducer.apply(PipelineEvent.OpenStreamSent(7UL))
+        reducer.apply(PipelineEvent.StreamOpened(sid = 1, width = 100, height = 100))
+
+        reducer.apply(PipelineEvent.SourceStalled(sid = 1, cause = StallCause.SourceStalled))
+        assertTrue(reducer.state.streams[1]?.isStalled == true)
+        assertEquals(StallCause.SourceStalled, reducer.state.streams[1]?.stallCause)
+
+        reducer.apply(PipelineEvent.SourceResumed(sid = 1))
+        assertFalse(reducer.state.streams[1]?.isStalled == true)
+        assertNull(reducer.state.streams[1]?.stallCause)
+    }
+
+    @Test
+    fun `SourceStalled with no matching row is a no-op`() {
+        val reducer = ViewerStateReducer()
+        reducer.apply(PipelineEvent.SourceStalled(sid = 99, cause = StallCause.WorkerSilent))
+        assertTrue(reducer.state.streams.isEmpty())
+    }
+
+    @Test
+    fun `SourceResumed with no matching row is a no-op`() {
+        val reducer = ViewerStateReducer()
+        reducer.apply(PipelineEvent.SourceResumed(sid = 99))
         assertTrue(reducer.state.streams.isEmpty())
     }
 

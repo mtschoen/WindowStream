@@ -103,6 +103,18 @@ public sealed class ServerStateReducer
                 MeasuredBitrateKilobitsPerSecond = flowing.BitrateKilobitsPerSecond,
             }),
 
+            PipelineEvent.SourceStalled stalled => UpdateStream(stalled.StreamId!.Value, row => row with
+            {
+                IsStalled = true,
+                StallCause = stalled.Cause,
+            }),
+
+            PipelineEvent.SourceResumed resumed => UpdateStream(resumed.StreamId!.Value, row => row with
+            {
+                IsStalled = false,
+                StallCause = null,
+            }),
+
             PipelineEvent.StreamStopped stopped => State with
             {
                 Streams = State.Streams.Remove(stopped.StreamId!.Value),

@@ -407,6 +407,18 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread { windowManager.removePanel(windowId) }
                     teardownRuntime(windowId)
                 }
+                is StreamLifecycleEvent.Stalled -> {
+                    // A stall is not a stop: keep the panel and decoder mounted; surface the
+                    // stall state so the per-panel overlay can show "Source not rendering".
+                    Log.i(TAG, "source stalled: streamId=${event.streamId} cause=${event.cause}")
+                    Diagnostics.report(PipelineEvent.SourceStalled(event.streamId, event.cause))
+                    runOnUiThread { windowManager.setStalled(event.streamId, true, event.cause) }
+                }
+                is StreamLifecycleEvent.Resumed -> {
+                    Log.i(TAG, "source resumed: streamId=${event.streamId}")
+                    Diagnostics.report(PipelineEvent.SourceResumed(event.streamId))
+                    runOnUiThread { windowManager.setStalled(event.streamId, false, null) }
+                }
             }
         }
     }

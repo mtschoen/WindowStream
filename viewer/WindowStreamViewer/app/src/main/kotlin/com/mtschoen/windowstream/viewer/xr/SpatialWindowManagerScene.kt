@@ -16,10 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mtschoen.windowstream.viewer.control.StallCause
+import com.mtschoen.windowstream.viewer.demo.stallCauseSuffix
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialColumn
 import androidx.xr.compose.subspace.SpatialExternalSurface
@@ -231,38 +234,65 @@ private fun WindowChromeBar(
     onAdjustScale: (ULong, Float) -> Unit,
 ) {
     Material3Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = panel.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // weight(1f) keeps the chrome buttons (-/+/minimize/x) on-row even
+                    // when the window title is long.
+                    modifier = Modifier.weight(1f),
+                )
+                if (!panel.minimized) {
+                    FilledTonalButton(onClick = { onAdjustScale(panel.windowId, -SpatialPanelLayout.SCALE_STEP) }) {
+                        Text("-")
+                    }
+                    FilledTonalButton(onClick = { onAdjustScale(panel.windowId, SpatialPanelLayout.SCALE_STEP) }) {
+                        Text("+")
+                    }
+                }
+                FilledTonalButton(onClick = { onToggleMinimize(panel.windowId) }) {
+                    Text(if (panel.minimized) "Restore" else "Minimize")
+                }
+                Button(onClick = { onClose(panel.windowId) }) {
+                    Text("x")
+                }
+            }
+            if (panel.isStalled) {
+                StallIndicator(cause = panel.stallCause)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StallIndicator(cause: StallCause?) {
+    Material3Surface(color = Color(0xFFB71C1C)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = panel.title,
-                fontSize = 15.sp,
+                text = "Source not rendering${stallCauseSuffix(cause)}",
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                // weight(1f) keeps the chrome buttons (–/+/minimize/×) on-row even
-                // when the window title is long.
-                modifier = Modifier.weight(1f),
             )
-            if (!panel.minimized) {
-                FilledTonalButton(onClick = { onAdjustScale(panel.windowId, -SpatialPanelLayout.SCALE_STEP) }) {
-                    Text("–")
-                }
-                FilledTonalButton(onClick = { onAdjustScale(panel.windowId, SpatialPanelLayout.SCALE_STEP) }) {
-                    Text("+")
-                }
-            }
-            FilledTonalButton(onClick = { onToggleMinimize(panel.windowId) }) {
-                Text(if (panel.minimized) "Restore" else "Minimize")
-            }
-            Button(onClick = { onClose(panel.windowId) }) {
-                Text("×")
-            }
         }
     }
 }

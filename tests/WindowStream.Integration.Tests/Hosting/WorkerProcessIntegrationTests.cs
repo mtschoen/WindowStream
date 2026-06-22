@@ -160,11 +160,12 @@ public sealed class WorkerProcessIntegrationTests
                     using var readTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                     while (chunkCount < 5)
                     {
-                        var frame = await WorkerChunkPipe.ReadChunkAsync(pipeServer, readTimeout.Token);
+                        var pipeFrame = await WorkerChunkPipe.ReadFrameAsync(pipeServer, readTimeout.Token);
+                        var frame = Assert.IsType<WorkerPipeFrame.ChunkPayload>(pipeFrame).Frame;
                         Assert.NotEmpty(frame.Payload);
                         chunkCount++;
                     }
-                    // The loop reads exactly 5 chunks or the 30s ReadChunkAsync timeout
+                    // The loop reads exactly 5 chunks or the 30s ReadFrameAsync timeout
                     // fails the test, so reaching here means at least 5 chunks arrived.
 
                     await WorkerChunkPipe.WriteCommandAsync(
@@ -187,7 +188,7 @@ public sealed class WorkerProcessIntegrationTests
                         {
                             while (!drainCancellation.IsCancellationRequested)
                             {
-                                await WorkerChunkPipe.ReadChunkAsync(pipeServer, drainCancellation.Token);
+                                await WorkerChunkPipe.ReadFrameAsync(pipeServer, drainCancellation.Token);
                             }
                         }
                         catch (EndOfStreamException) { /* pipe closed — worker shut down */ }

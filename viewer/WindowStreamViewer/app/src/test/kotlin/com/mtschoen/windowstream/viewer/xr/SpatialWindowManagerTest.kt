@@ -1,5 +1,6 @@
 package com.mtschoen.windowstream.viewer.xr
 
+import com.mtschoen.windowstream.viewer.control.StallCause
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -165,5 +166,35 @@ class SpatialWindowManagerTest {
         manager.updateDimensions(99uL, 1280, 720)
 
         assertEquals(1920, manager.panels.value.single().contentWidthPixels)
+    }
+
+    @Test
+    fun `setStalled marks the matching panel stalled and clears on resume`() {
+        val manager = manager()
+        manager.add(windowId = 5uL, streamId = 4)
+
+        manager.setStalled(streamId = 4, stalled = true, cause = StallCause.SourceStalled)
+
+        val stalledPanel = manager.panels.value.single { it.streamId == 4 }
+        assertTrue(stalledPanel.isStalled)
+        assertEquals(StallCause.SourceStalled, stalledPanel.stallCause)
+
+        manager.setStalled(streamId = 4, stalled = false, cause = null)
+
+        val resumedPanel = manager.panels.value.single { it.streamId == 4 }
+        assertFalse(resumedPanel.isStalled)
+        assertNull(resumedPanel.stallCause)
+    }
+
+    @Test
+    fun `setStalled for an unknown streamId leaves panels unchanged`() {
+        val manager = manager()
+        manager.add(windowId = 1uL, streamId = 10)
+
+        manager.setStalled(streamId = 99, stalled = true, cause = StallCause.NeverStarted)
+
+        val panel = manager.panels.value.single()
+        assertFalse(panel.isStalled)
+        assertNull(panel.stallCause)
     }
 }

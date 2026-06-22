@@ -1,6 +1,7 @@
 #if WINDOWS
 using System.IO.Pipes;
 using WindowStream.Core.Capture;
+using WindowStream.Core.Capture.Detection;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
@@ -23,6 +24,15 @@ public static class WorkerCommandHandler
             using var lifecycle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var pauseLock = new object();
             var paused = false;
+
+            using var pipeWriteLock = new SemaphoreSlim(1, 1);
+
+            async Task WriteStatusGuardedAsync(WorkerStatusFrame status)
+            {
+                await pipeWriteLock.WaitAsync(lifecycle.Token).ConfigureAwait(false);
+                try { await WorkerChunkPipe.WriteStatusAsync(pipe, status, lifecycle.Token).ConfigureAwait(false); }
+                finally { pipeWriteLock.Release(); }
+            }
 
             using var deviceManager = new Direct3D11DeviceManager();
             await using var encoder = new FFmpegNvencEncoder();
@@ -60,7 +70,7 @@ public static class WorkerCommandHandler
                         }
                     }
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) { /* cooperative cancellation - normal shutdown path */ }
                 catch (EndOfStreamException) { await lifecycle.CancelAsync().ConfigureAwait(false); }
             }, lifecycle.Token);
 
@@ -74,10 +84,24 @@ public static class WorkerCommandHandler
                             PresentationTimestampMicroseconds: (ulong)chunk.PresentationTimestampMicroseconds,
                             IsKeyframe: chunk.IsKeyframe,
                             Payload: chunk.Payload.ToArray());
-                        await WorkerChunkPipe.WriteChunkAsync(pipe, frame, lifecycle.Token).ConfigureAwait(false);
+                        await pipeWriteLock.WaitAsync(lifecycle.Token).ConfigureAwait(false);
+                        try { await WorkerChunkPipe.WriteChunkAsync(pipe, frame, lifecycle.Token).ConfigureAwait(false); }
+                        finally { pipeWriteLock.Release(); }
                     }
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) { /* cooperative cancellation - normal shutdown path */ }
+#pragma warning disable CA1031 // encode-output boundary: report cause then end the loop
+                catch (Exception encodeException)
+                {
+                    try
+                    {
+                        await WriteStatusGuardedAsync(new WorkerStatusFrame(
+                            WorkerStatusKind.EncodeError, StallCause.SourceStalled, 0U, encodeException.Message)).ConfigureAwait(false);
+                    }
+                    catch { /* pipe gone */ }
+                    await lifecycle.CancelAsync().ConfigureAwait(false);
+                }
+#pragma warning restore CA1031
             }, lifecycle.Token);
             // ReSharper restore AccessToDisposedClosure
 
@@ -88,10 +112,38 @@ public static class WorkerCommandHandler
                 sharedFrameTexturePool: encoder,
                 lifecycle.Token);
 
+            var sourceMonitor = new SourceFrameMonitor(TimeProvider.System, SourceFrameMonitorOptions.Default);
+            sourceMonitor.Start();
+
+            var monitorTickTask = Task.Run(async () =>
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+                try
+                {
+                    while (await timer.WaitForNextTickAsync(lifecycle.Token).ConfigureAwait(false))
+                    {
+                        // Evaluate() only ever returns Stalled or None; resume is detected on the next
+                        // delivered frame (RecordFrame in the frame loop), not on a tick.
+                        if (sourceMonitor.Evaluate() == StallTransition.Stalled)
+                        {
+                            await WriteStatusGuardedAsync(new WorkerStatusFrame(
+                                WorkerStatusKind.SourceStalled, sourceMonitor.LastStallCause,
+                                (uint)sourceMonitor.LastFrameAgeMilliseconds, string.Empty)).ConfigureAwait(false);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { /* cooperative cancellation - normal shutdown path */ }
+            }, lifecycle.Token);
+
             try
             {
                 await foreach (var captured in capture.Frames.WithCancellation(lifecycle.Token).ConfigureAwait(false))
                 {
+                    if (sourceMonitor.RecordFrame() == StallTransition.Resumed)
+                    {
+                        await WriteStatusGuardedAsync(new WorkerStatusFrame(
+                            WorkerStatusKind.SourceResumed, StallCause.SourceStalled, 0U, string.Empty)).ConfigureAwait(false);
+                    }
                     bool currentlyPaused;
                     lock (pauseLock) currentlyPaused = paused;
                     if (currentlyPaused)
@@ -107,14 +159,20 @@ public static class WorkerCommandHandler
                     await encoder.EncodeAsync(captured, lifecycle.Token).ConfigureAwait(false);
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { /* cooperative cancellation - normal shutdown path */ }
 #pragma warning disable CA1031 // worker capture-failure boundary: logs the exception then shuts down the worker process
             catch (Exception captureException)
             {
+                try
+                {
+                    await WriteStatusGuardedAsync(new WorkerStatusFrame(
+                        WorkerStatusKind.CaptureError, StallCause.SourceStalled, 0U, captureException.Message)).ConfigureAwait(false);
+                }
+                catch { /* pipe may already be torn down; stderr below remains the fallback */ }
                 await Console.Error.WriteLineAsync($"[worker] capture failed: {captureException}").ConfigureAwait(false);
                 await lifecycle.CancelAsync().ConfigureAwait(false);
                 // CancellationToken.None intentional: token is already cancelled; we want the 2-second wall-clock timeout regardless
-                try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { /* graceful-shutdown drain; tasks already cancelled */ }
+                try { await Task.WhenAll(commandReaderTask, encodeOutputTask, monitorTickTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { /* graceful-shutdown drain; tasks already cancelled */ }
                 return 2;
             }
 #pragma warning restore CA1031
@@ -122,7 +180,7 @@ public static class WorkerCommandHandler
             await lifecycle.CancelAsync().ConfigureAwait(false);
             // CancellationToken.None intentional: token is already cancelled; we want the 2-second wall-clock timeout regardless
 #pragma warning disable CA1031, RCS1075 // graceful-shutdown drain; tasks already cancelled, any residual exception is ignorable
-            try { await Task.WhenAll(commandReaderTask, encodeOutputTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { /* graceful-shutdown drain; tasks already cancelled */ }
+            try { await Task.WhenAll(commandReaderTask, encodeOutputTask, monitorTickTask).WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ConfigureAwait(false); } catch { /* graceful-shutdown drain; tasks already cancelled */ }
 #pragma warning restore CA1031, RCS1075
             return 0;
         }

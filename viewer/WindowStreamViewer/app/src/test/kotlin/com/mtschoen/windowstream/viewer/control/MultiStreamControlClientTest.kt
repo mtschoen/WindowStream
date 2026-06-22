@@ -314,6 +314,62 @@ class MultiStreamControlClientTest {
     }
 
     @Test
+    fun `StreamStalled then StreamResumed flow without closing the mailbox`() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.IO)
+        val (serverSocket, serverJob) = startFakeServer(scope) { _, input, output ->
+            val open = readMessage(input) as ControlMessage.OpenStream
+            writeMessage(
+                output,
+                ControlMessage.StreamStarted(
+                    streamId = 11,
+                    windowId = open.windowId,
+                    codec = "h264",
+                    width = 1920,
+                    height = 1080,
+                    framesPerSecond = 60
+                )
+            )
+            // Wait for a client-sent trigger before emitting stall/resume. This guarantees the
+            // client has processed STREAM_STARTED and registered its per-stream mailbox, so the
+            // test is deterministic rather than racing the mailbox registration.
+            readMessage(input)
+            // Source stalls, then recovers - both must reach the still-open mailbox.
+            writeMessage(output, ControlMessage.StreamStalled(streamId = 11, cause = StallCause.SourceStalled))
+            writeMessage(output, ControlMessage.StreamResumed(streamId = 11))
+            delay(1000)
+        }
+
+        val connection = withTimeout(3.seconds) {
+            clientFor(serverSocket.localPort).connect(scope)
+        }
+
+        val lifecycleFlow = connection.openStream(windowId = 5u, scope = scope)
+
+        // Wait for Opened (mailbox is now registered), then trigger the server's stall/resume.
+        val opened = withTimeout(3.seconds) { lifecycleFlow.first() }
+        assertTrue(opened is StreamLifecycleEvent.Opened)
+        connection.requestKeyframe(streamId = 11)
+
+        // Stalled then Resumed - the mailbox is never closed by a stall, so both flow through.
+        val events = withTimeout(3.seconds) { lifecycleFlow.take(2).toList() }
+        assertEquals(2, events.size)
+
+        val stalled = events[0]
+        assertTrue(stalled is StreamLifecycleEvent.Stalled)
+        stalled as StreamLifecycleEvent.Stalled
+        assertEquals(11, stalled.streamId)
+        assertEquals(StallCause.SourceStalled, stalled.cause)
+
+        val resumed = events[1]
+        assertTrue(resumed is StreamLifecycleEvent.Resumed)
+        assertEquals(11, (resumed as StreamLifecycleEvent.Resumed).streamId)
+
+        connection.close()
+        serverJob.cancelAndJoin()
+        serverSocket.close()
+    }
+
+    @Test
     fun `ErrorMessage from server for OPEN_STREAM causes lifecycle flow to emit Refused`() = runBlocking {
         val scope = CoroutineScope(Dispatchers.IO)
         val (serverSocket, serverJob) = startFakeServer(scope) { _, input, output ->

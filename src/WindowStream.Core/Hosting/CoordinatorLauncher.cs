@@ -55,7 +55,6 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         var routerOutput = Channel.CreateUnbounded<TaggedChunk>();
         var shedderOutput = Channel.CreateBounded<TaggedChunk>(
             new BoundedChannelOptions(64) { FullMode = BoundedChannelFullMode.DropOldest });
-        var router = new StreamRouter(routerOutput);
         var shedder = new LoadShedder(routerOutput, shedderOutput, perStreamMaximumQueueDepth: 8);
 
         await using var udpSender = new UdpVideoSenderAdapter();
@@ -115,6 +114,40 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             },
             timeProvider: TimeProvider.System);
 
+        var router = new StreamRouter(
+            routerOutput,
+            onStatus: (streamId, status) =>
+            {
+                switch (status.Kind)
+                {
+                    case WorkerStatusKind.SourceStalled:
+                        _diagnostics.Report(new PipelineEvent.SourceStalled(streamId, status.Cause, status.LastFrameAgeMilliseconds));
+                        controlServer.NotifyStreamStalled(streamId, status.Cause);
+                        break;
+                    case WorkerStatusKind.SourceResumed:
+                        _diagnostics.Report(new PipelineEvent.SourceResumed(streamId, 0));
+                        controlServer.NotifyStreamResumed(streamId);
+                        break;
+                    case WorkerStatusKind.CaptureError:
+                        _diagnostics.Report(new PipelineEvent.CaptureErrorReported(streamId, status.Message));
+                        break;
+                    case WorkerStatusKind.EncodeError:
+                        _diagnostics.Report(new PipelineEvent.EncodeErrorReported(streamId, status.Message));
+                        break;
+                }
+            },
+            onWatchdogStalled: (streamId, cause) =>
+            {
+                _diagnostics.Report(new PipelineEvent.SourceStalled(streamId, cause, 0));
+                controlServer.NotifyStreamStalled(streamId, cause);
+            },
+            onWatchdogResumed: streamId =>
+            {
+                _diagnostics.Report(new PipelineEvent.SourceResumed(streamId, 0));
+                controlServer.NotifyStreamResumed(streamId);
+            },
+            timeProvider: TimeProvider.System);
+
         // Hook supervisor stream lifecycle for routing and diagnostics.
         supervisor.StreamStarted += (sender, arguments) =>
         {
@@ -138,7 +171,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             _diagnostics.Report(new PipelineEvent.ViewerDisconnected(arguments.Endpoint, arguments.Reason));
         };
 
-        // Spin up loops: load shedder, fragmenter+UDP sender, window enumerator.
+        // Spin up loops: load shedder, fragmenter+UDP sender, window enumerator, watchdog ticker.
         var shedderLoop = Task.Run(() => shedder.RunAsync(cancellationToken), cancellationToken);
         var fragmenterLoop = Task.Run(
             () => RunFragmenterLoopAsync(shedderOutput, udpSender, controlServer, cancellationToken),
@@ -148,6 +181,21 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                 captureSource, registry, controlServer, windowIdToHwnd, windowIdToDescriptor,
                 _diagnostics, cancellationToken),
             cancellationToken);
+        var watchdogLoop = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    router.EvaluateWatchdogs();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown - cancellation is the expected exit path for this loop.
+            }
+        }, cancellationToken);
         // ReSharper restore AccessToDisposedClosure
 
         // mDNS advertise — instance name = MachineName, version=2 per spec.
@@ -179,9 +227,38 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
         }
 
         // Drain background loops so cancellation propagates cleanly.
-        try { await shedderLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
-        try { await fragmenterLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
-        try { await enumerationLoop.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        try
+        {
+            await shedderLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown.
+        }
+        try
+        {
+            await fragmenterLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown.
+        }
+        try
+        {
+            await enumerationLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown.
+        }
+        try
+        {
+            await watchdogLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown.
+        }
     }
 
     /// <summary>

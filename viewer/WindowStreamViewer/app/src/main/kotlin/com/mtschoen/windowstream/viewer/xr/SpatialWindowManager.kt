@@ -1,5 +1,6 @@
 package com.mtschoen.windowstream.viewer.xr
 
+import com.mtschoen.windowstream.viewer.control.StallCause
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +87,28 @@ class SpatialWindowManager {
         panelsState.value = panelsState.value.map { panel ->
             if (panel.windowId == windowId) {
                 panel.copy(scale = SpatialPanelLayout.clampScale(panel.scale + delta))
+            } else {
+                panel
+            }
+        }
+    }
+
+    /**
+     * Marks the panel for [streamId] as stalled or resumed.
+     *
+     * Stall/resume events arrive keyed by streamId (from the server's
+     * STREAM_STALLED/STREAM_RESUMED messages), not by windowId, so this
+     * mutator matches on [SpatialPanelState.streamId] unlike the windowId-keyed
+     * mutators above. When [stalled] is false the [cause] is cleared to null.
+     * No-op if no panel carries [streamId].
+     */
+    fun setStalled(streamId: Int, stalled: Boolean, cause: StallCause?) {
+        panelsState.value = panelsState.value.map { panel ->
+            if (panel.streamId == streamId) {
+                panel.copy(
+                    isStalled = stalled,
+                    stallCause = if (stalled) cause else null,
+                )
             } else {
                 panel
             }

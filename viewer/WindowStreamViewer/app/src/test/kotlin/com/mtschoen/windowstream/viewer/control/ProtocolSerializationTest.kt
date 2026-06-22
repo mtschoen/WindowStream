@@ -225,6 +225,24 @@ class ProtocolSerializationTest {
         assertEquals(original, roundTrip(original))
     }
 
+    // ─── stall / resume messages ─────────────────────────────────────────────
+
+    @Test
+    fun decodes_stream_stalled() {
+        val jsonString = """{"type":"STREAM_STALLED","streamId":7,"cause":"SOURCE_STALLED"}"""
+        val message = json.decodeFromString(ControlMessage.serializer(), jsonString)
+        assertTrue(message is ControlMessage.StreamStalled)
+        message as ControlMessage.StreamStalled
+        assertEquals(7, message.streamId)
+        assertEquals(StallCause.SourceStalled, message.cause)
+    }
+
+    @Test
+    fun decodes_stream_resumed() {
+        val jsonString = """{"type":"STREAM_RESUMED","streamId":7}"""
+        assertTrue(json.decodeFromString(ControlMessage.serializer(), jsonString) is ControlMessage.StreamResumed)
+    }
+
     // ─── discriminator ────────────────────────────────────────────────────────
 
     @Test

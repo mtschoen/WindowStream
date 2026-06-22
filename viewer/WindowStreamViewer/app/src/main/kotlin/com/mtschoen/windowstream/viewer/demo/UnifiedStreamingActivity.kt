@@ -25,6 +25,7 @@ import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
 import com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection
 import com.mtschoen.windowstream.viewer.control.StreamLifecycleEvent
 import com.mtschoen.windowstream.viewer.control.WindowDescriptor
+import com.mtschoen.windowstream.viewer.observability.StreamRowState
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.discovery.NetworkServiceDiscoveryClient
 import com.mtschoen.windowstream.viewer.discovery.ServerInformation
@@ -93,6 +94,7 @@ class UnifiedStreamingActivity : Activity() {
     private lateinit var surfaceContainer: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var statusLabel: TextView
+    private lateinit var stallBanner: TextView
     private lateinit var drawerOverlay: WindowDrawerOverlay
     private lateinit var observabilityOverlay: ObservabilityOverlay
     private lateinit var softInputEditText: EditText
@@ -109,9 +111,13 @@ class UnifiedStreamingActivity : Activity() {
         activityScope.launch {
             app.inAppBufferTree.events.collect { event ->
                 event.pipelineEvent?.let { reducer.apply(it) }
+                val currentState = reducer.state
                 runOnUiThread {
                     observabilityOverlay.appendEvent(event)
-                    observabilityOverlay.renderState(reducer.state)
+                    observabilityOverlay.renderState(currentState)
+                    val activeStreamId = panels.getOrNull(activeIndex)?.streamId
+                    val activeStreamRow: StreamRowState? = activeStreamId?.let { currentState.streams[it] }
+                    updateStallBanner(activeStreamRow)
                 }
             }
         }
@@ -220,6 +226,20 @@ class UnifiedStreamingActivity : Activity() {
             onDrawerWindowTapped(windowId, isCurrentlyOpen)
         }
 
+        stallBanner = TextView(this).apply {
+            setBackgroundColor(Color.argb(204, 34, 34, 34))
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(24, 16, 24, 16)
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+            ).also { it.topMargin = TAB_BAR_HEIGHT_PX }
+        }
+
         softInputEditText = EditText(this).apply {
             alpha = 0f
             isFocusable = true
@@ -252,6 +272,7 @@ class UnifiedStreamingActivity : Activity() {
             ))
             addView(statusLabel)
             addView(tabBarWithControls)
+            addView(stallBanner)
             addView(softInputEditText)
             addView(inputPreviewTextView)
             addView(drawerOverlay.rootView)
@@ -404,6 +425,13 @@ class UnifiedStreamingActivity : Activity() {
                         if (panels.isEmpty()) statusLabel.visibility = View.VISIBLE
                     }
                 }
+                is StreamLifecycleEvent.Stalled -> {
+                    // A stall is not a stop: keep the panel and decoder; just record the state.
+                    Diagnostics.report(PipelineEvent.SourceStalled(event.streamId, event.cause))
+                }
+                is StreamLifecycleEvent.Resumed -> {
+                    Diagnostics.report(PipelineEvent.SourceResumed(event.streamId))
+                }
             }
         }
     }
@@ -509,6 +537,19 @@ class UnifiedStreamingActivity : Activity() {
             panel.tabView.setBackgroundColor(
                 if (index == activeIndex) Color.rgb(50, 70, 120) else Color.TRANSPARENT
             )
+        }
+    }
+
+    /**
+     * Shows or hides the stall banner over the active panel based on the stream's
+     * [StreamRowState.isStalled] flag. Must be called on the UI thread.
+     */
+    private fun updateStallBanner(activeStreamRow: StreamRowState?) {
+        if (activeStreamRow?.isStalled == true) {
+            stallBanner.text = "Source not rendering" + stallCauseSuffix(activeStreamRow.stallCause)
+            stallBanner.visibility = View.VISIBLE
+        } else {
+            stallBanner.visibility = View.GONE
         }
     }
 

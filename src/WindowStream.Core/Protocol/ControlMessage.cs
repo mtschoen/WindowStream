@@ -22,4 +22,6 @@ namespace WindowStream.Core.Protocol;
 [JsonDerivedType(typeof(PauseStreamMessage), typeDiscriminator: "PAUSE_STREAM")]
 [JsonDerivedType(typeof(ResumeStreamMessage), typeDiscriminator: "RESUME_STREAM")]
 [JsonDerivedType(typeof(FocusWindowMessage), typeDiscriminator: "FOCUS_WINDOW")]
+[JsonDerivedType(typeof(StreamStalledMessage), typeDiscriminator: "STREAM_STALLED")]
+[JsonDerivedType(typeof(StreamResumedMessage), typeDiscriminator: "STREAM_RESUMED")]
 public abstract record ControlMessage;

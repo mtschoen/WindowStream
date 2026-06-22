@@ -294,6 +294,13 @@ class PanelSwitcherActivity : Activity() {
                             Log.i(TAG, "panel $index stopped: ${event.reason.reason}")
                             surfaceLock.withLock { tearDownDecoderLocked(index) }
                         }
+                        is StreamLifecycleEvent.Stalled -> {
+                            // A stall is not a stop: leave the decoder running and just log.
+                            Log.i(TAG, "panel $index source stalled: cause=${event.cause}")
+                        }
+                        is StreamLifecycleEvent.Resumed -> {
+                            Log.i(TAG, "panel $index source resumed")
+                        }
                     }
                 }
             }

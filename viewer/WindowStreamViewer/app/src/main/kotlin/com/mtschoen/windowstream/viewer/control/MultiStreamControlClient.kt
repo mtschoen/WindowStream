@@ -42,6 +42,17 @@ sealed class StreamLifecycleEvent {
      * The server stopped a previously opened stream.
      */
     data class Stopped(val reason: ControlMessage.StreamStopped) : StreamLifecycleEvent()
+
+    /**
+     * The server reports the source stopped rendering. A stall is NOT a stop: the stream stays
+     * active, the per-stream mailbox stays open, and a [Resumed] (or eventual [Stopped]) may follow.
+     */
+    data class Stalled(val streamId: Int, val cause: StallCause) : StreamLifecycleEvent()
+
+    /**
+     * The server reports the previously stalled source is rendering again.
+     */
+    data class Resumed(val streamId: Int) : StreamLifecycleEvent()
 }
 
 /**
@@ -308,6 +319,22 @@ class MultiStreamControlClient(
                                     streamMailbox.trySend(StreamLifecycleEvent.Stopped(message))
                                     streamMailbox.close()
                                 }
+                            }
+                            is ControlMessage.StreamStalled -> {
+                                // A stall is not a stop: look up (do NOT remove) the mailbox and
+                                // keep it open so a later Resumed or Stopped still routes here.
+                                val streamMailbox: Channel<StreamLifecycleEvent>? =
+                                    mailboxLock.withLock { streamMailboxes[message.streamId] }
+                                streamMailbox?.trySend(
+                                    StreamLifecycleEvent.Stalled(message.streamId, message.cause)
+                                )
+                            }
+                            is ControlMessage.StreamResumed -> {
+                                val streamMailbox: Channel<StreamLifecycleEvent>? =
+                                    mailboxLock.withLock { streamMailboxes[message.streamId] }
+                                streamMailbox?.trySend(
+                                    StreamLifecycleEvent.Resumed(message.streamId)
+                                )
                             }
                             is ControlMessage.ErrorMessage -> {
                                 // Errors during an OPEN_STREAM are delivered to the pending

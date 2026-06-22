@@ -1,5 +1,7 @@
 package com.mtschoen.windowstream.viewer.observability
 
+import com.mtschoen.windowstream.viewer.control.StallCause
+
 enum class StageStatus { Pending, InProgress, Ok, Warning, Error }
 
 data class StreamRowState(
@@ -11,6 +13,8 @@ data class StreamRowState(
     val decoderError: String? = null,
     val presenting: StageStatus = StageStatus.Pending,
     val fps: Double? = null,
+    val isStalled: Boolean = false,
+    val stallCause: StallCause? = null,
 )
 
 data class ViewerState(
@@ -61,6 +65,20 @@ class ViewerStateReducer {
                 )))
             }
             is PipelineEvent.StreamStopped -> state.copy(streams = state.streams - event.sid)
+            is PipelineEvent.SourceStalled -> {
+                val row = state.streams[event.sid] ?: return
+                state.copy(streams = state.streams + (event.sid to row.copy(
+                    isStalled = true,
+                    stallCause = event.cause,
+                )))
+            }
+            is PipelineEvent.SourceResumed -> {
+                val row = state.streams[event.sid] ?: return
+                state.copy(streams = state.streams + (event.sid to row.copy(
+                    isStalled = false,
+                    stallCause = null,
+                )))
+            }
             is PipelineEvent.UdpFirstPacketReceived -> {
                 val row = state.streams[event.sid] ?: return
                 state.copy(streams = state.streams + (event.sid to row.copy(

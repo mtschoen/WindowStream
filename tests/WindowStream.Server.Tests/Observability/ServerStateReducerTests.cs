@@ -72,4 +72,27 @@ public class ServerStateReducerTests
         reducer.Apply(new PipelineEvent.WindowDisappeared(WindowId: 99UL));
         Assert.Equal(0, reducer.State.WindowCount);
     }
+
+    [Fact]
+    public void SourceStalled_Sets_IsStalled_And_Cause_On_Row()
+    {
+        ServerStateReducer reducer = new();
+        reducer.Apply(new PipelineEvent.OpenStreamReceived(1, 7));
+        reducer.Apply(new PipelineEvent.SourceStalled(1, WindowStream.Core.Capture.Detection.StallCause.SourceStalled, 500));
+        var row = reducer.State.Streams[1];
+        Assert.True(row.IsStalled);
+        Assert.Equal(WindowStream.Core.Capture.Detection.StallCause.SourceStalled, row.StallCause);
+    }
+
+    [Fact]
+    public void SourceResumed_Clears_IsStalled_And_Cause_On_Row()
+    {
+        ServerStateReducer reducer = new();
+        reducer.Apply(new PipelineEvent.OpenStreamReceived(1, 7));
+        reducer.Apply(new PipelineEvent.SourceStalled(1, WindowStream.Core.Capture.Detection.StallCause.NeverStarted, 1000));
+        reducer.Apply(new PipelineEvent.SourceResumed(1, 1200));
+        var row = reducer.State.Streams[1];
+        Assert.False(row.IsStalled);
+        Assert.Null(row.StallCause);
+    }
 }

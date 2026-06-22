@@ -1,3 +1,4 @@
+using WindowStream.Core.Capture.Detection;
 using WindowStream.Core.Protocol;
 using Xunit;
 
@@ -158,6 +159,59 @@ public sealed class ControlMessageSerializationTests
         // Exercises the ProtocolErrorCodeConverter null-string guard
         Assert.Throws<MalformedMessageException>(
             () => ControlMessageSerialization.Deserialize("{\"type\":\"ERROR\",\"code\":null,\"message\":\"x\"}"));
+    }
+
+    [Fact]
+    public void StreamStalled_round_trips_with_wire_cause()
+    {
+        var message = new StreamStalledMessage(7, StallCause.SourceStalled);
+        var json = ControlMessageSerialization.Serialize(message);
+        Assert.Contains("\"type\":\"STREAM_STALLED\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"cause\":\"SOURCE_STALLED\"", json, StringComparison.Ordinal);
+        var decoded = Assert.IsType<StreamStalledMessage>(ControlMessageSerialization.Deserialize(json));
+        Assert.Equal(7, decoded.StreamId);
+        Assert.Equal(StallCause.SourceStalled, decoded.Cause);
+    }
+
+    [Fact]
+    public void StreamResumed_round_trips()
+    {
+        var message = new StreamResumedMessage(7);
+        var json = ControlMessageSerialization.Serialize(message);
+        Assert.Contains("\"type\":\"STREAM_RESUMED\"", json, StringComparison.Ordinal);
+        var decoded = Assert.IsType<StreamResumedMessage>(ControlMessageSerialization.Deserialize(json));
+        Assert.Equal(7, decoded.StreamId);
+    }
+
+    [Theory]
+    [InlineData(StallCause.NeverStarted, "NEVER_STARTED")]
+    [InlineData(StallCause.SourceStalled, "SOURCE_STALLED")]
+    [InlineData(StallCause.WorkerSilent, "WORKER_SILENT")]
+    public void StallCause_wire_names_round_trip(StallCause cause, string wire)
+    {
+        Assert.Equal(wire, StallCauseNames.ToWireName(cause));
+        Assert.Equal(cause, StallCauseNames.Parse(wire));
+    }
+
+    [Fact]
+    public void StallCauseNames_ToWireName_throws_for_out_of_range_value()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => StallCauseNames.ToWireName((StallCause)999));
+    }
+
+    [Fact]
+    public void StallCauseNames_Parse_throws_for_unknown_wire_name()
+    {
+        Assert.Throws<ArgumentException>(() => StallCauseNames.Parse("NOT_A_CAUSE"));
+    }
+
+    [Fact]
+    public void StallCauseConverter_Read_throws_for_null_json_value()
+    {
+        // Exercises the null-string guard in StallCauseConverter.Read via the deserialize path.
+        var payload = "{\"type\":\"STREAM_STALLED\",\"streamId\":1,\"cause\":null}";
+        Assert.Throws<MalformedMessageException>(
+            () => ControlMessageSerialization.Deserialize(payload));
     }
 
     static void AssertRoundTrip(ControlMessage original)

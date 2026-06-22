@@ -221,8 +221,9 @@ adb shell am force-stop com.mtschoen.windowstream.viewer
   keeps feeding WGC only while it keeps painting. Once backgrounded/occluded for a while it stops: measured (spike `wgc-frame-delivery-map`) ~full rate at
   6s background but **1 frame then silence at 30s** background. This starves capture identically to a static window. For Edge `--app` capture targets
   (e.g. integration tests) pass the anti-throttle flags `--disable-background-timer-throttling --disable-backgrounding-occluded-windows
-  --disable-renderer-backgrounding --disable-features=CalculateNativeWinOcclusion`. For arbitrary production targets we cannot relaunch with flags - see
-  `docs/HANDOFF-background-capture-detection.md` for the planned frame-starvation detector. (Minimized = 0 frames always; offscreen-but-not-minimized
+  --disable-renderer-backgrounding --disable-features=CalculateNativeWinOcclusion`. For arbitrary production targets we cannot relaunch with flags;
+  the shipped `SourceFrameMonitor` (worker-side cadence detector) and `ChunkCadenceWatchdog` (coordinator safety net) detect the stall and surface
+  `STREAM_STALLED` / `STREAM_RESUMED` to the viewer, which banners it per-panel. (Minimized = 0 frames always; offscreen-but-not-minimized
   composes fine.)
 - **Windows 11 Store-packaged apps** (Notepad, Terminal) use a launcher process that exits immediately; `Process.Start` returns a stub. Not a demo
   issue but affects test cleanup — snapshot existing PIDs, kill new ones in `finally`.
@@ -267,6 +268,19 @@ Pull via `adb pull /storage/emulated/0/Android/data/com.mtschoen.windowstream.vi
 **What's NOT in the pipeline event stream:** `[FRAMECOUNT]` per-frame markers stay on stderr / logcat — they would flood the in-app buffer + balloon
 the file. The diagnostic boundary is *stage transitions and errors*, not per-frame.
 
+### Source stall detection
+
+Two complementary detectors watch for source windows that stop producing frames:
+
+- **`SourceFrameMonitor`** (worker-side, primary): watches the real WGC frame cadence. Detects "never got frame 1" (startup grace expired) and "cadence
+  cliff" (frames were flowing, then a gap many multiples of the established interval). Emits `WorkerStatusFrame` over the worker pipe.
+- **`ChunkCadenceWatchdog`** (coordinator-side, safety net): watches chunk arrival on the pipe and fires only when the worker goes silent without
+  self-reporting (worker wedged/crashed). Suppressed while the worker has self-reported a stall.
+
+Both surface `PipelineEvent.SourceStalled` / `PipelineEvent.SourceResumed` through the `Diagnostics` facade, and send `STREAM_STALLED` /
+`STREAM_RESUMED` control messages to the viewer. The viewer banners the stall per-stream (portable) or per-panel (GXR). `StallCause` values:
+`NEVER_STARTED`, `SOURCE_STALLED`, `WORKER_SILENT`. A stall is NOT a `STREAM_STOPPED`: the stream stays alive and may resume.
+
 ## Dependency report
 
 Generate with:
@@ -277,6 +291,11 @@ python tools/report-dependencies.py
 
 Reads every csproj and the viewer's `libs.versions.toml`, emits a markdown snapshot of production + test packages with resolved versions. The csprojs
 and version catalog are the source of truth; don't hand-maintain a separate doc.
+
+## WGC frame-delivery probe
+
+`tools/frame-delivery-probe/` measures WGC frame delivery by window state (foreground, occluded, minimized, offscreen). Validates the stall-detector
+thresholds. See `tools/frame-delivery-probe/README.md`.
 
 ## Testing
 

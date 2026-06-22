@@ -282,4 +282,56 @@ public abstract record PipelineEvent
             Severity = Severity.Info;
         }
     }
+
+    public sealed record SourceStalled : PipelineEvent
+    {
+        public Capture.Detection.StallCause Cause { get; init; }
+        public long LastFrameAgeMilliseconds { get; init; }
+
+        public SourceStalled(int StreamId, Capture.Detection.StallCause Cause, long LastFrameAgeMilliseconds)
+        {
+            this.StreamId = StreamId;
+            this.Cause = Cause;
+            this.LastFrameAgeMilliseconds = LastFrameAgeMilliseconds;
+            Severity = Severity.Warning;
+        }
+    }
+
+    public sealed record SourceResumed : PipelineEvent
+    {
+        public long StalledForMilliseconds { get; init; }
+
+        public SourceResumed(int StreamId, long StalledForMilliseconds)
+        {
+            this.StreamId = StreamId;
+            this.StalledForMilliseconds = StalledForMilliseconds;
+            Severity = Severity.Info;
+        }
+    }
+
+    public sealed record CaptureErrorReported : PipelineEvent
+    {
+        public required string Message { get; init; }
+
+        [SetsRequiredMembers]
+        public CaptureErrorReported(int StreamId, string Message)
+        {
+            this.StreamId = StreamId;
+            this.Message = Message;
+            Severity = Severity.Warning;
+        }
+    }
+
+    public sealed record EncodeErrorReported : PipelineEvent
+    {
+        public required string Message { get; init; }
+
+        [SetsRequiredMembers]
+        public EncodeErrorReported(int StreamId, string Message)
+        {
+            this.StreamId = StreamId;
+            this.Message = Message;
+            Severity = Severity.Warning;
+        }
+    }
 }

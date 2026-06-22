@@ -1,4 +1,5 @@
 using System.Net;
+using WindowStream.Core.Capture.Detection;
 using WindowStream.Core.Encode;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Protocol;
@@ -458,6 +459,43 @@ public sealed class CoordinatorControlServerTests
         harness.Server.NotifyWindowAppeared(MakeWindow(1));
         harness.Server.NotifyWindowDisappeared(2);
         harness.Server.NotifyWindowChanged(3, "t", 100, 200);
+        await Task.Delay(20);
+    }
+
+    [Fact]
+    public async Task NotifyStreamStalled_PushesStreamStalledToActiveChannel()
+    {
+        using var cancellation = new CancellationTokenSource(DefaultTestTimeout);
+        await using var harness = CoordinatorControlServerTestHarness.Start();
+
+        await using var viewer = await harness.ConnectAndHandshakeAsync(cancellation.Token);
+        harness.Server.NotifyStreamStalled(streamId: 7, cause: StallCause.SourceStalled);
+
+        var stalled = await NextNonHeartbeatAsync<StreamStalledMessage>(viewer, cancellation.Token);
+        Assert.Equal(7, stalled.StreamId);
+        Assert.Equal(StallCause.SourceStalled, stalled.Cause);
+    }
+
+    [Fact]
+    public async Task NotifyStreamResumed_PushesStreamResumedToActiveChannel()
+    {
+        using var cancellation = new CancellationTokenSource(DefaultTestTimeout);
+        await using var harness = CoordinatorControlServerTestHarness.Start();
+
+        await using var viewer = await harness.ConnectAndHandshakeAsync(cancellation.Token);
+        harness.Server.NotifyStreamResumed(streamId: 7);
+
+        var resumed = await NextNonHeartbeatAsync<StreamResumedMessage>(viewer, cancellation.Token);
+        Assert.Equal(7, resumed.StreamId);
+    }
+
+    [Fact]
+    public async Task NotifyStreamMethods_NoOpWhenNoViewerConnected()
+    {
+        await using var harness = CoordinatorControlServerTestHarness.Start();
+        // No viewer connected at all — these must not throw.
+        harness.Server.NotifyStreamStalled(streamId: 1, cause: StallCause.WorkerSilent);
+        harness.Server.NotifyStreamResumed(streamId: 1);
         await Task.Delay(20);
     }
 

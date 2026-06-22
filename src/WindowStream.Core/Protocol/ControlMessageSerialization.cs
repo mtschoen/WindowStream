@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WindowStream.Core.Capture.Detection;
 
 namespace WindowStream.Core.Protocol;
 
@@ -9,7 +10,7 @@ public static class ControlMessageSerialization
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new ProtocolErrorCodeConverter(), new StreamStoppedReasonConverter() }
+        Converters = { new ProtocolErrorCodeConverter(), new StreamStoppedReasonConverter(), new StallCauseConverter() }
     };
 
     public static string Serialize(ControlMessage message)
@@ -71,6 +72,24 @@ public static class ControlMessageSerialization
         public override void Write(Utf8JsonWriter writer, StreamStoppedReason value, JsonSerializerOptions options)
         {
             writer.WriteStringValue(StreamStoppedReasonNames.ToWireName(value));
+        }
+    }
+
+    sealed class StallCauseConverter : JsonConverter<StallCause>
+    {
+        public override StallCause Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var wireName = reader.GetString();
+            if (wireName is null)
+            {
+                throw new JsonException("null is not a valid stall cause");
+            }
+            return StallCauseNames.Parse(wireName);
+        }
+
+        public override void Write(Utf8JsonWriter writer, StallCause value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(StallCauseNames.ToWireName(value));
         }
     }
 }

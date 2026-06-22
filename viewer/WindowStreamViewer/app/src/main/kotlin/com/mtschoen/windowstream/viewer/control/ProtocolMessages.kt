@@ -31,7 +31,7 @@ data class WindowDescriptor(
 
 /**
  * Reason the server reports for stopping a stream. Wire form is
- * SCREAMING_SNAKE_CASE — see the .NET `StreamStoppedReasonNames` mapping.
+ * SCREAMING_SNAKE_CASE - see the .NET `StreamStoppedReasonNames` mapping.
  */
 @Serializable
 enum class StreamStoppedReason {
@@ -41,6 +41,17 @@ enum class StreamStoppedReason {
     @SerialName("CAPTURE_FAILED") CaptureFailed,
     @SerialName("STREAM_HUNG") StreamHung,
     @SerialName("SERVER_SHUTDOWN") ServerShutdown
+}
+
+/**
+ * Reason the server reports for a stalled stream. Wire form is
+ * SCREAMING_SNAKE_CASE - see the .NET `StallCauseNames` mapping.
+ */
+@Serializable
+enum class StallCause {
+    @SerialName("NEVER_STARTED") NeverStarted,
+    @SerialName("SOURCE_STALLED") SourceStalled,
+    @SerialName("WORKER_SILENT") WorkerSilent
 }
 
 @Serializable
@@ -151,4 +162,12 @@ sealed class ControlMessage {
     @Serializable
     @SerialName("FOCUS_WINDOW")
     data class FocusWindow(val streamId: Int) : ControlMessage()
+
+    @Serializable
+    @SerialName("STREAM_STALLED")
+    data class StreamStalled(val streamId: Int, val cause: StallCause) : ControlMessage()
+
+    @Serializable
+    @SerialName("STREAM_RESUMED")
+    data class StreamResumed(val streamId: Int) : ControlMessage()
 }
