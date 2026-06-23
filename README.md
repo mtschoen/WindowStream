@@ -119,8 +119,7 @@ adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/ap
 adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/gxr/debug/app-gxr-debug.apk
 ```
 
-Launch the **WindowStream Viewer** icon. The picker auto-discovers servers on your LAN; tap one (or multiple, portable flavor only) and
-tap **Connect**.
+Launch the **WindowStream Viewer** icon. The viewer auto-discovers and connects to the server on your LAN; tap the drawer toggle (≡) or plus button (+) in the tab bar to select and open PC windows.
 
 ## Stack
 

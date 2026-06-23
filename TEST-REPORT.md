@@ -1,4 +1,41 @@
-# WindowStream test report — 2026-06-03
+# WindowStream test report — 2026-06-23T08:38:00Z
+
+Status:   PASS
+Mode:     maintain
+Tests:    790 total (385 Core, 38 Server, 43 Integration, 324 Viewer)
+Git:      f769021 (Dead code cleanup + Touch-to-mouse forwarding + Input connection soft keyboard UX + visual polish)
+Coverage: 100% statements (100% line/branch/method for .NET Core/Server/CLI, 100% line/branch for Kotlin Viewer app)
+          0 lines uncovered
+          20 C# / 50 Kotlin exclusion annotations
+Lint:     aislop: 6 findings (0 errors, 6 warnings) - score 92/100
+          0 per-case suppressions
+          0 documented exceptions
+
+## Summary of Changes
+- **Part 1 — Dead Code Removal**: Cleaned up legacy/unused ViewModels, Activities, Screens, and tests across both .NET and Android codebases.
+- **Part 2A — Touch-to-Mouse Pointer Forwarding**: Completed end-to-end touch event transmission from Android (`MotionEvent`) to the Windows server to inject Win32 mouse input, including unit/serialization coverage.
+- **Part 2B — Soft Keyboard UX Fix**: Created custom `InputProxyView` with an `InputConnection` interface to address composition drift and empty-buffer backspace issues.
+- **Part 2C — Tab Bar & Drawer Visual Polish**: Converted all layout pixel dimensions to DP (40dp tab bar, 240dp drawer), added ripple drawable foregrounds for tactile feedback, introduced tab selection background color animation, and implemented a connection status chip in the tab bar.
+
+## Test Results Detail
+
+### .NET (Coverlet — line + branch + method, 100% gate)
+- **WindowStream.Core** — 100% line, 100% branch, 100% method
+- **WindowStreamServer** — 100% line, 100% branch, 100% method
+- **windowstream (CLI)** — 100% line, 100% branch, 100% method
+
+### Viewer (Kover with JaCoCo backend — line + branch, 100% gate)
+- **app (portable + gxr flavors)** — 100% line, 100% branch coverage (excluding platform-binding/Compose/XR-runtime classes).
+
+### Per-suite test counts
+- `WindowStream.Core.Tests`: 385 passed, 0 skipped
+- `WindowStream.Server.Tests`: 38 passed, 0 skipped
+- `WindowStream.Integration.Tests`: 43 passed, 3 skipped
+- `viewer :app:testPortableDebugUnitTest`: 324 passed, 0 skipped
+
+---
+
+## Historical: WindowStream test report — 2026-06-03
 
 Status:   PASS (coverage + Roslyn/Roslynator gate) + jb inspectcode deep gate
           896 -> 0 (all findings cleared; the 5 previously-documented MAUI/CCW
@@ -144,8 +181,3 @@ pass at 100% line/branch/method.
   loose `*ViewModels*` glob) had already been fixed by anchoring the coverage scope
   (see the coverage note above), so the base types were genuinely redundant. No
   suppressions, no exceptions.
-
-Remaining: 0 findings.
-
-Remaining (other tracks): CI lint job (wire the jb gate) · PostToolUse hook ·
-  aislop (score 8/100 baseline, separate task) · open PR

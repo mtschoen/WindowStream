@@ -171,7 +171,7 @@ Build the flavor you want. APK paths changed with the portable-flavor split (com
 ```bash
 ./gradlew :app:assemblePortableDebug
 adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/app-portable-debug.apk
-# Launcher: tap the WindowStream Viewer icon → multi-select picker → Connect.
+# Launcher: tap the WindowStream Viewer icon → auto-connects to discovered server. Open windows dynamically using the drawer toggle (≡) in the tab bar.
 # Or bypass the picker (adb-only) with explicit IP:
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
