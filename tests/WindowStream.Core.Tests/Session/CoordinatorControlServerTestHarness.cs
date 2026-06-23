@@ -30,6 +30,7 @@ sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
     public int UdpPort { get; set; } = 64500;
     public ConcurrentQueue<(int StreamId, WorkerCommandTag Tag)> WorkerCommands { get; } = new();
     public ConcurrentQueue<(int StreamId, KeyEventMessage Message)> KeyInjections { get; } = new();
+    public ConcurrentQueue<(int StreamId, MouseEventMessage Message)> MouseInjections { get; } = new();
     public Task RunTask { get; }
 
     readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
@@ -92,6 +93,10 @@ sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
         {
             harnessBox.Value!.KeyInjections.Enqueue((streamId, message));
         };
+        Action<int, MouseEventMessage> injectMouseForStream = (streamId, message) =>
+        {
+            harnessBox.Value!.MouseInjections.Enqueue((streamId, message));
+        };
 
         var server = new CoordinatorControlServer(
             options,
@@ -104,6 +109,7 @@ sealed class CoordinatorControlServerTestHarness : IAsyncDisposable
             sendWorkerCommand,
             focusRelay,
             injectKeyForStream,
+            injectMouseForStream,
             TimeProvider.System);
 
         var runTask = Task.Run(() => server.RunAsync(0, CancellationToken.None));

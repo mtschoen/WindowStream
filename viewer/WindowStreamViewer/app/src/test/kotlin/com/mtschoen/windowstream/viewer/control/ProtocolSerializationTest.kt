@@ -115,6 +115,19 @@ class ProtocolSerializationTest {
         assertEquals(original, roundTrip(original))
     }
 
+    @Test
+    fun `mouse event round trips with all fields`() {
+        val original: ControlMessage = ControlMessage.MouseEvent(
+            streamId = 3,
+            normalizedX = 0.5f,
+            normalizedY = 0.25f,
+            eventType = 1,
+            buttonFlags = 1,
+            scrollDelta = 0
+        )
+        assertEquals(original, roundTrip(original))
+    }
+
     // ─── new v2 messages ──────────────────────────────────────────────────────
 
     @Test
@@ -262,7 +275,8 @@ class ProtocolSerializationTest {
             ControlMessage.FocusWindow(streamId = 1) to "FOCUS_WINDOW",
             ControlMessage.WindowAdded(window = sampleWindow) to "WINDOW_ADDED",
             ControlMessage.WindowRemoved(windowId = 1uL) to "WINDOW_REMOVED",
-            ControlMessage.WindowSnapshot(windows = listOf(sampleWindow)) to "WINDOW_SNAPSHOT"
+            ControlMessage.WindowSnapshot(windows = listOf(sampleWindow)) to "WINDOW_SNAPSHOT",
+            ControlMessage.MouseEvent(streamId = 1, normalizedX = 0f, normalizedY = 0f, eventType = 0, buttonFlags = 0, scrollDelta = 0) to "MOUSE_EVENT"
         )
         for ((message, expected) in expectedDiscriminators) {
             val encoded: String = json.encodeToString(ControlMessage.serializer(), message)

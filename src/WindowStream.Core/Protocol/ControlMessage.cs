@@ -12,6 +12,7 @@ namespace WindowStream.Core.Protocol;
 [JsonDerivedType(typeof(ErrorMessage), typeDiscriminator: "ERROR")]
 [JsonDerivedType(typeof(ViewerReadyMessage), typeDiscriminator: "VIEWER_READY")]
 [JsonDerivedType(typeof(KeyEventMessage), typeDiscriminator: "KEY_EVENT")]
+[JsonDerivedType(typeof(MouseEventMessage), typeDiscriminator: "MOUSE_EVENT")]
 [JsonDerivedType(typeof(WindowAddedMessage), typeDiscriminator: "WINDOW_ADDED")]
 [JsonDerivedType(typeof(WindowRemovedMessage), typeDiscriminator: "WINDOW_REMOVED")]
 [JsonDerivedType(typeof(WindowUpdatedMessage), typeDiscriminator: "WINDOW_UPDATED")]

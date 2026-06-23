@@ -1,20 +1,23 @@
 package com.mtschoen.windowstream.viewer.demo
 
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.text.Editable
-import android.text.InputType
-import android.text.TextWatcher
 import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -54,8 +57,7 @@ import java.net.InetAddress
 
 /**
  * Unified streaming activity that combines server discovery, window browsing,
- * and multi-panel streaming into a single activity. Replaces the old
- * ServerSelectionActivity → PanelSwitcherActivity two-step flow.
+ * and multi-panel streaming into a single activity.
  *
  * Features:
  * - Auto-discovers servers via mDNS, auto-connects to the first one found
@@ -97,9 +99,9 @@ class UnifiedStreamingActivity : Activity() {
     private lateinit var stallBanner: TextView
     private lateinit var drawerOverlay: WindowDrawerOverlay
     private lateinit var observabilityOverlay: ObservabilityOverlay
-    private lateinit var softInputEditText: EditText
+    private lateinit var inputProxyView: InputProxyView
     private lateinit var inputPreviewTextView: TextView
-    private var previousSoftInputLength: Int = 0
+    private lateinit var connectionStatusChip: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -144,15 +146,31 @@ class UnifiedStreamingActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        val tabBarHeightPx = dpToPx(TAB_BAR_HEIGHT_DP)
+
+        // Connection status chip — small dot+text showing connected/disconnected.
+        connectionStatusChip = TextView(this).apply {
+            text = "⬤ …"
+            setTextColor(Color.rgb(180, 180, 190))
+            textSize = 10f
+            setPadding(dpToPx(6), 0, dpToPx(4), 0)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
         // Hamburger / drawer toggle button
         val drawerToggle = TextView(this).apply {
             text = "≡"
             setTextColor(Color.WHITE)
             textSize = 22f
-            setPadding(28, 0, 20, 0)
+            setPadding(dpToPx(10), 0, dpToPx(8), 0)
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
+            foreground = createRippleDrawable()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
@@ -165,15 +183,33 @@ class UnifiedStreamingActivity : Activity() {
             text = "+"
             setTextColor(Color.rgb(130, 180, 255))
             textSize = 22f
-            setPadding(20, 0, 16, 0)
+            setPadding(dpToPx(8), 0, dpToPx(6), 0)
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
+            foreground = createRippleDrawable()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             )
             setOnClickListener { drawerOverlay.show() }
+        }
+
+        // "⌨" keyboard toggle button
+        val keyboardToggle = TextView(this).apply {
+            text = "⌨"
+            setTextColor(Color.rgb(200, 200, 220))
+            textSize = 16f
+            setPadding(dpToPx(4), 0, dpToPx(4), 0)
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            foreground = createRippleDrawable()
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            setOnClickListener { toggleSoftKeyboard() }
         }
 
         // "ℹ" observability overlay toggle button
@@ -182,10 +218,11 @@ class UnifiedStreamingActivity : Activity() {
             text = "ℹ"
             setTextColor(Color.rgb(130, 200, 130))
             textSize = 18f
-            setPadding(8, 0, 28, 0)
+            setPadding(dpToPx(4), 0, dpToPx(10), 0)
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
+            foreground = createRippleDrawable()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
@@ -196,16 +233,18 @@ class UnifiedStreamingActivity : Activity() {
         val tabBarWithControls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.rgb(25, 25, 35))
+            addView(connectionStatusChip)
             addView(drawerToggle)
             addView(HorizontalScrollView(context).apply {
                 addView(tabBar)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             })
             addView(addButton)
+            addView(keyboardToggle)
             addView(observabilityToggle)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                TAB_BAR_HEIGHT_PX,
+                tabBarHeightPx,
                 Gravity.TOP
             )
         }
@@ -231,36 +270,51 @@ class UnifiedStreamingActivity : Activity() {
             setTextColor(Color.WHITE)
             textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(24, 16, 24, 16)
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP
-            ).also { it.topMargin = TAB_BAR_HEIGHT_PX }
+            ).also { it.topMargin = tabBarHeightPx }
         }
 
-        softInputEditText = EditText(this).apply {
+        inputProxyView = InputProxyView(this).apply {
             alpha = 0f
-            isFocusable = true
-            isFocusableInTouchMode = true
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setSingleLine(false)
             layoutParams = FrameLayout.LayoutParams(1, 1, Gravity.START or Gravity.BOTTOM)
-            addTextChangedListener(buildSoftInputTextWatcher())
+            onTextCommitted = { text ->
+                val activeStreamId = panels.getOrNull(activeIndex)?.streamId
+                if (activeStreamId != null) {
+                    val translator = KeyEventTranslator(activeStreamId)
+                    text.forEach { character ->
+                        translator.unicodeKeyPair(character).forEach { sendKeyEvent(it) }
+                    }
+                    appendPreview(text)
+                }
+            }
+            onDeleteRequested = { beforeLength ->
+                val activeStreamId = panels.getOrNull(activeIndex)?.streamId
+                if (activeStreamId != null) {
+                    val translator = KeyEventTranslator(activeStreamId)
+                    repeat(beforeLength) {
+                        translator.backspaceKeyPair().forEach { sendKeyEvent(it) }
+                    }
+                    trimPreview(beforeLength)
+                }
+            }
         }
 
         inputPreviewTextView = TextView(this).apply {
             setBackgroundColor(Color.argb(200, 0, 0, 0))
             setTextColor(Color.WHITE)
             textSize = 22f
-            setPadding(32, 20, 32, 20)
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP
-            ).also { it.topMargin = TAB_BAR_HEIGHT_PX }
+                Gravity.BOTTOM
+            )
         }
 
         val root = FrameLayout(this).apply {
@@ -273,12 +327,10 @@ class UnifiedStreamingActivity : Activity() {
             addView(statusLabel)
             addView(tabBarWithControls)
             addView(stallBanner)
-            addView(softInputEditText)
+            addView(inputProxyView)
             addView(inputPreviewTextView)
             addView(drawerOverlay.rootView)
             addView(observabilityOverlay.rootView)
-            isClickable = true
-            setOnClickListener { toggleSoftKeyboard() }
         }
         setContentView(root)
     }
@@ -295,6 +347,7 @@ class UnifiedStreamingActivity : Activity() {
                 }
             } catch (timeoutException: TimeoutCancellationException) {
                 Diagnostics.report(PipelineEvent.DiscoveryTimedOut)
+                updateConnectionStatus(connected = false)
                 runOnUiThread { statusLabel.text = "Discovery timed out" }
                 return
             }
@@ -311,6 +364,7 @@ class UnifiedStreamingActivity : Activity() {
             val host = ""
             val port = 0
             Diagnostics.report(PipelineEvent.TcpConnectFailed(host = host, port = port, cause = throwable))
+            updateConnectionStatus(connected = false)
             runOnUiThread { statusLabel.text = "Connection failed: ${throwable.message}" }
         }
     }
@@ -331,6 +385,7 @@ class UnifiedStreamingActivity : Activity() {
         val elapsedMs = (System.nanoTime() - connectStart) / 1_000_000
         Diagnostics.report(PipelineEvent.TcpConnected(durationMs = elapsedMs))
         connection = liveConnection
+        updateConnectionStatus(connected = true, hostname = host)
 
         // Seed window catalogue from ServerHello.
         val initialCatalogue = liveConnection.serverHello.windows.associateBy { it.windowId }
@@ -534,9 +589,19 @@ class UnifiedStreamingActivity : Activity() {
 
     private fun updateTabHighlights() {
         panels.forEachIndexed { index, panel ->
-            panel.tabView.setBackgroundColor(
-                if (index == activeIndex) Color.rgb(50, 70, 120) else Color.TRANSPARENT
-            )
+            val targetColor = if (index == activeIndex) TAB_ACTIVE_COLOR else TAB_INACTIVE_COLOR
+            val currentColor = panel.tabView.tag as? Int ?: TAB_INACTIVE_COLOR
+            if (currentColor != targetColor) {
+                ValueAnimator.ofObject(ArgbEvaluator(), currentColor, targetColor).apply {
+                    duration = TAB_ANIMATION_DURATION_MILLISECONDS
+                    addUpdateListener { animator ->
+                        val color = animator.animatedValue as Int
+                        panel.tabView.setBackgroundColor(color)
+                    }
+                    start()
+                }
+                panel.tabView.tag = targetColor
+            }
         }
     }
 
@@ -557,12 +622,16 @@ class UnifiedStreamingActivity : Activity() {
 
     private fun createPanelSurfaceView(panelIndex: Int): SurfaceView =
         SurfaceView(this).apply {
+            val tabBarHeightPx = dpToPx(TAB_BAR_HEIGHT_DP)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
-            ).also { it.topMargin = TAB_BAR_HEIGHT_PX }
+            ).also { it.topMargin = tabBarHeightPx }
             visibility = View.VISIBLE
             holder.addCallback(createSurfaceCallback(panelIndex))
+            setOnTouchListener { view, event ->
+                handlePanelTouch(panelIndex, view, event)
+            }
         }
 
     private fun createSurfaceCallback(panelIndex: Int): SurfaceHolder.Callback =
@@ -670,7 +739,7 @@ class UnifiedStreamingActivity : Activity() {
             text = "×"
             setTextColor(Color.rgb(200, 100, 100))
             textSize = 18f
-            setPadding(12, 0, 4, 0)
+            setPadding(dpToPx(4), 0, dpToPx(2), 0)
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
             isFocusable = true
@@ -684,10 +753,11 @@ class UnifiedStreamingActivity : Activity() {
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(24, 0, 12, 0)
+            setPadding(dpToPx(8), 0, dpToPx(4), 0)
             gravity = Gravity.CENTER_VERTICAL
             isClickable = true
             isFocusable = true
+            foreground = createRippleDrawable()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
@@ -724,47 +794,87 @@ class UnifiedStreamingActivity : Activity() {
         activityScope.launch { runCatching { connection?.send(message) } }
     }
 
-    // ─── Soft keyboard ───────────────────────────────────────────────────────
+    // ─── Mouse / touch event routing ─────────────────────────────────────────
 
-    private fun buildSoftInputTextWatcher(): TextWatcher = object : TextWatcher {
-        override fun beforeTextChanged(sequence: CharSequence?, start: Int, count: Int, after: Int) {}
-        override fun onTextChanged(sequence: CharSequence?, start: Int, before: Int, count: Int) {}
-        override fun afterTextChanged(editable: Editable?) {
-            val current = editable?.toString() ?: ""
-            val activeStreamId = panels.getOrNull(activeIndex)?.streamId ?: run {
-                previousSoftInputLength = current.length; return
+    private var longPressDetected: Boolean = false
+    private var touchDownTimestampMilliseconds: Long = 0
+
+    @Suppress("ClickableViewAccessibility") // SurfaceView is not a semantic UI widget
+    private fun handlePanelTouch(panelIndex: Int, view: View, event: MotionEvent): Boolean {
+        val panel = panels.getOrNull(panelIndex) ?: return false
+        val normalizedX: Float = (event.x / view.width.toFloat()).coerceIn(0f, 1f)
+        val normalizedY: Float = (event.y / view.height.toFloat()).coerceIn(0f, 1f)
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                longPressDetected = false
+                touchDownTimestampMilliseconds = System.currentTimeMillis()
+                sendMouseEvent(panel.streamId, normalizedX, normalizedY, MOUSE_EVENT_MOVE, 0, 0)
+                return true
             }
-            val translator = KeyEventTranslator(activeStreamId)
-            when {
-                current.length > previousSoftInputLength -> {
-                    current.substring(previousSoftInputLength).forEach { character ->
-                        translator.unicodeKeyPair(character).forEach { sendKeyEvent(it) }
+            MotionEvent.ACTION_MOVE -> {
+                if (!longPressDetected) {
+                    val elapsed = System.currentTimeMillis() - touchDownTimestampMilliseconds
+                    if (elapsed > LONG_PRESS_THRESHOLD_MILLISECONDS) {
+                        longPressDetected = true
+                        toggleSoftKeyboard()
+                        return true
                     }
-                    appendPreview(current.substring(previousSoftInputLength))
                 }
-                current.length < previousSoftInputLength -> {
-                    repeat(previousSoftInputLength - current.length) {
-                        translator.backspaceKeyPair().forEach { sendKeyEvent(it) }
-                    }
-                    trimPreview(previousSoftInputLength - current.length)
-                }
+                sendMouseEvent(panel.streamId, normalizedX, normalizedY, MOUSE_EVENT_MOVE, 0, 0)
+                return true
             }
-            previousSoftInputLength = current.length
+            MotionEvent.ACTION_UP -> {
+                if (longPressDetected) return true
+                val elapsed = System.currentTimeMillis() - touchDownTimestampMilliseconds
+                if (elapsed < TAP_THRESHOLD_MILLISECONDS) {
+                    // Tap → left-click
+                    sendMouseEvent(panel.streamId, normalizedX, normalizedY, MOUSE_EVENT_BUTTON_DOWN, MOUSE_BUTTON_LEFT, 0)
+                    sendMouseEvent(panel.streamId, normalizedX, normalizedY, MOUSE_EVENT_BUTTON_UP, MOUSE_BUTTON_LEFT, 0)
+                } else {
+                    // Drag release
+                    sendMouseEvent(panel.streamId, normalizedX, normalizedY, MOUSE_EVENT_BUTTON_UP, MOUSE_BUTTON_LEFT, 0)
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                return true
+            }
         }
+        return false
     }
+
+    private fun sendMouseEvent(
+        streamId: Int,
+        normalizedX: Float,
+        normalizedY: Float,
+        eventType: Int,
+        buttonFlags: Int,
+        scrollDelta: Int
+    ) {
+        val message = ControlMessage.MouseEvent(
+            streamId = streamId,
+            normalizedX = normalizedX,
+            normalizedY = normalizedY,
+            eventType = eventType,
+            buttonFlags = buttonFlags,
+            scrollDelta = scrollDelta
+        )
+        activityScope.launch { runCatching { connection?.send(message) } }
+    }
+
+    // ─── Soft keyboard ───────────────────────────────────────────────────────
 
     private fun toggleSoftKeyboard() {
         val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        if (softInputEditText.hasFocus()) {
-            inputMethodManager.hideSoftInputFromWindow(softInputEditText.windowToken, 0)
-            softInputEditText.clearFocus()
+        if (inputProxyView.hasFocus()) {
+            inputMethodManager.hideSoftInputFromWindow(inputProxyView.windowToken, 0)
+            inputProxyView.clearFocus()
             inputPreviewTextView.visibility = View.GONE
-            softInputEditText.setText("")
-            previousSoftInputLength = 0
             inputPreviewTextView.text = ""
         } else {
-            softInputEditText.requestFocus()
-            inputMethodManager.showSoftInput(softInputEditText, InputMethodManager.SHOW_IMPLICIT)
+            inputProxyView.requestFocus()
+            inputMethodManager.showSoftInput(inputProxyView, InputMethodManager.SHOW_IMPLICIT)
             inputPreviewTextView.visibility = View.VISIBLE
         }
     }
@@ -806,11 +916,52 @@ class UnifiedStreamingActivity : Activity() {
         super.onDestroy()
     }
 
+    private fun dpToPx(dp: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics
+        ).toInt()
+
+    private fun createRippleDrawable(): RippleDrawable =
+        RippleDrawable(
+            ColorStateList.valueOf(Color.argb(40, 255, 255, 255)),
+            null,
+            GradientDrawable().apply { setColor(Color.WHITE) }
+        )
+
+    private fun updateConnectionStatus(connected: Boolean, hostname: String = "") {
+        runOnUiThread {
+            if (connected) {
+                connectionStatusChip.text = "⬤ $hostname"
+                connectionStatusChip.setTextColor(Color.rgb(80, 200, 80))
+            } else {
+                connectionStatusChip.text = "⬤ offline"
+                connectionStatusChip.setTextColor(Color.rgb(180, 100, 100))
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "UnifiedStreaming"
-        const val TAB_BAR_HEIGHT_PX = 120
+        const val TAB_BAR_HEIGHT_DP = 40
         const val MAX_TAB_LABEL_LENGTH = 25
         const val PREVIEW_MAX_CHARS = 80
         const val DEFAULT_SURFACE_DIMENSION = 1920
+
+        val TAB_ACTIVE_COLOR: Int = Color.rgb(50, 70, 120)
+        val TAB_INACTIVE_COLOR: Int = Color.TRANSPARENT
+        const val TAB_ANIMATION_DURATION_MILLISECONDS: Long = 200
+
+        // Mouse event types — must match MouseEventType on the server.
+        const val MOUSE_EVENT_MOVE = 0
+        const val MOUSE_EVENT_BUTTON_DOWN = 1
+        const val MOUSE_EVENT_BUTTON_UP = 2
+        const val MOUSE_EVENT_SCROLL = 3
+
+        // Mouse button flags — must match MouseButton on the server.
+        const val MOUSE_BUTTON_LEFT = 1
+
+        // Touch timing thresholds.
+        const val TAP_THRESHOLD_MILLISECONDS = 250L
+        const val LONG_PRESS_THRESHOLD_MILLISECONDS = 500L
     }
 }

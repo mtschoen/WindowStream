@@ -112,6 +112,21 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
                 }
                 Win32InputInjector.InjectKey(message.KeyCode, message.IsUnicode, message.IsDown);
             },
+            injectMouseForStream: (streamId, message) =>
+            {
+                if (streamIdToWindowId.TryGetValue(streamId, out var windowId))
+                {
+                    var hwnd = resolveHwnd(windowId);
+                    if (hwnd is not null)
+                    {
+                        focusRelay.BringToForeground(hwnd.Value);
+                    }
+                }
+                // Convert normalized [0,1] coordinates to Win32 absolute [0, 65535].
+                var absoluteX = (int)(message.NormalizedX * 65535);
+                var absoluteY = (int)(message.NormalizedY * 65535);
+                Win32InputInjector.InjectMouse(absoluteX, absoluteY, message.EventType, message.ButtonFlags, message.ScrollDelta);
+            },
             timeProvider: TimeProvider.System);
 
         var router = new StreamRouter(

@@ -16,10 +16,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Legacy ServerSelectionActivity kept for backward compatibility
-             but no longer the launcher. -->
-        <activity
-            android:name=".app.ServerSelectionActivity"
-            android:exported="true" />
     </application>
 </manifest>

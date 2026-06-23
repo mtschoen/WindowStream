@@ -21,9 +21,68 @@ public static class Win32InputInjector
         _ = SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
     }
 
+    public static void InjectMouse(
+        int absoluteX,
+        int absoluteY,
+        Protocol.MouseEventType eventType,
+        int buttonFlags,
+        int scrollDelta)
+    {
+        var input = new INPUT { type = INPUT_MOUSE };
+        // Win32 MOUSEINPUT absolute coordinates are normalized to [0, 65535].
+        input.U.mouse.dx = absoluteX;
+        input.U.mouse.dy = absoluteY;
+        input.U.mouse.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+
+        switch (eventType)
+        {
+            case Protocol.MouseEventType.Move:
+                input.U.mouse.dwFlags |= MOUSEEVENTF_MOVE;
+                break;
+            case Protocol.MouseEventType.ButtonDown:
+                input.U.mouse.dwFlags |= MOUSEEVENTF_MOVE;
+                if ((buttonFlags & Protocol.MouseButton.Left) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_LEFTDOWN;
+                if ((buttonFlags & Protocol.MouseButton.Right) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_RIGHTDOWN;
+                if ((buttonFlags & Protocol.MouseButton.Middle) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_MIDDLEDOWN;
+                break;
+            case Protocol.MouseEventType.ButtonUp:
+                input.U.mouse.dwFlags |= MOUSEEVENTF_MOVE;
+                if ((buttonFlags & Protocol.MouseButton.Left) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_LEFTUP;
+                if ((buttonFlags & Protocol.MouseButton.Right) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_RIGHTUP;
+                if ((buttonFlags & Protocol.MouseButton.Middle) != 0)
+                    input.U.mouse.dwFlags |= MOUSEEVENTF_MIDDLEUP;
+                break;
+            case Protocol.MouseEventType.Scroll:
+                input.U.mouse.dwFlags |= MOUSEEVENTF_MOVE | MOUSEEVENTF_WHEEL;
+                input.U.mouse.mouseData = unchecked((uint)scrollDelta);
+                break;
+        }
+
+        input.U.mouse.time = 0;
+        input.U.mouse.dwExtraInfo = UIntPtr.Zero;
+        _ = SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>());
+    }
+
+    const uint INPUT_MOUSE = 0;
     const uint INPUT_KEYBOARD = 1;
     const uint KEYEVENTF_KEYUP = 0x0002;
     const uint KEYEVENTF_UNICODE = 0x0004;
+
+    const uint MOUSEEVENTF_MOVE = 0x0001;
+    const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+    const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+    const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+    const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+    const uint MOUSEEVENTF_WHEEL = 0x0800;
+    const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+    const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
 
     [DllImport("user32.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

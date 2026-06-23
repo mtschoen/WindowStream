@@ -155,6 +155,10 @@ sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                 // Tests don't exercise key injection by default; FocusRelay uses a
                 // no-op API and Win32 input is out of scope here.
             },
+            injectMouseForStream: (_, _) =>
+            {
+                // Tests don't exercise mouse injection by default.
+            },
             timeProvider: TimeProvider.System);
 
         // Hook supervisor stream lifecycle for routing.

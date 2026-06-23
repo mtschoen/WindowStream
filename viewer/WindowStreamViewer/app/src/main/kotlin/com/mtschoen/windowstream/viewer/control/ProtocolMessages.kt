@@ -116,6 +116,17 @@ sealed class ControlMessage {
         val isDown: Boolean
     ) : ControlMessage()
 
+    @Serializable
+    @SerialName("MOUSE_EVENT")
+    data class MouseEvent(
+        val streamId: Int,
+        val normalizedX: Float,
+        val normalizedY: Float,
+        val eventType: Int,
+        val buttonFlags: Int,
+        val scrollDelta: Int
+    ) : ControlMessage()
+
     // ─── new v2 messages ──────────────────────────────────────────────────────
 
     @Serializable

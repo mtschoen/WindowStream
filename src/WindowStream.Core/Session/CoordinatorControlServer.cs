@@ -26,6 +26,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
     readonly Func<int, WorkerCommandTag, Task> _sendWorkerCommand;
     readonly FocusRelay _focusRelay;
     readonly Action<int, KeyEventMessage> _injectKeyForStream;
+    readonly Action<int, MouseEventMessage> _injectMouseForStream;
     readonly TimeProvider _timeProvider;
 
     readonly object _stateLock = new object();
@@ -63,6 +64,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         Func<int, WorkerCommandTag, Task> sendWorkerCommand,
         FocusRelay focusRelay,
         Action<int, KeyEventMessage> injectKeyForStream,
+        Action<int, MouseEventMessage> injectMouseForStream,
         TimeProvider timeProvider)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -75,6 +77,7 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
         _sendWorkerCommand = sendWorkerCommand ?? throw new ArgumentNullException(nameof(sendWorkerCommand));
         _focusRelay = focusRelay ?? throw new ArgumentNullException(nameof(focusRelay));
         _injectKeyForStream = injectKeyForStream ?? throw new ArgumentNullException(nameof(injectKeyForStream));
+        _injectMouseForStream = injectMouseForStream ?? throw new ArgumentNullException(nameof(injectMouseForStream));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
         _supervisor.StreamEnded += OnStreamEnded;
@@ -255,6 +258,9 @@ public sealed class CoordinatorControlServer : IAsyncDisposable
                     break;
                 case KeyEventMessage keyEvent:
                     _injectKeyForStream(keyEvent.StreamId, keyEvent);
+                    break;
+                case MouseEventMessage mouseEvent:
+                    _injectMouseForStream(mouseEvent.StreamId, mouseEvent);
                     break;
                 case HeartbeatMessage:
                     channel.NotifyHeartbeatReceived();

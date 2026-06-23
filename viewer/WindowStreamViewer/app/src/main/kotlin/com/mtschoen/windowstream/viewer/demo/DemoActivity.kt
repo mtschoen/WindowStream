@@ -56,7 +56,7 @@ import kotlin.math.sqrt
  *     --es streamHost 10.0.2.2 \
  *     --ei streamPort 64000
  *
- * Multi-server usage (via [com.mtschoen.windowstream.viewer.app.ServerSelectionActivity]):
+ * Multi-server usage (via [com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity]):
  *   putExtra("streamHosts", Array<String>)  // parallel to streamPorts
  *   putExtra("streamPorts", IntArray)       // parallel to streamHosts
  *

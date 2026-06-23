@@ -113,12 +113,6 @@ kover {
         filters {
             excludes {
                 // Lifecycle entry points are not unit-testable on the JVM.
-                // ServerSelectionActivity (portable flavor) is the launcher
-                // activity for non-XR devices; it drives mDNS discovery and
-                // hands off to DemoActivity on server pick. Same rationale as
-                // MainActivity — Android lifecycle classes require the
-                // emulator / device runtime and are covered by manual /
-                // integration testing.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication",
                     "com.mtschoen.windowstream.viewer.app.MainActivity",
@@ -129,28 +123,12 @@ kover {
                     // MainActivity$* doesn't catch it — same rationale as MainActivity
                     // itself: requires the Android Compose runtime to execute.
                     "com.mtschoen.windowstream.viewer.app.ComposableSingletons\$MainActivityKt",
-                    "com.mtschoen.windowstream.viewer.app.ComposableSingletons\$MainActivityKt\$*",
-                    "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity",
-                    "com.mtschoen.windowstream.viewer.app.ServerSelectionActivity\$*"
+                    "com.mtschoen.windowstream.viewer.app.ComposableSingletons\$MainActivityKt\$*"
                 )
-                // Compose UI composables require the Android Compose runtime and cannot
-                // be unit-tested on the JVM. ServerPickerScreen and ConnectedPanelScreen
-                // are thin wrappers over discovered-server state and XR scene composition;
-                // their correctness is verified by manual/emulator testing in Phase 13.
-                // MultiServerPickerScreen (portable flavor) drives the multi-window pick
-                // flow for Quest/phone/tablet — pure Compose state-management over a
-                // SharedFlow of discovered servers, same rationale as ServerPickerScreen.
-                // WindowPickerScreen (Task 5.4) is the new window multi-select composable;
-                // it delegates all logic to WindowPickerViewModel which IS unit-tested.
+                // ConnectedPanelScreen requires the Compose + XR runtime.
                 classes(
-                    "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.ServerPickerScreenKt\$*",
                     "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*",
-                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.MultiServerPickerScreenKt\$*",
-                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreenKt",
-                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerScreenKt\$*"
+                    "com.mtschoen.windowstream.viewer.app.ui.ConnectedPanelScreenKt\$*"
                 )
                 // The kotlinx-serialization compiler plugin emits $$serializer singleton
                 // objects and $Companion helper classes as infrastructure; they are not
@@ -211,29 +189,24 @@ kover {
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder",
                     "com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder\$*"
                 )
-                // DemoActivity + DirectSurfaceFrameSink are Android lifecycle classes:
-                // DemoActivity hosts a SurfaceView, dispatches keyboard events, and drives
-                // the viewer pipeline. DirectSurfaceFrameSink wraps an Android Surface.
-                // Both require the Android runtime. TEST-REPORT.md endorses excluding
-                // these with the same rationale as MainActivity; tests are tracked there
-                // as future work. ControlMessage.KeyEvent (the V2 keyboard relay message)
-                // currently has no round-trip serialization test — also tracked in
-                // TEST-REPORT.md; exclude until paired with ViewerReady round-trip tests.
-                //
-                // PanelSwitcherActivity is the picker-launched panel-switcher Activity
-                // introduced in Task 5.5. It hosts SurfaceViews, a WifiLock, and
-                // MultiStreamControlClient — all requiring the Android runtime. Same
-                // exclusion rationale as DemoActivity. KeyEventTranslator is fully covered
-                // by KeyEventTranslatorTest (JVM unit tests) and is NOT excluded.
+                // Android lifecycle / runtime classes that cannot be unit-tested on
+                // the JVM. DemoActivity hosts a SurfaceView + keyboard dispatch,
+                // DirectSurfaceFrameSink wraps an Android Surface,
+                // UnifiedStreamingActivity/WindowDrawerOverlay/ObservabilityOverlay
+                // are Android view scaffolding, and ControlMessage.KeyEvent currently
+                // has no round-trip serialization test.
                 classes(
                     "com.mtschoen.windowstream.viewer.demo.DemoActivity",
                     "com.mtschoen.windowstream.viewer.demo.DemoActivity\$*",
                     "com.mtschoen.windowstream.viewer.demo.DirectSurfaceFrameSink",
                     "com.mtschoen.windowstream.viewer.control.ControlMessage\$KeyEvent",
-                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity",
-                    "com.mtschoen.windowstream.viewer.demo.PanelSwitcherActivity\$*",
                     "com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity",
                     "com.mtschoen.windowstream.viewer.demo.UnifiedStreamingActivity\$*",
+                    // InputProxyView owns an InputConnection for the soft keyboard.
+                    // Requires the Android input-method runtime; same rationale as
+                    // the other demo.* classes.
+                    "com.mtschoen.windowstream.viewer.demo.InputProxyView",
+                    "com.mtschoen.windowstream.viewer.demo.InputProxyView\$*",
                     "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay",
                     "com.mtschoen.windowstream.viewer.demo.WindowDrawerOverlay\$*",
                     // ObservabilityOverlay is pure Android view scaffolding (LinearLayout /
@@ -281,17 +254,7 @@ kover {
                     "com.mtschoen.windowstream.viewer.xr.ComposableSingletons\$SpatialWindowManagerSceneKt",
                     "com.mtschoen.windowstream.viewer.xr.ComposableSingletons\$SpatialWindowManagerSceneKt\$*"
                 )
-                // WindowPickerViewModel launches three coroutines (one per event type) via
-                // scope.launch. The Kotlin compiler generates a $1/$2/$3 state-machine class per
-                // launch site and inlines filterIsInstance into a separate continuation class per
-                // collector. Each of these synthetic classes has one unreachable resume-path branch
-                // (the cooperative-cancellation exit that never fires in unit tests). This is the
-                // same pattern as MultiStreamControlClient$connect$2$readerJob$1. The ViewModel's
-                // testable logic (toggleSelection, selectedWindowIdsAsLongArray, catalogue mutations)
-                // is fully covered; only the compiler-generated continuation infrastructure is excluded.
-                classes(
-                    "com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel\$*"
-                )
+
                 // AwaitControlMessageKt$awaitOrError$message$1 is the suspend-lambda
                 // continuation for the `first { ... }` predicate inside awaitOrError.
                 // The Kotlin coroutine state machine emits a resume-path branch that

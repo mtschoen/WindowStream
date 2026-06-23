@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * (decoder, [XrPanelSink], UDP receiver, pipeline scope) and the Compose-for-XR
  * scene renders from [panels]. Keeping the catalogue here (rather than in the
  * Activity) makes the spawn/close/minimize/resize logic unit-testable, the same
- * split used for [com.mtschoen.windowstream.viewer.app.ui.WindowPickerViewModel].
+ * split used for the viewer's window picker flow.
  */
 class SpatialWindowManager {
     private val panelsState: MutableStateFlow<List<SpatialPanelState>> =

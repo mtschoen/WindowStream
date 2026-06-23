@@ -327,6 +327,32 @@ public sealed class CoordinatorControlServerTests
     }
 
     [Fact]
+    public async Task MouseEvent_RoutesToInjectionAction()
+    {
+        using var cancellation = new CancellationTokenSource(DefaultTestTimeout);
+        await using var harness = CoordinatorControlServerTestHarness.Start();
+        harness.WindowToHwnd[1] = 0x100;
+        harness.WindowToEncoder[1] = DefaultEncoder();
+
+        await using var viewer = await harness.ConnectAndHandshakeAsync(cancellation.Token);
+        await viewer.SendAsync(new OpenStreamMessage(WindowId: 1), cancellation.Token);
+        var started = await NextNonHeartbeatAsync<StreamStartedMessage>(viewer, cancellation.Token);
+
+        var mouseEvent = new MouseEventMessage(
+            StreamId: started.StreamId, NormalizedX: 0.5f, NormalizedY: 0.25f,
+            EventType: MouseEventType.ButtonDown, ButtonFlags: MouseButton.Left, ScrollDelta: 0);
+        await viewer.SendAsync(mouseEvent, cancellation.Token);
+
+        await PollUntilAsync(() => !harness.MouseInjections.IsEmpty, cancellation.Token);
+        Assert.True(harness.MouseInjections.TryDequeue(out var entry));
+        Assert.Equal(started.StreamId, entry.StreamId);
+        Assert.Equal(0.5f, entry.Message.NormalizedX);
+        Assert.Equal(0.25f, entry.Message.NormalizedY);
+        Assert.Equal(MouseEventType.ButtonDown, entry.Message.EventType);
+        Assert.Equal(MouseButton.Left, entry.Message.ButtonFlags);
+    }
+
+    [Fact]
     public async Task ViewerReady_RegistersUdpEndpoint()
     {
         using var cancellation = new CancellationTokenSource(DefaultTestTimeout);
@@ -655,29 +681,32 @@ public sealed class CoordinatorControlServerTests
         var udpPort = () => 0;
         Func<int, WorkerCommandTag, Task> sendWorkerCommand = (_, _) => Task.CompletedTask;
         Action<int, KeyEventMessage> injectKey = (_, _) => { };
+        Action<int, MouseEventMessage> injectMouse = (_, _) => { };
 
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            null!, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            null!, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, null!, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, null!, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, null!, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, null!, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, null!, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, null!, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, null!, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, null!, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, null!, udpPort, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, hwnd, null!, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, encoder, null!, sendWorkerCommand, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, null!, sendWorkerCommand, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, null!, focusRelay, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, null!, focusRelay, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, null!, injectKey, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, null!, injectKey, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, null!, TimeProvider.System));
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, null!, injectMouse, TimeProvider.System));
         Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
-            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, null!));
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, null!, TimeProvider.System));
+        Assert.Throws<ArgumentNullException>(() => new CoordinatorControlServer(
+            options, tcpAcceptor, supervisor, windows, hwnd, encoder, udpPort, sendWorkerCommand, focusRelay, injectKey, injectMouse, null!));
 
         await tcpAcceptor.DisposeAsync();
         await supervisor.DisposeAsync();
@@ -704,6 +733,7 @@ public sealed class CoordinatorControlServerTests
             () => 0,
             (_, _) => Task.CompletedTask,
             focusRelay,
+            (_, _) => { },
             (_, _) => { },
             TimeProvider.System);
 

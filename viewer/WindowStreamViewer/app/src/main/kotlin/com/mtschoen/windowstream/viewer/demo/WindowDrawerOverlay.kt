@@ -2,8 +2,12 @@ package com.mtschoen.windowstream.viewer.demo
 
 import android.animation.ObjectAnimator
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,7 +26,7 @@ import com.mtschoen.windowstream.viewer.control.WindowDescriptor
  * slides out when [hide] is called. [toggle] alternates between the two states.
  *
  * All window-catalogue mutations (add/remove/update) are applied via [updateCatalogue],
- * which is designed to be called from [WindowPickerViewModel]-style live push events.
+ * which is designed to be called from live push events on the main thread.
  */
 class WindowDrawerOverlay(
     context: Context,
@@ -42,6 +46,12 @@ class WindowDrawerOverlay(
     private var openWindowIds: Set<ULong> = emptySet()
 
     init {
+        val displayMetrics = context.resources.displayMetrics
+        fun dpToPx(dp: Int): Int =
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), displayMetrics).toInt()
+
+        val drawerWidthPx = dpToPx(DRAWER_WIDTH_DP)
+
         // Semi-transparent scrim behind the drawer.
         scrim = View(context).apply {
             setBackgroundColor(Color.argb(120, 0, 0, 0))
@@ -57,7 +67,7 @@ class WindowDrawerOverlay(
         // The drawer panel itself.
         windowListContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 16, 0, 16)
+            setPadding(0, dpToPx(6), 0, dpToPx(6))
         }
 
         val scrollView = ScrollView(context).apply {
@@ -71,7 +81,7 @@ class WindowDrawerOverlay(
             text = "Available Windows"
             setTextColor(Color.WHITE)
             textSize = 18f
-            setPadding(32, 24, 32, 16)
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(6))
         }
 
         drawerPanel = LinearLayout(context).apply {
@@ -86,11 +96,11 @@ class WindowDrawerOverlay(
                 0, 1f
             ))
             layoutParams = FrameLayout.LayoutParams(
-                DRAWER_WIDTH_PX,
+                drawerWidthPx,
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 Gravity.START
             )
-            translationX = -DRAWER_WIDTH_PX.toFloat()
+            translationX = -drawerWidthPx.toFloat()
             elevation = 8f
         }
 
@@ -108,14 +118,16 @@ class WindowDrawerOverlay(
         if (isVisible) return
         isVisible = true
         scrim.visibility = View.VISIBLE
-        ObjectAnimator.ofFloat(drawerPanel, "translationX", -DRAWER_WIDTH_PX.toFloat(), 0f)
+        val drawerWidthPx = drawerPanel.layoutParams.width
+        ObjectAnimator.ofFloat(drawerPanel, "translationX", -drawerWidthPx.toFloat(), 0f)
             .apply { duration = ANIMATION_DURATION_MILLISECONDS; start() }
     }
 
     fun hide() {
         if (!isVisible) return
         isVisible = false
-        ObjectAnimator.ofFloat(drawerPanel, "translationX", 0f, -DRAWER_WIDTH_PX.toFloat())
+        val drawerWidthPx = drawerPanel.layoutParams.width
+        ObjectAnimator.ofFloat(drawerPanel, "translationX", 0f, -drawerWidthPx.toFloat())
             .apply {
                 duration = ANIMATION_DURATION_MILLISECONDS
                 addListener(object : android.animation.AnimatorListenerAdapter() {
@@ -210,6 +222,11 @@ class WindowDrawerOverlay(
             setBackgroundColor(if (isOpen) Color.rgb(35, 45, 55) else Color.TRANSPARENT)
             isClickable = true
             isFocusable = true
+            foreground = RippleDrawable(
+                ColorStateList.valueOf(Color.argb(40, 255, 255, 255)),
+                null,
+                GradientDrawable().apply { setColor(Color.WHITE) }
+            )
             addView(statusIndicator)
             addView(textColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             setOnClickListener {
@@ -221,7 +238,7 @@ class WindowDrawerOverlay(
 
     private companion object {
         const val TAG = "WindowDrawer"
-        const val DRAWER_WIDTH_PX = 600
+        const val DRAWER_WIDTH_DP = 240
         const val ANIMATION_DURATION_MILLISECONDS: Long = 250
     }
 }
