@@ -12,22 +12,29 @@ Lint:     aislop: 6 findings (0 errors, 6 warnings) - score 92/100
           0 documented exceptions
 
 ## Summary of Changes
+
 - **Part 1 — Dead Code Removal**: Cleaned up legacy/unused ViewModels, Activities, Screens, and tests across both .NET and Android codebases.
-- **Part 2A — Touch-to-Mouse Pointer Forwarding**: Completed end-to-end touch event transmission from Android (`MotionEvent`) to the Windows server to inject Win32 mouse input, including unit/serialization coverage.
-- **Part 2B — Soft Keyboard UX Fix**: Created custom `InputProxyView` with an `InputConnection` interface to address composition drift and empty-buffer backspace issues.
-- **Part 2C — Tab Bar & Drawer Visual Polish**: Converted all layout pixel dimensions to DP (40dp tab bar, 240dp drawer), added ripple drawable foregrounds for tactile feedback, introduced tab selection background color animation, and implemented a connection status chip in the tab bar.
+- **Part 2A — Touch-to-Mouse Pointer Forwarding**: Completed end-to-end touch event transmission from Android (`MotionEvent`) to the Windows
+  server to inject Win32 mouse input, including unit/serialization coverage.
+- **Part 2B — Soft Keyboard UX Fix**: Created custom `InputProxyView` with an `InputConnection` interface to address composition drift and
+  empty-buffer backspace issues.
+- **Part 2C — Tab Bar & Drawer Visual Polish**: Converted all layout pixel dimensions to DP (40dp tab bar, 240dp drawer), added ripple drawable
+  foregrounds for tactile feedback, introduced tab selection background color animation, and implemented a connection status chip in the tab bar.
 
 ## Test Results Detail
 
 ### .NET (Coverlet — line + branch + method, 100% gate)
+
 - **WindowStream.Core** — 100% line, 100% branch, 100% method
 - **WindowStreamServer** — 100% line, 100% branch, 100% method
 - **windowstream (CLI)** — 100% line, 100% branch, 100% method
 
 ### Viewer (Kover with JaCoCo backend — line + branch, 100% gate)
+
 - **app (portable + gxr flavors)** — 100% line, 100% branch coverage (excluding platform-binding/Compose/XR-runtime classes).
 
 ### Per-suite test counts
+
 - `WindowStream.Core.Tests`: 385 passed, 0 skipped
 - `WindowStream.Server.Tests`: 38 passed, 0 skipped
 - `WindowStream.Integration.Tests`: 43 passed, 3 skipped
