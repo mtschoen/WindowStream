@@ -1,3 +1,5 @@
+using WindowStream.Core.Capture.Detection;
+
 namespace WindowStream.Server.Observability;
 
 public sealed record StreamStateRow
@@ -5,7 +7,7 @@ public sealed record StreamStateRow
     public required ulong WindowId { get; init; }
     public string Title { get; init; } = "";
     public bool? IsStalled { get; init; }
-    public WindowStream.Core.Capture.Detection.StallCause? StallCause { get; init; }
+    public StallCause? StallCause { get; init; }
     public StageStatus WorkerSpawn { get; init; } = StageStatus.Pending;
     public string? WorkerSpawnError { get; init; }
     public StageStatus Capture { get; init; } = StageStatus.Pending;

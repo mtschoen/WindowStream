@@ -47,8 +47,10 @@ public static class RootCommandBuilder
         {
             var hwnd = invocationContext.ParseResult.GetValueForOption(workerHwndOption);
             var streamId = invocationContext.ParseResult.GetValueForOption(workerStreamIdOption);
-            var pipeName = invocationContext.ParseResult.GetValueForOption(workerPipeNameOption)!;
-            var encoderOptionsJson = invocationContext.ParseResult.GetValueForOption(workerEncoderOptionsOption)!;
+            var pipeName = invocationContext.ParseResult.GetValueForOption(workerPipeNameOption)
+                ?? throw new InvalidOperationException($"required option {workerPipeNameOption.Name} was not parsed");
+            var encoderOptionsJson = invocationContext.ParseResult.GetValueForOption(workerEncoderOptionsOption)
+                ?? throw new InvalidOperationException($"required option {workerEncoderOptionsOption.Name} was not parsed");
 
             var encoderOptions =
                 JsonSerializer.Deserialize<EncoderOptions>(encoderOptionsJson)

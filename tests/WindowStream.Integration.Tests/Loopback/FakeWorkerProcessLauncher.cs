@@ -102,10 +102,10 @@ sealed class FakeWorkerHandle : IWorkerHandle
         if (_disposed) return ValueTask.CompletedTask;
         _disposed = true;
         _exitSource.TrySetResult(0);
-        #pragma warning disable CA1031 // best-effort pipe disposal — stream may already be closed
+#pragma warning disable CA1031 // best-effort pipe disposal — stream may already be closed
         try { _pipePair.SupervisorSide.Dispose(); } catch { /* best-effort */ }
         try { _pipePair.WorkerSide.Dispose(); } catch { /* best-effort */ }
-        #pragma warning restore CA1031
+#pragma warning restore CA1031
         return ValueTask.CompletedTask;
     }
 }
@@ -191,10 +191,10 @@ sealed class DuplexStream : Stream
         _disposed = true;
         if (disposing)
         {
-            #pragma warning disable CA1031 // best-effort stream disposal — underlying stream may already be closed
+#pragma warning disable CA1031 // best-effort stream disposal — underlying stream may already be closed
             try { _readSource.Dispose(); } catch { /* best-effort */ }
             try { _writeSink.Dispose(); } catch { /* best-effort */ }
-            #pragma warning restore CA1031
+#pragma warning restore CA1031
         }
         base.Dispose(disposing);
     }

@@ -23,7 +23,8 @@ public sealed class UdpVideoSenderAdapter : IUdpVideoSender
     public Task BindAsync(IPEndPoint endpoint, CancellationToken cancellationToken)
     {
         _udpClient = new UdpClient(endpoint);
-        _localEndpoint = (IPEndPoint)_udpClient.Client.LocalEndPoint!;
+        _localEndpoint = (IPEndPoint?)_udpClient.Client.LocalEndPoint
+            ?? throw new InvalidOperationException("Socket has no LocalEndPoint immediately after binding.");
         return Task.CompletedTask;
     }
 #pragma warning restore CA1725

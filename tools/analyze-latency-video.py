@@ -38,10 +38,6 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 
-# ---------------------------------------------------------------------------
-# Template generation
-# ---------------------------------------------------------------------------
-
 # Font search order matches latency-clock.html CSS:
 #   'Cascadia Mono', 'Consolas', 'Menlo', monospace
 _FONT_CANDIDATES = [
@@ -109,6 +105,7 @@ def _render_digit(digit: str, font: ImageFont.FreeTypeFont, height: int) -> np.n
 @dataclass
 class DigitTemplates:
     """Pre-rendered digit templates at multiple scales."""
+
     templates: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     heights: list[int] = field(default_factory=list)
 
@@ -116,7 +113,10 @@ class DigitTemplates:
     def generate(cls) -> "DigitTemplates":
         font_path = _find_font_path()
         if font_path is None:
-            print("Warning: No monospace font found; using Pillow default.", file=sys.stderr)
+            print(
+                "Warning: No monospace font found; using Pillow default.",
+                file=sys.stderr,
+            )
 
         result = cls()
         result.heights = list(_TEMPLATE_HEIGHTS)
@@ -137,10 +137,6 @@ class DigitTemplates:
 
         return result
 
-
-# ---------------------------------------------------------------------------
-# Green-channel segmentation
-# ---------------------------------------------------------------------------
 
 def _build_green_mask(
     frame: np.ndarray,
@@ -164,13 +160,10 @@ def _build_green_mask(
     return mask
 
 
-# ---------------------------------------------------------------------------
-# Digit cluster detection
-# ---------------------------------------------------------------------------
-
 @dataclass
 class DigitCluster:
     """A group of green digit pixels (one frame counter)."""
+
     x: int
     y: int
     width: int
@@ -188,7 +181,9 @@ def _find_digit_clusters(
     then picking the two largest clusters that look like digit groups.
     """
     contours, _ = cv2.findContours(
-        green_mask_low, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+        green_mask_low,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
     )
 
     # Collect bounding rects of meaningful contours.
@@ -224,7 +219,6 @@ def _find_digit_clusters(
             current_cluster = [rectangle]
     clusters_raw.append(current_cluster)
 
-    # Build cluster bounding boxes and score by total area
     scored_clusters: list[tuple[DigitCluster, float]] = []
     for group in clusters_raw:
         x_min = min(r[0] for r in group)
@@ -239,7 +233,10 @@ def _find_digit_clusters(
             continue
 
         cluster = DigitCluster(
-            x=x_min, y=y_min, width=width, height=height,
+            x=x_min,
+            y=y_min,
+            width=width,
+            height=height,
         )
         scored_clusters.append((cluster, total_area))
 
@@ -263,10 +260,6 @@ def _find_digit_clusters(
         return top_clusters
     return []
 
-
-# ---------------------------------------------------------------------------
-# Digit splitting via vertical projection
-# ---------------------------------------------------------------------------
 
 def _split_digits_by_projection(
     mask: np.ndarray,
@@ -298,7 +291,7 @@ def _split_digits_by_projection(
 
     # Discover all gaps using a threshold relative to the max column density.
     # Columns with < 12% of the max pixel count are treated as gaps.
-    max_col_sum = column_sums[first_active:last_active + 1].max()
+    max_col_sum = column_sums[first_active : last_active + 1].max()
     gap_threshold = max(1.0, max_col_sum * 0.12)
 
     gaps: list[tuple[int, int, int]] = []  # (start, end_inclusive, width)
@@ -325,8 +318,7 @@ def _split_digits_by_projection(
         median_gap_width = gap_widths[len(gap_widths) // 2]
         minimum_gap_width = max(2, int(median_gap_width * 0.4))
         significant_gaps = [
-            (start, end) for start, end, width in gaps
-            if width >= minimum_gap_width
+            (start, end) for start, end, width in gaps if width >= minimum_gap_width
         ]
 
         if significant_gaps:
@@ -351,10 +343,6 @@ def _split_digits_by_projection(
         for i in range(estimated_count)
     ]
 
-
-# ---------------------------------------------------------------------------
-# Digit recognition via template matching
-# ---------------------------------------------------------------------------
 
 def _recognize_digit(
     digit_image: np.ndarray,
@@ -382,7 +370,9 @@ def _recognize_digit(
         # Resize input to match template height
         scale = height / cropped.shape[0]
         target_width = max(1, int(cropped.shape[1] * scale))
-        resized = cv2.resize(cropped, (target_width, height), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(
+            cropped, (target_width, height), interpolation=cv2.INTER_AREA
+        )
         _, binarized = cv2.threshold(resized, 80, 255, cv2.THRESH_BINARY)
 
         for digit_char, template in templates.templates[height].items():
@@ -396,13 +386,17 @@ def _recognize_digit(
 
             input_y = (compare_height - binarized.shape[0]) // 2
             input_x = (compare_width - binarized.shape[1]) // 2
-            padded_input[input_y:input_y + binarized.shape[0],
-                         input_x:input_x + binarized.shape[1]] = binarized
+            padded_input[
+                input_y : input_y + binarized.shape[0],
+                input_x : input_x + binarized.shape[1],
+            ] = binarized
 
             template_y = (compare_height - template_height) // 2
             template_x = (compare_width - template_width) // 2
-            padded_template[template_y:template_y + template_height,
-                            template_x:template_x + template_width] = template
+            padded_template[
+                template_y : template_y + template_height,
+                template_x : template_x + template_width,
+            ] = template
 
             # Normalized cross-correlation
             input_float = padded_input.astype(np.float32)
@@ -422,10 +416,6 @@ def _recognize_digit(
 
     return (best_digit, best_score)
 
-
-# ---------------------------------------------------------------------------
-# Per-cluster adaptive recognition
-# ---------------------------------------------------------------------------
 
 def _try_recognize_at_threshold(
     cluster: DigitCluster,
@@ -477,9 +467,7 @@ def _try_recognize_at_threshold(
         return (None, 0.0, mask)
 
     # Reject digits below confidence threshold
-    digit_string = "".join(
-        d if c > 0.35 else "?" for d, c in zip(digits, confidences)
-    )
+    digit_string = "".join(d if c > 0.35 else "?" for d, c in zip(digits, confidences))
     if "?" in digit_string:
         return (None, 0.0, mask)
 
@@ -511,7 +499,10 @@ def _recognize_cluster(
 
     for threshold in _ADAPTIVE_THRESHOLDS:
         frame_number, confidence, mask = _try_recognize_at_threshold(
-            cluster, frame, threshold, templates,
+            cluster,
+            frame,
+            threshold,
+            templates,
         )
         if frame_number is not None and confidence > best_confidence:
             best_number = frame_number
@@ -526,13 +517,6 @@ def _recognize_cluster(
 
     return (best_number, best_confidence)
 
-
-# ---------------------------------------------------------------------------
-# White timestamp mode (older latency-clock format)
-# ---------------------------------------------------------------------------
-# The older layout shows wall-clock timestamps (HH:MM:SS.mmm) in large white
-# text plus green "FRAME:" metadata. The white timestamps are the reliable
-# signal — large, high-contrast, directly give latency in milliseconds.
 
 _WHITE_THRESHOLDS = [240, 220, 200, 180, 160]
 
@@ -561,7 +545,8 @@ def _deduplicate_digit_rects(
         x, _y, w, _h, a = rect
         previous_x, _, previous_w, _, previous_a = result[-1]
         x_overlap = max(
-            0, min(x + w, previous_x + previous_w) - max(x, previous_x),
+            0,
+            min(x + w, previous_x + previous_w) - max(x, previous_x),
         )
         if x_overlap > min(w, previous_w) * 0.5:
             # Overlapping — keep the one with larger area
@@ -585,7 +570,9 @@ def _find_digit_row_in_mask(
     Returns list of (x, y, w, h, area) sorted left-to-right.
     """
     contours, _ = cv2.findContours(
-        mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE,
+        mask,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE,
     )
 
     # Filter to digit-like contours: portrait orientation, reasonable size
@@ -681,7 +668,7 @@ def _recognize_timestamp_in_region(
         digits: list[str] = []
         confidences: list[float] = []
         for x, y, w, h, _ in digit_rects:
-            crop = mask[y:y + h, x:x + w]
+            crop = mask[y : y + h, x : x + w]
             digit_char, confidence = _recognize_digit(crop, templates)
             digits.append(digit_char)
             confidences.append(confidence)
@@ -707,13 +694,10 @@ def _recognize_timestamp_in_region(
     return (best_milliseconds, best_confidence)
 
 
-# ---------------------------------------------------------------------------
-# Frame analysis
-# ---------------------------------------------------------------------------
-
 @dataclass
 class FrameResult:
     """Result of analyzing one video frame."""
+
     video_frame_index: int
     timestamp_seconds: float
     source_frame: Optional[int] = None
@@ -744,9 +728,10 @@ def analyze_frame(
         timestamp_seconds=timestamp_seconds,
     )
 
-    # --- Try green frame-number mode first ---
     green_mask_low = _build_green_mask(
-        frame, _GREEN_THRESHOLD_LOW, _GREEN_DOMINANCE_LOW,
+        frame,
+        _GREEN_THRESHOLD_LOW,
+        _GREEN_DOMINANCE_LOW,
     )
 
     frame_height = frame.shape[0]
@@ -764,8 +749,11 @@ def analyze_frame(
         result.format_mode = "green"
         for cluster in clusters:
             frame_number, confidence = _recognize_cluster(
-                cluster, frame, templates,
-                debug_directory, video_frame_index,
+                cluster,
+                frame,
+                templates,
+                debug_directory,
+                video_frame_index,
             )
             if cluster.label == "source":
                 result.source_frame = frame_number
@@ -776,9 +764,7 @@ def analyze_frame(
 
         if result.source_frame is not None and result.decoded_frame is not None:
             result.latency_frames = result.source_frame - result.decoded_frame
-            result.latency_milliseconds = (
-                result.latency_frames * (1000.0 / clock_rate)
-            )
+            result.latency_milliseconds = result.latency_frames * (1000.0 / clock_rate)
 
     # Fall back to white timestamp mode if green mode didn't produce a pair.
     # This handles both "no green clusters found" and "green clusters found
@@ -788,11 +774,11 @@ def analyze_frame(
         source_region = frame[:half, :]
         decoded_region = frame[half:, :]
 
-        source_milliseconds, source_confidence = (
-            _recognize_timestamp_in_region(source_region, templates)
+        source_milliseconds, source_confidence = _recognize_timestamp_in_region(
+            source_region, templates
         )
-        decoded_milliseconds, decoded_confidence = (
-            _recognize_timestamp_in_region(decoded_region, templates)
+        decoded_milliseconds, decoded_confidence = _recognize_timestamp_in_region(
+            decoded_region, templates
         )
 
         if source_milliseconds is not None or decoded_milliseconds is not None:
@@ -804,20 +790,13 @@ def analyze_frame(
             result.decoded_confidence = decoded_confidence
             result.latency_frames = None  # not applicable
 
-            if (
-                source_milliseconds is not None
-                and decoded_milliseconds is not None
-            ):
+            if source_milliseconds is not None and decoded_milliseconds is not None:
                 result.latency_milliseconds = float(
                     source_milliseconds - decoded_milliseconds
                 )
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Video / image processing
-# ---------------------------------------------------------------------------
 
 def process_video(
     video_path: Path,
@@ -858,8 +837,12 @@ def process_video(
                 frame_index += 1
                 continue
             frame_result = analyze_frame(
-                frame, templates, frame_index, timestamp,
-                clock_rate, debug_directory,
+                frame,
+                templates,
+                frame_index,
+                timestamp,
+                clock_rate,
+                debug_directory,
             )
             results.append(frame_result)
             processed += 1
@@ -898,70 +881,84 @@ def process_image(
     return [result]
 
 
-# ---------------------------------------------------------------------------
-# Report generation
-# ---------------------------------------------------------------------------
-
-def generate_report(
-    results: list[FrameResult],
-    input_path: Path,
-    clock_rate: float,
-) -> None:
-    """Print the latency analysis report to stdout."""
-    # Detect mode from the first result that has data
-    is_timestamp_mode = any(r.format_mode == "timestamp" for r in results)
-
-    # Valid pairs: have a latency measurement (frames or milliseconds)
-    valid_pairs = [
-        r for r in results
-        if r.latency_milliseconds is not None
-    ]
-    source_recognized = sum(1 for r in results if r.source_frame is not None)
-    decoded_recognized = sum(1 for r in results if r.decoded_frame is not None)
-
-    # Auto-detect frozen runs: if decoded_frame is identical across 3+
-    # consecutive samples, the stream wasn't flowing yet (or froze).
+def _compute_frozen_indices(valid_pairs: list[FrameResult]) -> set[int]:
+    """Detect frozen runs: decoded_frame identical across 3+ consecutive samples
+    means the stream wasn't flowing yet (or froze)."""
     frozen_indices: set[int] = set()
-    if len(valid_pairs) >= 3:
-        run_start = 0
-        for i in range(1, len(valid_pairs)):
-            if valid_pairs[i].decoded_frame != valid_pairs[run_start].decoded_frame:
-                if i - run_start >= 3:
-                    for j in range(run_start, i):
-                        frozen_indices.add(valid_pairs[j].video_frame_index)
-                run_start = i
-        # Final run
-        if len(valid_pairs) - run_start >= 3:
-            for j in range(run_start, len(valid_pairs)):
-                frozen_indices.add(valid_pairs[j].video_frame_index)
+    if len(valid_pairs) < 3:
+        return frozen_indices
+    run_start = 0
+    for i in range(1, len(valid_pairs)):
+        if valid_pairs[i].decoded_frame != valid_pairs[run_start].decoded_frame:
+            if i - run_start >= 3:
+                for j in range(run_start, i):
+                    frozen_indices.add(valid_pairs[j].video_frame_index)
+            run_start = i
+    if len(valid_pairs) - run_start >= 3:
+        for j in range(run_start, len(valid_pairs)):
+            frozen_indices.add(valid_pairs[j].video_frame_index)
+    return frozen_indices
 
-    frozen_count = sum(
-        1 for r in valid_pairs if r.video_frame_index in frozen_indices
-    )
 
-    # Filter implausible latencies and frozen frames
+def _filter_plausible(
+    valid_pairs: list[FrameResult],
+    is_timestamp_mode: bool,
+    frozen_indices: set[int],
+) -> list[FrameResult]:
     if is_timestamp_mode:
-        # Timestamp mode: latency in ms, allow 0-2000 ms
-        plausible = [
-            r for r in valid_pairs
+        return [
+            r
+            for r in valid_pairs
             if r.latency_milliseconds is not None
             and 0 <= r.latency_milliseconds <= 2000
             and r.video_frame_index not in frozen_indices
         ]
-    else:
-        # Green mode: latency in frames, allow 0-200
-        plausible = [
-            r for r in valid_pairs
-            if r.latency_frames is not None
-            and 0 <= r.latency_frames <= 200
-            and r.video_frame_index not in frozen_indices
-        ]
+    return [
+        r
+        for r in valid_pairs
+        if r.latency_frames is not None
+        and 0 <= r.latency_frames <= 200
+        and r.video_frame_index not in frozen_indices
+    ]
 
+
+@dataclass
+class _QualityCounts:
+    total: int
+    source_recognized: int
+    decoded_recognized: int
+    valid_pairs: int
+    frozen: int
+    plausible: int
+
+
+def _compute_quality_counts(
+    results: list[FrameResult],
+    valid_pairs: list[FrameResult],
+    frozen_count: int,
+    plausible: list[FrameResult],
+) -> _QualityCounts:
+    return _QualityCounts(
+        total=len(results),
+        source_recognized=sum(1 for r in results if r.source_frame is not None),
+        decoded_recognized=sum(1 for r in results if r.decoded_frame is not None),
+        valid_pairs=len(valid_pairs),
+        frozen=frozen_count,
+        plausible=len(plausible),
+    )
+
+
+def _print_quality_summary(
+    input_path: Path,
+    clock_rate: float,
+    is_timestamp_mode: bool,
+    counts: _QualityCounts,
+) -> None:
     print()
     print("WindowStream Latency Analysis")
     print("=" * 50)
     print(f"Input:           {input_path.name}")
-    print(f"Frames analyzed: {len(results)}")
+    print(f"Frames analyzed: {counts.total}")
     if is_timestamp_mode:
         print("Format:          White timestamps (HH:MM:SS.mmm)")
     else:
@@ -971,86 +968,79 @@ def generate_report(
         )
     print()
 
-    total = len(results)
     print("OCR Quality:")
-    if total > 0:
+    if counts.total > 0:
         print(
-            f"  Source (top):    {source_recognized}/{total} recognized "
-            f"({100.0 * source_recognized / total:.1f}%)"
+            f"  Source (top):    {counts.source_recognized}/{counts.total} recognized "
+            f"({100.0 * counts.source_recognized / counts.total:.1f}%)"
         )
         print(
-            f"  Decoded (bottom): {decoded_recognized}/{total} recognized "
-            f"({100.0 * decoded_recognized / total:.1f}%)"
+            f"  Decoded (bottom): {counts.decoded_recognized}/{counts.total} recognized "
+            f"({100.0 * counts.decoded_recognized / counts.total:.1f}%)"
         )
         print(
-            f"  Valid pairs:     {len(valid_pairs)}/{total} "
-            f"({100.0 * len(valid_pairs) / total:.1f}%)"
+            f"  Valid pairs:     {counts.valid_pairs}/{counts.total} "
+            f"({100.0 * counts.valid_pairs / counts.total:.1f}%)"
         )
-    if frozen_count > 0:
+    if counts.frozen > 0:
         print(
-            f"  Frozen:          {frozen_count} frames excluded "
-            f"(stream not flowing)"
+            f"  Frozen:          {counts.frozen} frames excluded (stream not flowing)"
         )
-    if len(plausible) < len(valid_pairs) - frozen_count:
-        outlier_count = len(valid_pairs) - frozen_count - len(plausible)
+    if counts.plausible < counts.valid_pairs - counts.frozen:
+        outlier_count = counts.valid_pairs - counts.frozen - counts.plausible
         print(
-            f"  Outliers:        {outlier_count} frames excluded "
-            f"(implausible latency)"
+            f"  Outliers:        {outlier_count} frames excluded (implausible latency)"
         )
     print()
 
-    if not plausible:
-        print("No valid latency measurements. Check OCR quality above.")
-        if valid_pairs:
-            print("\nAll valid pairs (unfiltered):")
-            for result in valid_pairs[:20]:
-                if is_timestamp_mode:
-                    source_string = (
-                        _milliseconds_to_timestamp_string(result.source_frame)
-                        if result.source_frame is not None else "-"
-                    )
-                    decoded_string = (
-                        _milliseconds_to_timestamp_string(result.decoded_frame)
-                        if result.decoded_frame is not None else "-"
-                    )
-                    print(
-                        f"  frame {result.video_frame_index}: "
-                        f"src={source_string} dec={decoded_string} "
-                        f"lat={result.latency_milliseconds:.1f} ms"
-                    )
-                else:
-                    print(
-                        f"  frame {result.video_frame_index}: "
-                        f"src={result.source_frame} dec={result.decoded_frame} "
-                        f"lat={result.latency_frames}"
-                    )
+
+def _print_unfiltered_pairs(
+    valid_pairs: list[FrameResult], is_timestamp_mode: bool
+) -> None:
+    print("No valid latency measurements. Check OCR quality above.")
+    if not valid_pairs:
         return
+    print("\nAll valid pairs (unfiltered):")
+    for result in valid_pairs[:20]:
+        if is_timestamp_mode:
+            source_string = (
+                _milliseconds_to_timestamp_string(result.source_frame)
+                if result.source_frame is not None
+                else "-"
+            )
+            decoded_string = (
+                _milliseconds_to_timestamp_string(result.decoded_frame)
+                if result.decoded_frame is not None
+                else "-"
+            )
+            print(
+                f"  frame {result.video_frame_index}: "
+                f"src={source_string} dec={decoded_string} "
+                f"lat={result.latency_milliseconds:.1f} ms"
+            )
+        else:
+            print(
+                f"  frame {result.video_frame_index}: "
+                f"src={result.source_frame} dec={result.decoded_frame} "
+                f"lat={result.latency_frames}"
+            )
 
-    latencies_milliseconds = np.array(
-        [r.latency_milliseconds for r in plausible
-         if r.latency_milliseconds is not None],
-        dtype=np.float64,
-    )
 
-    if len(latencies_milliseconds) == 0:
-        print("No valid latency measurements after filtering.")
-        return
-
-    # Frame-count metrics only for green mode
+def _print_latency_metrics(
+    plausible: list[FrameResult],
+    is_timestamp_mode: bool,
+    latencies_milliseconds: np.ndarray,
+) -> None:
     if not is_timestamp_mode:
         latencies_frames = np.array(
-            [r.latency_frames for r in plausible
-             if r.latency_frames is not None],
+            [r.latency_frames for r in plausible if r.latency_frames is not None],
             dtype=np.float64,
         )
         if len(latencies_frames) > 0:
             print("Latency Metrics (frames):")
             print(f"  p0  (Min):       {np.min(latencies_frames):.0f}")
             print(f"  p50 (Median):    {np.median(latencies_frames):.0f}")
-            print(
-                f"  p95:             "
-                f"{np.percentile(latencies_frames, 95):.0f}"
-            )
+            print(f"  p95:             {np.percentile(latencies_frames, 95):.0f}")
             print(f"  Max:             {np.max(latencies_frames):.0f}")
             print(
                 f"  Mean +/- Std:    {np.mean(latencies_frames):.1f} "
@@ -1061,10 +1051,7 @@ def generate_report(
     print("Latency Metrics (ms):")
     print(f"  p0  (Min):       {np.min(latencies_milliseconds):.1f} ms")
     print(f"  p50 (Median):    {np.median(latencies_milliseconds):.1f} ms")
-    print(
-        f"  p95:             "
-        f"{np.percentile(latencies_milliseconds, 95):.1f} ms"
-    )
+    print(f"  p95:             {np.percentile(latencies_milliseconds, 95):.1f} ms")
     print(f"  Max:             {np.max(latencies_milliseconds):.1f} ms")
     print(
         f"  Mean +/- Std:    {np.mean(latencies_milliseconds):.1f} "
@@ -1072,25 +1059,29 @@ def generate_report(
     )
     print()
 
-    # Timeline sample
+
+def _print_timeline_sample(
+    plausible: list[FrameResult], is_timestamp_mode: bool
+) -> None:
     sample_size = min(15, len(plausible))
     print(f"Sample Timeline (first {sample_size} valid frames):")
     if is_timestamp_mode:
-        print(
-            f"  {'Time':>8}  {'Source':>14}  {'Decoded':>14}  {'D ms':>10}"
-        )
+        print(f"  {'Time':>8}  {'Source':>14}  {'Decoded':>14}  {'D ms':>10}")
         for result in plausible[:sample_size]:
             source_string = (
                 _milliseconds_to_timestamp_string(result.source_frame)
-                if result.source_frame is not None else "-"
+                if result.source_frame is not None
+                else "-"
             )
             decoded_string = (
                 _milliseconds_to_timestamp_string(result.decoded_frame)
-                if result.decoded_frame is not None else "-"
+                if result.decoded_frame is not None
+                else "-"
             )
             milliseconds_string = (
                 f"{result.latency_milliseconds:.1f} ms"
-                if result.latency_milliseconds is not None else "-"
+                if result.latency_milliseconds is not None
+                else "-"
             )
             print(
                 f"  {result.timestamp_seconds:7.2f}s  {source_string:>14}  "
@@ -1103,20 +1094,18 @@ def generate_report(
         )
         for result in plausible[:sample_size]:
             source_string = (
-                str(result.source_frame)
-                if result.source_frame is not None else "-"
+                str(result.source_frame) if result.source_frame is not None else "-"
             )
             decoded_string = (
-                str(result.decoded_frame)
-                if result.decoded_frame is not None else "-"
+                str(result.decoded_frame) if result.decoded_frame is not None else "-"
             )
             latency_string = (
-                str(result.latency_frames)
-                if result.latency_frames is not None else "-"
+                str(result.latency_frames) if result.latency_frames is not None else "-"
             )
             milliseconds_string = (
                 f"{result.latency_milliseconds:.1f} ms"
-                if result.latency_milliseconds is not None else "-"
+                if result.latency_milliseconds is not None
+                else "-"
             )
             print(
                 f"  {result.timestamp_seconds:7.2f}s  {source_string:>8}  "
@@ -1125,37 +1114,81 @@ def generate_report(
             )
 
 
+def generate_report(
+    results: list[FrameResult],
+    input_path: Path,
+    clock_rate: float,
+) -> None:
+    """Print the latency analysis report to stdout."""
+    # Detect mode from the first result that has data
+    is_timestamp_mode = any(r.format_mode == "timestamp" for r in results)
+
+    # Valid pairs: have a latency measurement (frames or milliseconds)
+    valid_pairs = [r for r in results if r.latency_milliseconds is not None]
+
+    frozen_indices = _compute_frozen_indices(valid_pairs)
+    frozen_count = sum(1 for r in valid_pairs if r.video_frame_index in frozen_indices)
+    plausible = _filter_plausible(valid_pairs, is_timestamp_mode, frozen_indices)
+
+    counts = _compute_quality_counts(results, valid_pairs, frozen_count, plausible)
+    _print_quality_summary(input_path, clock_rate, is_timestamp_mode, counts)
+
+    if not plausible:
+        _print_unfiltered_pairs(valid_pairs, is_timestamp_mode)
+        return
+
+    latencies_milliseconds = np.array(
+        [
+            r.latency_milliseconds
+            for r in plausible
+            if r.latency_milliseconds is not None
+        ],
+        dtype=np.float64,
+    )
+
+    if len(latencies_milliseconds) == 0:
+        print("No valid latency measurements after filtering.")
+        return
+
+    _print_latency_metrics(plausible, is_timestamp_mode, latencies_milliseconds)
+    _print_timeline_sample(plausible, is_timestamp_mode)
+
+
 def write_csv(results: list[FrameResult], output_path: Path) -> None:
     """Write results to CSV."""
     with open(output_path, "w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow([
-            "video_frame", "timestamp_sec",
-            "source_frame", "source_confidence",
-            "decoded_frame", "decoded_confidence",
-            "latency_frames", "latency_ms",
-        ])
+        writer.writerow(
+            [
+                "video_frame",
+                "timestamp_sec",
+                "source_frame",
+                "source_confidence",
+                "decoded_frame",
+                "decoded_confidence",
+                "latency_frames",
+                "latency_ms",
+            ]
+        )
         for result in results:
-            writer.writerow([
-                result.video_frame_index,
-                f"{result.timestamp_seconds:.3f}",
-                result.source_frame if result.source_frame is not None else "",
-                f"{result.source_confidence:.3f}",
-                result.decoded_frame if result.decoded_frame is not None else "",
-                f"{result.decoded_confidence:.3f}",
-                result.latency_frames if result.latency_frames is not None else "",
-                (
-                    f"{result.latency_milliseconds:.2f}"
-                    if result.latency_milliseconds is not None
-                    else ""
-                ),
-            ])
+            writer.writerow(
+                [
+                    result.video_frame_index,
+                    f"{result.timestamp_seconds:.3f}",
+                    result.source_frame if result.source_frame is not None else "",
+                    f"{result.source_confidence:.3f}",
+                    result.decoded_frame if result.decoded_frame is not None else "",
+                    f"{result.decoded_confidence:.3f}",
+                    result.latency_frames if result.latency_frames is not None else "",
+                    (
+                        f"{result.latency_milliseconds:.2f}"
+                        if result.latency_milliseconds is not None
+                        else ""
+                    ),
+                ]
+            )
     print(f"\nCSV written: {output_path}")
 
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -1164,30 +1197,41 @@ def parse_arguments() -> argparse.Namespace:
         epilog=__doc__,
     )
     parser.add_argument(
-        "input", type=str,
+        "input",
+        type=str,
         help="Path to a .mp4 video or a .jpg/.png image.",
     )
     parser.add_argument(
-        "--step", type=int, default=5,
+        "--step",
+        type=int,
+        default=5,
         help="Process every Nth video frame (default: 5, ignored for images).",
     )
     parser.add_argument(
-        "--clock-rate", type=float, default=165.0,
+        "--clock-rate",
+        type=float,
+        default=165.0,
         help=(
             "Frame-counter rate in FPS "
             "(default: 165.0, matches latency-clock.html ?cap=165)."
         ),
     )
     parser.add_argument(
-        "--output-csv", type=str, default=None,
+        "--output-csv",
+        type=str,
+        default=None,
         help="Write per-frame results to this CSV file.",
     )
     parser.add_argument(
-        "--skip", type=float, default=0.0,
+        "--skip",
+        type=float,
+        default=0.0,
         help="Skip the first N seconds of video (default: 0).",
     )
     parser.add_argument(
-        "--debug-dir", type=str, default=None,
+        "--debug-dir",
+        type=str,
+        default=None,
         help=(
             "Write intermediate debug images "
             "(green masks, digit crops) to this directory."
@@ -1221,12 +1265,19 @@ def main() -> int:
     suffix = input_path.suffix.lower()
     if suffix in (".mp4", ".mkv", ".avi", ".webm", ".mov"):
         results = process_video(
-            input_path, templates, arguments.step,
-            arguments.clock_rate, arguments.skip, debug_directory,
+            input_path,
+            templates,
+            arguments.step,
+            arguments.clock_rate,
+            arguments.skip,
+            debug_directory,
         )
     elif suffix in (".jpg", ".jpeg", ".png", ".bmp", ".tiff"):
         results = process_image(
-            input_path, templates, arguments.clock_rate, debug_directory,
+            input_path,
+            templates,
+            arguments.clock_rate,
+            debug_directory,
         )
     else:
         print(f"Error: unrecognized file type '{suffix}'", file=sys.stderr)

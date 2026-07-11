@@ -94,9 +94,9 @@ sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         {
             cancellationToken.Register(() =>
             {
-                #pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
+#pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
                 try { lifecycle.Cancel(); } catch { /* already disposed */ }
-                #pragma warning restore CA1031
+#pragma warning restore CA1031
             });
         }
 
@@ -290,9 +290,9 @@ sealed class CoordinatorLoopbackHarness : IAsyncDisposable
                 {
                     snapshot = captureSource.ListWindows().ToList();
                 }
-                #pragma warning disable CA1031 // intentional: WGC enumeration errors are non-fatal in the test harness loop
+#pragma warning disable CA1031 // intentional: WGC enumeration errors are non-fatal in the test harness loop
                 catch (Exception)
-                #pragma warning restore CA1031
+#pragma warning restore CA1031
                 {
                     continue;
                 }
@@ -351,19 +351,19 @@ sealed class CoordinatorLoopbackHarness : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        #pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
+#pragma warning disable CA1031 // best-effort: lifecycle CTS may already be disposed at shutdown
         try { await _lifecycle.CancelAsync(); } catch { /* already disposed */ }
-        #pragma warning restore CA1031
+#pragma warning restore CA1031
 
         async Task SwallowAsync(Task task)
         {
             try { await task.ConfigureAwait(false); }
             catch (OperationCanceledException) { }
-            #pragma warning disable CA1031 // intentional: test fixture teardown swallows all task faults
-            #pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
+#pragma warning disable CA1031 // intentional: test fixture teardown swallows all task faults
+#pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
             catch (Exception) { /* test fixture is being torn down */ }
-            #pragma warning restore RCS1075
-            #pragma warning restore CA1031
+#pragma warning restore RCS1075
+#pragma warning restore CA1031
         }
 
         await SwallowAsync(_controlServerTask).ConfigureAwait(false);
@@ -546,19 +546,19 @@ sealed class FakeViewer : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        #pragma warning disable CA1031 // best-effort: pump CTS may already be disposed
+#pragma warning disable CA1031 // best-effort: pump CTS may already be disposed
         try { await _pumpCancellation.CancelAsync(); } catch { /* best-effort */ }
         try { _tcpStream.Dispose(); } catch { /* best-effort */ }
         try { _tcpClient.Dispose(); } catch { /* best-effort */ }
         try { _udpClient.Dispose(); } catch { /* best-effort */ }
-        #pragma warning restore CA1031
+#pragma warning restore CA1031
         try { await _udpPumpTask.ConfigureAwait(false); }
         catch (OperationCanceledException) { }
-        #pragma warning disable CA1031 // intentional: test fixture teardown swallows all pump faults
-        #pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
+#pragma warning disable CA1031 // intentional: test fixture teardown swallows all pump faults
+#pragma warning disable RCS1075 // RCS1075: best-effort teardown; failures during cleanup are intentionally ignored
         catch (Exception) { /* fixture teardown */ }
-        #pragma warning restore RCS1075
-        #pragma warning restore CA1031
+#pragma warning restore RCS1075
+#pragma warning restore CA1031
         _pumpCancellation.Dispose();
     }
 }

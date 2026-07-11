@@ -98,6 +98,9 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
     [ExcludeFromCodeCoverage(Justification = "Native FFmpeg calls; exercised by Phase 12 integration tests.")]
     unsafe void OpenCodecAndAssignOptions(EncoderOptions options)
     {
+        var sharedDeviceManager = _sharedDeviceManager
+            ?? throw new InvalidOperationException("Configure must assign _sharedDeviceManager before opening the codec.");
+
         var codec = ffmpeg.avcodec_find_encoder_by_name("h264_nvenc");
         if (codec == null)
         {
@@ -154,8 +157,8 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         // d3d11* keeps the Direct3D 11 domain spelling; ReSharper's digit rule would force d3D11.
         // ReSharper disable once InconsistentNaming
         var d3d11DeviceContext = (AVD3D11VADeviceContext*)deviceContext->hwctx;
-        d3d11DeviceContext->device = (ID3D11Device*)(void*)_sharedDeviceManager!.NativeDevicePointer;
-        d3d11DeviceContext->device_context = (ID3D11DeviceContext*)(void*)_sharedDeviceManager!.NativeContextPointer;
+        d3d11DeviceContext->device = (ID3D11Device*)(void*)sharedDeviceManager.NativeDevicePointer;
+        d3d11DeviceContext->device_context = (ID3D11DeviceContext*)(void*)sharedDeviceManager.NativeContextPointer;
         // Increment refcount on the device + context so FFmpeg's eventual release doesn't underflow our ownership.
         // FFmpeg calls Release() on these in av_hwdevice_ctx_free; we want our Direct3D11DeviceManager to retain the
         // canonical reference, so we AddRef here.
@@ -170,7 +173,6 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
             throw new EncoderException("av_hwdevice_ctx_init failed.", hwDeviceInitResult);
         }
 
-        // Build AVHWFramesContext for NV12 textures.
         var framesContextReference = ffmpeg.av_hwframe_ctx_alloc(deviceContextReference);
         if (framesContextReference == null)
         {

@@ -46,78 +46,81 @@ public sealed class ServerStateReducer
 
             PipelineEvent.WindowDisappeared => State with { WindowCount = Math.Max(0, State.WindowCount - 1) },
 
-            PipelineEvent.OpenStreamReceived open => State with
+            // StreamId is non-null by construction for every stream-scoped PipelineEvent subtype
+            // below (see PipelineEvent.cs); the `{} streamId` not-null pattern makes that invariant
+            // explicit instead of asserting it with `!`, and falls back to a no-op if it's ever violated.
+            PipelineEvent.OpenStreamReceived { StreamId: { } streamId } open => State with
             {
-                Streams = State.Streams.SetItem(open.StreamId!.Value, new StreamStateRow
+                Streams = State.Streams.SetItem(streamId, new StreamStateRow
                 {
                     WindowId = open.WindowId,
                 }),
             },
 
-            PipelineEvent.WorkerSpawning spawning => UpdateStream(spawning.StreamId!.Value, row => row with
+            PipelineEvent.WorkerSpawning { StreamId: { } streamId } => UpdateStream(streamId, row => row with
             {
                 WorkerSpawn = StageStatus.InProgress,
             }),
 
-            PipelineEvent.WorkerSpawned => UpdateStream(pipelineEvent.StreamId!.Value, row => row with
+            PipelineEvent.WorkerSpawned { StreamId: { } streamId } => UpdateStream(streamId, row => row with
             {
                 WorkerSpawn = StageStatus.Ok,
             }),
 
-            PipelineEvent.WorkerSpawnFailed failed => UpdateStream(failed.StreamId!.Value, row => row with
+            PipelineEvent.WorkerSpawnFailed { StreamId: { } streamId } failed => UpdateStream(streamId, row => row with
             {
                 WorkerSpawn = StageStatus.Error,
                 WorkerSpawnError = failed.Exception.Message,
             }),
 
-            PipelineEvent.CaptureStarted captured => UpdateStream(captured.StreamId!.Value, row => row with
+            PipelineEvent.CaptureStarted { StreamId: { } streamId } captured => UpdateStream(streamId, row => row with
             {
                 Capture = StageStatus.Ok,
                 CaptureWidth = captured.Width,
                 CaptureHeight = captured.Height,
             }),
 
-            PipelineEvent.CaptureFailed captureFailed => UpdateStream(captureFailed.StreamId!.Value, row => row with
+            PipelineEvent.CaptureFailed { StreamId: { } streamId } captureFailed => UpdateStream(streamId, row => row with
             {
                 Capture = StageStatus.Error,
                 CaptureError = captureFailed.Exception.Message,
             }),
 
-            PipelineEvent.EncodeStarted encodeStarted => UpdateStream(encodeStarted.StreamId!.Value, row => row with
+            PipelineEvent.EncodeStarted { StreamId: { } streamId } encodeStarted => UpdateStream(streamId, row => row with
             {
                 Encode = StageStatus.Ok,
                 EncodeFramesPerSecond = encodeStarted.TargetFramesPerSecond,
                 EncodeBitrateKilobitsPerSecond = encodeStarted.BitrateKilobitsPerSecond,
             }),
 
-            PipelineEvent.EncodeFailed encodeFailed => UpdateStream(encodeFailed.StreamId!.Value, row => row with
+            PipelineEvent.EncodeFailed { StreamId: { } streamId } encodeFailed => UpdateStream(streamId, row => row with
             {
                 Encode = StageStatus.Error,
                 EncodeError = encodeFailed.Exception.Message,
             }),
 
-            PipelineEvent.FramesFlowing flowing => UpdateStream(flowing.StreamId!.Value, row => row with
+            PipelineEvent.FramesFlowing { StreamId: { } streamId } flowing => UpdateStream(streamId, row => row with
             {
                 UdpSend = StageStatus.Ok,
                 MeasuredFramesPerSecond = flowing.MeasuredFramesPerSecond,
                 MeasuredBitrateKilobitsPerSecond = flowing.BitrateKilobitsPerSecond,
             }),
 
-            PipelineEvent.SourceStalled stalled => UpdateStream(stalled.StreamId!.Value, row => row with
+            PipelineEvent.SourceStalled { StreamId: { } streamId } stalled => UpdateStream(streamId, row => row with
             {
                 IsStalled = true,
                 StallCause = stalled.Cause,
             }),
 
-            PipelineEvent.SourceResumed resumed => UpdateStream(resumed.StreamId!.Value, row => row with
+            PipelineEvent.SourceResumed { StreamId: { } streamId } => UpdateStream(streamId, row => row with
             {
                 IsStalled = false,
                 StallCause = null,
             }),
 
-            PipelineEvent.StreamStopped stopped => State with
+            PipelineEvent.StreamStopped { StreamId: { } streamId } => State with
             {
-                Streams = State.Streams.Remove(stopped.StreamId!.Value),
+                Streams = State.Streams.Remove(streamId),
             },
 
             _ => State,

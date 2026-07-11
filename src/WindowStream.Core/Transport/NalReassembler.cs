@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace WindowStream.Core.Transport;
 
 public sealed class NalReassembler
@@ -111,19 +113,24 @@ public sealed class NalReassembler
         public byte[] Concatenate()
         {
             var totalLength = 0;
-            for (var index = 0; index < _fragments.Length; index++)
+            foreach (var fragment in _fragments)
             {
-                totalLength += _fragments[index]!.Length;
+                totalLength += RequireFragment(fragment).Length;
             }
+
             var result = new byte[totalLength];
             var cursor = 0;
-            for (var index = 0; index < _fragments.Length; index++)
+            foreach (var fragment in _fragments)
             {
-                var fragment = _fragments[index]!;
-                Array.Copy(fragment, 0, result, cursor, fragment.Length);
-                cursor += fragment.Length;
+                var nonNullFragment = RequireFragment(fragment);
+                Array.Copy(nonNullFragment, 0, result, cursor, nonNullFragment.Length);
+                cursor += nonNullFragment.Length;
             }
             return result;
         }
+
+        [ExcludeFromCodeCoverage(Justification = "Defensive guard: Concatenate's sole caller (Offer) only invokes it after IsComplete is verified true, so every slot is always set.")]
+        static byte[] RequireFragment(byte[]? fragment) =>
+            fragment ?? throw new InvalidOperationException("Concatenate called with an unset fragment slot; call only once IsComplete is true.");
     }
 }

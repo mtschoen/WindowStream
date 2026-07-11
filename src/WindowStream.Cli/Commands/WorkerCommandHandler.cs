@@ -27,6 +27,13 @@ public static class WorkerCommandHandler
 
             using var pipeWriteLock = new SemaphoreSlim(1, 1);
 
+            // lifecycle/pipe/encoder/sourceMonitor are deliberately shared across
+            // WriteStatusGuardedAsync and the Task.Run loops below (commandReaderTask,
+            // encodeOutputTask, monitorTickTask) and the main flow; every one of these
+            // tasks is awaited (the WhenAll drain below) before the enclosing
+            // using/await-using disposes them. The analyzer cannot prove the
+            // bounded-shutdown drain completes first; per feedback_inspections_refactor_over_suppress.
+            // ReSharper disable AccessToDisposedClosure
             async Task WriteStatusGuardedAsync(WorkerStatusFrame status)
             {
                 await pipeWriteLock.WaitAsync(lifecycle.Token).ConfigureAwait(false);
@@ -40,11 +47,6 @@ public static class WorkerCommandHandler
 
             var captureSource = new WgcCaptureSource();
 
-            // lifecycle/encoder/pipe are deliberately shared across these Task.Run loops
-            // and the main flow; both tasks are awaited (the WhenAll drain below) before the
-            // enclosing using/await-using disposes them. The analyzer cannot prove the
-            // bounded-shutdown drain completes first; per feedback_inspections_refactor_over_suppress.
-            // ReSharper disable AccessToDisposedClosure
             var commandReaderTask = Task.Run(async () =>
             {
                 try
@@ -103,7 +105,6 @@ public static class WorkerCommandHandler
                 }
 #pragma warning restore CA1031
             }, lifecycle.Token);
-            // ReSharper restore AccessToDisposedClosure
 
             await using var capture = captureSource.Start(
                 arguments.Hwnd,
@@ -134,6 +135,7 @@ public static class WorkerCommandHandler
                 }
                 catch (OperationCanceledException) { /* cooperative cancellation - normal shutdown path */ }
             }, lifecycle.Token);
+            // ReSharper restore AccessToDisposedClosure
 
             try
             {

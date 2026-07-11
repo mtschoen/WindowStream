@@ -89,11 +89,15 @@ def render_csproj_section(reports: list[CsProjectReport], heading: str) -> list[
     for report in reports:
         lines.append(f"### `{report.display_name}`")
         lines.append("")
-        lines.append(f"- Target framework(s): `{report.target_frameworks or '(unspecified)'}`")
+        lines.append(
+            f"- Target framework(s): `{report.target_frameworks or '(unspecified)'}`"
+        )
         if report.references:
             lines.append("- Packages:")
             for reference in report.references:
-                version_suffix = f" @ `{reference.version}`" if reference.version else ""
+                version_suffix = (
+                    f" @ `{reference.version}`" if reference.version else ""
+                )
                 lines.append(f"    - `{reference.name}`{version_suffix}")
         else:
             lines.append("- Packages: none")
@@ -106,7 +110,10 @@ def render_csproj_section(reports: list[CsProjectReport], heading: str) -> list[
 
 
 def render_kotlin_catalog(catalog: dict[str, object]) -> list[str]:
-    lines: list[str] = ["## Viewer (Kotlin / Android) — `viewer/WindowStreamViewer/gradle/libs.versions.toml`", ""]
+    lines: list[str] = [
+        "## Viewer (Kotlin / Android) — `viewer/WindowStreamViewer/gradle/libs.versions.toml`",
+        "",
+    ]
 
     versions = catalog.get("versions", {})
     libraries = catalog.get("libraries", {})
@@ -140,7 +147,9 @@ def render_kotlin_catalog(catalog: dict[str, object]) -> list[str]:
         for library_key, entry in sorted(libraries.items()):
             if isinstance(entry, dict):
                 module = entry.get("module", "(unknown)")
-                lines.append(f"- `{library_key}` → `{module}` @ `{resolve_version(entry)}`")
+                lines.append(
+                    f"- `{library_key}` → `{module}` @ `{resolve_version(entry)}`"
+                )
         lines.append("")
 
     if isinstance(plugins, dict) and plugins:
@@ -149,13 +158,17 @@ def render_kotlin_catalog(catalog: dict[str, object]) -> list[str]:
         for plugin_key, entry in sorted(plugins.items()):
             if isinstance(entry, dict):
                 plugin_id = entry.get("id", "(unknown)")
-                lines.append(f"- `{plugin_key}` → `{plugin_id}` @ `{resolve_version(entry)}`")
+                lines.append(
+                    f"- `{plugin_key}` → `{plugin_id}` @ `{resolve_version(entry)}`"
+                )
         lines.append("")
 
     return lines
 
 
-def partition_csproj_reports(all_reports: list[CsProjectReport]) -> tuple[list[CsProjectReport], list[CsProjectReport]]:
+def partition_csproj_reports(
+    all_reports: list[CsProjectReport],
+) -> tuple[list[CsProjectReport], list[CsProjectReport]]:
     production: list[CsProjectReport] = []
     tests: list[CsProjectReport] = []
     for report in all_reports:
@@ -174,7 +187,9 @@ def main() -> None:
     csproj_reports = [parse_csproj(path) for path in find_all_csproj_paths()]
     production_reports, test_reports = partition_csproj_reports(csproj_reports)
 
-    libs_toml_path = REPO_ROOT / "viewer" / "WindowStreamViewer" / "gradle" / "libs.versions.toml"
+    libs_toml_path = (
+        REPO_ROOT / "viewer" / "WindowStreamViewer" / "gradle" / "libs.versions.toml"
+    )
 
     out: list[str] = ["# WindowStream — dependency report", ""]
     out.append(

@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using WindowStream.Core.Observability;
@@ -52,12 +51,10 @@ public sealed partial class ServerDashboardViewModel : INotifyPropertyChanged
         {
             // normal shutdown
         }
-#pragma warning disable CA1031 // MAUI UI boundary: prevents unhandled task exception on the page; launcher details already logged by diagnostics façade
+#pragma warning disable CA1031 // MAUI UI boundary: prevents unhandled task exception on the page; also surfaced on stderr per AGENTS.md's documented server diagnostics channel
         catch (Exception exception)
         {
-            // The diagnostics façade should already have logged details; this catch
-            // exists so the page doesn't see an unhandled task exception.
-            Debug.WriteLine($"launcher faulted: {exception}");
+            await Console.Error.WriteLineAsync($"[server] StartServingAsync faulted: {exception}").ConfigureAwait(false);
         }
 #pragma warning restore CA1031
     }

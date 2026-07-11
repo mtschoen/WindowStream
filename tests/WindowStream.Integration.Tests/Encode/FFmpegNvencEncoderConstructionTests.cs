@@ -134,9 +134,9 @@ public sealed class FFmpegNvencEncoderConstructionTests
             await encoder.EncodeAsync(SampleFrame(), CancellationToken.None);
         }
         catch (DllNotFoundException) { /* expected — no native FFmpeg DLLs in test run */ }
-        #pragma warning disable CA1031, RCS1075 // intentional: any native-interop error is acceptable here; test only checks the return path // RCS1075: intentional swallow of native-interop errors in this return-path test
+#pragma warning disable CA1031, RCS1075 // intentional: any native-interop error is acceptable here; test only checks the return path // RCS1075: intentional swallow of native-interop errors in this return-path test
         catch (Exception) { /* other native errors are also acceptable */ }
-        #pragma warning restore CA1031, RCS1075
+#pragma warning restore CA1031, RCS1075
     }
 
     [Fact]

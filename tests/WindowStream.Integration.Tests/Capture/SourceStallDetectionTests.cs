@@ -107,9 +107,9 @@ public sealed class SourceStallDetectionTests
                     candidate.Kill(entireProcessTree: true);
                     await candidate.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(2000));
                 }
-                #pragma warning disable CA1031 // intentional best-effort cleanup
+#pragma warning disable CA1031 // intentional best-effort cleanup
                 catch
-                #pragma warning restore CA1031
+#pragma warning restore CA1031
                 {
                     // best-effort cleanup
                 }
@@ -167,9 +167,9 @@ public sealed class SourceStallDetectionTests
 
         // Clean up the blocking read: cancel, await, then dispose the CTS.
         await cancellation.CancelAsync();
-        #pragma warning disable CA1031 // best-effort cleanup of the cancelled read task
+#pragma warning disable CA1031 // best-effort cleanup of the cancelled read task
         try { await readTask; } catch { /* cancelled or broken pipe */ }
-        #pragma warning restore CA1031
+#pragma warning restore CA1031
         cancellation.Dispose();
     }
 

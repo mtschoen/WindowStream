@@ -24,7 +24,6 @@ from __future__ import annotations
 import re
 import statistics
 import sys
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,11 +37,11 @@ VIEWER_STAGES = ("reasm", "dec", "present")
 ALL_STAGES = SERVER_STAGES + VIEWER_STAGES
 
 DELTAS = [
-    ("convert", "enc",     "convert -> enc      (server, GPU->NVENC)",       False),
-    ("enc",     "reasm",   "enc     -> reasm    (network + reassembly)",    True),
-    ("reasm",   "dec",     "reasm   -> dec      (viewer decode)",            False),
-    ("dec",     "present", "dec     -> present  (viewer render)",            False),
-    ("convert", "present", "convert -> present  (END-TO-END)",               True),
+    ("convert", "enc", "convert -> enc      (server, GPU->NVENC)", False),
+    ("enc", "reasm", "enc     -> reasm    (network + reassembly)", True),
+    ("reasm", "dec", "reasm   -> dec      (viewer decode)", False),
+    ("dec", "present", "dec     -> present  (viewer render)", False),
+    ("convert", "present", "convert -> present  (END-TO-END)", True),
 ]
 
 
@@ -163,13 +162,16 @@ def main(argv: list[str]) -> int:
         if pts not in enc_map:
             continue
         enc_wall = enc_map[pts]
-        depth = sum(
-            1
-            for earlier in convert_pts_sorted[:index]
-            if earlier in enc_map
-            and enc_map[earlier] > convert_map[pts]
-            and enc_map[earlier] <= enc_wall
-        ) + 1
+        depth = (
+            sum(
+                1
+                for earlier in convert_pts_sorted[:index]
+                if earlier in enc_map
+                and enc_map[earlier] > convert_map[pts]
+                and enc_map[earlier] <= enc_wall
+            )
+            + 1
+        )
         queue_depths.append(depth)
     if queue_depths:
         print(

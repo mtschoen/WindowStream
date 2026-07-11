@@ -193,9 +193,9 @@ public sealed class WorkerProcessIntegrationTests
                         }
                         catch (EndOfStreamException) { /* pipe closed — worker shut down */ }
                         catch (OperationCanceledException) { /* drain cancelled */ }
-                        #pragma warning disable CA1031 // best-effort drain: pipe may be in any state during teardown
+#pragma warning disable CA1031 // best-effort drain: pipe may be in any state during teardown
                         catch { /* broken pipe / unexpected — don't mask the real assertion */ }
-                        #pragma warning restore CA1031
+#pragma warning restore CA1031
                     }, drainCancellation.Token);
                     // ReSharper restore AccessToDisposedClosure
 
@@ -218,9 +218,9 @@ public sealed class WorkerProcessIntegrationTests
                         await Task.Delay(200);
                     }
                     await drainCancellation.CancelAsync();
-                    #pragma warning disable CA1031 // best-effort: drain task may fault on cancelled token
+#pragma warning disable CA1031 // best-effort: drain task may fault on cancelled token
                     try { await drainTask; } catch { /* best-effort */ }
-                    #pragma warning restore CA1031
+#pragma warning restore CA1031
                     if (!exited)
                     {
                         throw new XunitException(
@@ -250,9 +250,9 @@ public sealed class WorkerProcessIntegrationTests
             {
                 if (!worker.HasExited)
                 {
-                    #pragma warning disable CA1031 // best-effort cleanup — Kill can throw on already-exited process
+#pragma warning disable CA1031 // best-effort cleanup — Kill can throw on already-exited process
                     try { worker.Kill(entireProcessTree: true); } catch { /* best-effort cleanup */ }
-                    #pragma warning restore CA1031
+#pragma warning restore CA1031
                 }
             }
         }
@@ -262,9 +262,9 @@ public sealed class WorkerProcessIntegrationTests
             // renderer child processes are cleaned up too.
             if (!captureTarget.HasExited)
             {
-                #pragma warning disable CA1031 // best-effort cleanup — Kill can throw on already-exited process
+#pragma warning disable CA1031 // best-effort cleanup — Kill can throw on already-exited process
                 try { captureTarget.Kill(entireProcessTree: true); } catch { /* best-effort cleanup */ }
-                #pragma warning restore CA1031
+#pragma warning restore CA1031
             }
             captureTarget.Dispose();
         }

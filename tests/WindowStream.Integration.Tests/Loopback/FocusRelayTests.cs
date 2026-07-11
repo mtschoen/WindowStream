@@ -235,9 +235,9 @@ public class FocusRelayTests
                     candidate.Kill(entireProcessTree: true);
                     await candidate.WaitForExitAsync().WaitAsync(TimeSpan.FromMilliseconds(2000)).ConfigureAwait(false);
                 }
-                #pragma warning disable CA1031 // best-effort notepad cleanup — Kill can throw on already-exited process
+#pragma warning disable CA1031 // best-effort notepad cleanup — Kill can throw on already-exited process
                 catch
-                #pragma warning restore CA1031
+#pragma warning restore CA1031
                 {
                     // best-effort cleanup
                 }

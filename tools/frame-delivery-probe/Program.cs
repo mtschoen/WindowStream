@@ -66,8 +66,12 @@ static class Program
         }
         else
         {
+            // hwndArgument is null here, and the guard above rejected the case where both
+            // titleFilter and hwndArgument are null, so titleFilter is guaranteed non-null.
+            var requiredTitleFilter = titleFilter
+                ?? throw new InvalidOperationException("titleFilter must be set when hwndArgument is not provided.");
             target = source.ListWindows().FirstOrDefault(window =>
-                window.Title.Contains(titleFilter!, StringComparison.OrdinalIgnoreCase)
+                window.Title.Contains(requiredTitleFilter, StringComparison.OrdinalIgnoreCase)
                 && window.WidthPixels > 0
                 && window.HeightPixels > 0);
         }
@@ -82,6 +86,22 @@ static class Program
 
         var windowHandle = new IntPtr(target.Handle.Value);
 
+        ApplyWindowAction(windowHandle, action);
+        await Task.Delay(800);
+
+        var (frameCount, firstFrameMilliseconds, note) = await RunCaptureProbeAsync(source, target, seconds);
+
+        // Restore window state so repeated probes can re-minimize/offscreen.
+        RestoreWindowAction(windowHandle, action);
+
+        var result = $"{label}\taction={action}\thwnd={target.Handle.Value}\tframes={frameCount}\tfirstMs={firstFrameMilliseconds}\tsecs={seconds}\tnote={note}";
+        Append(outputPath, result);
+        Console.WriteLine(result);
+        return 0;
+    }
+
+    static void ApplyWindowAction(IntPtr windowHandle, string action)
+    {
         switch (action)
         {
             case "minimize":
@@ -92,8 +112,25 @@ static class Program
                     SwpNoSize | SwpNoZorder | SwpNoActivate);
                 break;
         }
-        await Task.Delay(800);
+    }
 
+    static void RestoreWindowAction(IntPtr windowHandle, string action)
+    {
+        switch (action)
+        {
+            case "minimize":
+                ShowWindow(windowHandle, ShowRestore);
+                break;
+            case "offscreen":
+                SetWindowPos(windowHandle, IntPtr.Zero, 100, 100, 0, 0,
+                    SwpNoSize | SwpNoZorder | SwpNoActivate);
+                break;
+        }
+    }
+
+    static async Task<(int frameCount, long firstFrameMilliseconds, string note)> RunCaptureProbeAsync(
+        WgcCaptureSource source, WindowInformation target, int seconds)
+    {
         var frameCount = 0;
         long firstFrameMilliseconds = -1;
         var note = "ok";
@@ -132,25 +169,8 @@ static class Program
             note = "EXC:" + exception.GetType().Name + ":" + exception.Message.Replace('\n', ' ').Replace('\t', ' ');
         }
         #pragma warning restore CA1031
-        finally
-        {
-            // Restore window state so repeated probes can re-minimize/offscreen.
-            switch (action)
-            {
-                case "minimize":
-                    ShowWindow(windowHandle, ShowRestore);
-                    break;
-                case "offscreen":
-                    SetWindowPos(windowHandle, IntPtr.Zero, 100, 100, 0, 0,
-                        SwpNoSize | SwpNoZorder | SwpNoActivate);
-                    break;
-            }
-        }
 
-        var result = $"{label}\taction={action}\thwnd={target.Handle.Value}\tframes={frameCount}\tfirstMs={firstFrameMilliseconds}\tsecs={seconds}\tnote={note}";
-        Append(outputPath, result);
-        Console.WriteLine(result);
-        return 0;
+        return (frameCount, firstFrameMilliseconds, note);
     }
 
     static void Append(string path, string line) =>

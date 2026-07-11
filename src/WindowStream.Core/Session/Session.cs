@@ -28,15 +28,7 @@ public sealed class Session
 
     void TransitionTo(SessionState toState, SessionState[] allowedFromStates)
     {
-        var allowed = false;
-        for (var index = 0; index < allowedFromStates.Length; index++)
-        {
-            if (allowedFromStates[index] == CurrentState)
-            {
-                allowed = true;
-                break;
-            }
-        }
+        var allowed = Array.IndexOf(allowedFromStates, CurrentState) >= 0;
         if (!allowed)
         {
             throw new InvalidSessionTransitionException(CurrentState, toState);

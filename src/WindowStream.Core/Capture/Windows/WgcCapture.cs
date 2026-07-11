@@ -132,7 +132,7 @@ public sealed class WgcCapture : IWindowCapture
     /// ring and the <see cref="D3D11VideoProcessorColorConverter"/>. Called from
     /// <see cref="AcquireNv12Slot"/> inside the WGC <c>FrameArrived</c> callback.
     /// </summary>
-    unsafe void EnsureNv12RingAndConverter(int width, int height)
+    unsafe D3D11VideoProcessorColorConverter EnsureNv12RingAndConverter(int width, int height)
     {
         // NV12 requires both texture dimensions to be even (chroma plane is
         // height/2 rows × width bytes; D3D11 CreateTexture2D rejects odd
@@ -144,7 +144,7 @@ public sealed class WgcCapture : IWindowCapture
 
         if (_colorConverter is not null && _ringWidth == evenWidth && _ringHeight == evenHeight)
         {
-            return;
+            return _colorConverter;
         }
 
         // Dimensions changed (or first call) — dispose existing ring and converter.
@@ -192,6 +192,7 @@ public sealed class WgcCapture : IWindowCapture
         _ringWidth = evenWidth;
         _ringHeight = evenHeight;
         _nextRingSlot = 0;
+        return _colorConverter;
     }
 
     static int RoundUpToEven(int value) => (value + 1) & ~1;
@@ -223,7 +224,7 @@ public sealed class WgcCapture : IWindowCapture
     /// <see cref="D3D11VideoProcessorColorConverter"/>, without allocating the NV12 ring.
     /// Used when an external <see cref="IFrameTexturePool"/> supplies the destination textures.
     /// </summary>
-    void EnsureColorConverter(int width, int height)
+    D3D11VideoProcessorColorConverter EnsureColorConverter(int width, int height)
     {
         // Round to even to mirror EnsureNv12RingAndConverter — the M4 path's
         // pool textures are encoder-sized (already even in practice), but the
@@ -233,7 +234,7 @@ public sealed class WgcCapture : IWindowCapture
 
         if (_colorConverter is not null && _ringWidth == evenWidth && _ringHeight == evenHeight)
         {
-            return;
+            return _colorConverter;
         }
 
 #pragma warning disable CA1031 // best-effort dispose of old converter before recreating; failure is non-fatal
@@ -242,6 +243,7 @@ public sealed class WgcCapture : IWindowCapture
         _colorConverter = new D3D11VideoProcessorColorConverter(_deviceManager, evenWidth, evenHeight);
         _ringWidth = evenWidth;
         _ringHeight = evenHeight;
+        return _colorConverter;
     }
 
     /// <summary>
@@ -257,16 +259,16 @@ public sealed class WgcCapture : IWindowCapture
         if (_sharedFrameTexturePool is not null)
         {
             // M4 path: NV12 textures come from the encoder's hw_frames_ctx pool.
-            EnsureColorConverter(width, height);
+            var converter = EnsureColorConverter(width, height);
             _sharedFrameTexturePool.AcquireFrameTexture(out var poolTexturePointer, out var poolSubresourceIndex);
-            return (poolTexturePointer, poolSubresourceIndex, _colorConverter!);
+            return (poolTexturePointer, poolSubresourceIndex, converter);
         }
 
         // M3 fallback path: hand-rolled NV12 ring inside this capture.
-        EnsureNv12RingAndConverter(width, height);
+        var ringConverter = EnsureNv12RingAndConverter(width, height);
         var slot = _nextRingSlot;
         _nextRingSlot = (_nextRingSlot + 1) % RingSize;
-        return (_nativeNv12TexturePointers[slot], 0, _colorConverter!);
+        return (_nativeNv12TexturePointers[slot], 0, ringConverter);
     }
 
     public ValueTask DisposeAsync()
