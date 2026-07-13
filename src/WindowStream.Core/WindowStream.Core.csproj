@@ -25,6 +25,16 @@
     <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
   </ItemGroup>
 
+  <!-- Pin transitive dependency versions to patched releases. CVE-2024-43485 (DoS in System.Text.Json)
+       affects 8.0.x; the 8.x branch only goes to 8.0.6, so 9.0.0 is the first non-vulnerable release.
+       System.Net.Http 4.3.0 and System.Text.RegularExpressions 4.3.0 are high-severity transitive
+       advisories from packages like Makaretu.Dns; explicit pins override the transitive versions. -->
+  <ItemGroup>
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows10.0.19041.0'">
     <PackageReference Include="Silk.NET.Direct3D11" Version="2.22.0" />
   </ItemGroup>
