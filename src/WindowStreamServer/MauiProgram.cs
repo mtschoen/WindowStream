@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
-using Serilog;
 using Serilog.Extensions.Logging;
-using Serilog.Formatting.Compact;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Observability;
 using WindowStream.Core.Session;
@@ -20,19 +18,7 @@ public static class MauiProgram
 
         InAppDashboardSink inAppSink = new(capacity: 500);
 
-        var logsDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WindowStream", "logs");
-        Directory.CreateDirectory(logsDirectory);
-
-        var serilogLogger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .WriteTo.File(
-                formatter: new CompactJsonFormatter(),
-                path: Path.Combine(logsDirectory, "server-.jsonl"),
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7,
-                shared: false)
+        var serilogLogger = WindowStreamFileLogging.CreateConfiguration()
             .WriteTo.Sink(inAppSink)
             .CreateLogger();
 

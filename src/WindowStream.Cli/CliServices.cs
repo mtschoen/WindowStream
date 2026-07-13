@@ -3,6 +3,7 @@ using WindowStream.Core.Capture;
 using WindowStream.Core.Session;
 #if WINDOWS
 using Microsoft.Extensions.Logging;
+using Serilog;
 using WindowStream.Core.Capture.Windows;
 using WindowStream.Core.Hosting;
 using WindowStream.Core.Observability;
@@ -34,8 +35,17 @@ public sealed class CliServices : ICliServices
     {
 #if WINDOWS
         IWindowCaptureSource captureSource = new WgcCaptureSource();
-        using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        ILogger logger = loggerFactory.CreateLogger<CoordinatorLauncher>();
+        var serilogLogger = WindowStreamFileLogging.CreateConfiguration().CreateLogger();
+        // Not `using`: `serve`/`worker` are long-running commands, and the
+        // factory (and the file sink it owns via AddSerilog(dispose: true))
+        // must stay open for the life of the process, not just this method.
+        // The OS reclaims the log file handle on exit.
+#pragma warning disable CA2000
+        var loggerFactory = LoggerFactory.Create(builder => builder
+            .AddConsole()
+            .AddSerilog(serilogLogger, dispose: true));
+#pragma warning restore CA2000
+        Microsoft.Extensions.Logging.ILogger logger = loggerFactory.CreateLogger<CoordinatorLauncher>();
         var diagnostics = new Diagnostics(logger);
         ISessionHostLauncher hostLauncher = new CoordinatorLauncher(tcpPort, diagnostics);
         return new CliServices(captureSource, hostLauncher, Console.Out);
