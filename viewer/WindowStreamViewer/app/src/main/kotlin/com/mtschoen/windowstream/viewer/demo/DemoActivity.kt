@@ -19,13 +19,14 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.TextView
-import com.mtschoen.windowstream.viewer.control.ControlClient
-import com.mtschoen.windowstream.viewer.control.ControlConnection
 import com.mtschoen.windowstream.viewer.control.ControlMessage
 import com.mtschoen.windowstream.viewer.control.DisplayCapabilities
-import com.mtschoen.windowstream.viewer.control.awaitOrError
+import com.mtschoen.windowstream.viewer.control.MultiStreamControlClient
+import com.mtschoen.windowstream.viewer.control.MultiStreamControlConnection
+import com.mtschoen.windowstream.viewer.control.StreamLifecycleEvent
 import com.mtschoen.windowstream.viewer.decoder.MediaCodecDecoder
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
+import com.mtschoen.windowstream.viewer.transport.StreamMultiplexer
 import com.mtschoen.windowstream.viewer.transport.UdpTransportReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -82,11 +85,22 @@ class DemoActivity : Activity() {
     private data class StreamState(
         var scope: CoroutineScope? = null,
         var decoder: MediaCodecDecoder? = null,
-        var connection: ControlConnection? = null,
+        var session: ServerSession? = null,
+        var streamId: Int? = null,
+    )
+    private data class ServerSession(
+        val connection: MultiStreamControlConnection,
+        val multiplexer: StreamMultiplexer,
+        val udpReceiver: UdpTransportReceiver,
     )
 
     private lateinit var streamConfigurations: List<StreamConfiguration>
     private lateinit var streamStates: MutableList<StreamState>
+    private lateinit var streamSelection: DemoStreamSelection
+    private val activeServerSessions: MutableList<ServerSession> = mutableListOf()
+    private val serverSessionRegistry = ServerSessionRegistry<ServerSession> { host, port ->
+        createServerSession(host, port)
+    }
 
     private lateinit var softInputEditText: EditText
     private lateinit var inputPreviewTextView: TextView
@@ -95,6 +109,10 @@ class DemoActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        streamSelection = DemoStreamSelection(
+            selectedWindowIds = intent.getLongArrayExtra("selectedWindowIds") ?: LongArray(0),
+            selectedWindowHwnds = intent.getLongArrayExtra("selectedWindowHwnds") ?: LongArray(0)
+        )
         streamConfigurations = parseStreamConfigurations()
         streamStates = MutableList(streamConfigurations.size) { StreamState() }
 
@@ -188,18 +206,14 @@ class DemoActivity : Activity() {
             return hosts.mapIndexed { index, host -> StreamConfiguration(host, ports[index]) }
         }
         // Single-server intent shape (v2 picker or legacy adb launch).
-        // When selectedWindowIds is present, create one StreamConfiguration per
-        // selected window — all pointing at the same host:port — so the grid has
-        // one SurfaceView per window. Without selectedWindowIds, fall back to a
-        // single pipeline (auto-selects first window in runPipeline).
+        // Create one StreamConfiguration per selected window, all pointing at
+        // the same host:port, so the grid has one SurfaceView per window.
+        // Without a selection, fall back to one pipeline that opens the first window.
         val singleHost: String = intent.getStringExtra("streamHost")
             ?: error("DemoActivity requires streamHosts+streamPorts arrays OR --es streamHost")
         val singlePort: Int = intent.getIntExtra("streamPort", -1)
         require(singlePort > 0) { "DemoActivity requires --ei streamPort <port>" }
-        val selectedWindowIds: LongArray = intent.getLongArrayExtra("selectedWindowIds")
-            ?: LongArray(0)
-        val pipelineCount: Int = if (selectedWindowIds.isNotEmpty()) selectedWindowIds.size else 1
-        return List(pipelineCount) { StreamConfiguration(singleHost, singlePort) }
+        return List(streamSelection.streamCount) { StreamConfiguration(singleHost, singlePort) }
     }
 
     private fun createSurfaceCallback(streamIndex: Int): SurfaceHolder.Callback =
@@ -277,73 +291,45 @@ class DemoActivity : Activity() {
         holder: SurfaceHolder
     ) {
         val configuration: StreamConfiguration = streamConfigurations[streamIndex]
-        val client = ControlClient(
+        val session: ServerSession = serverSessionRegistry.getOrCreate(
             host = configuration.host,
-            port = configuration.port,
-            displayCapabilities = DisplayCapabilities(
-                maximumWidth = 3840,
-                maximumHeight = 2160,
-                supportedCodecs = listOf("h264")
-            )
+            port = configuration.port
         )
-        val connection: ControlConnection = client.connect(scope)
-        streamStates[streamIndex].connection = connection
-
-        val serverHello: ControlMessage.ServerHello = withTimeout(10_000) {
-            connection.incoming.awaitOrError(ControlMessage.ServerHello::class)
-        }
+        streamStates[streamIndex].session = session
+        val connection: MultiStreamControlConnection = session.connection
+        val serverHello: ControlMessage.ServerHello = connection.serverHello
 
         // Determine which window this pipeline should open. Three precedence levels:
-        //   1. selectedWindowHwnds — adb-direct testing convenience: pass raw HWNDs
+        //   1. selectedWindowHwnds - adb-direct testing convenience: pass raw HWNDs
         //      and let the viewer resolve them to v2 windowIds via serverHello.windows.
         //      Useful when you know an HWND from `windowstream list` but not the
         //      server-assigned windowId (which the picker normally provides).
-        //   2. selectedWindowIds — picker path: real v2 windowIds the picker harvested
+        //   2. selectedWindowIds - picker path: real v2 windowIds the picker harvested
         //      from a ServerHello earlier in the flow.
         //   3. Fallback: first advertised window (legacy adb-direct one-shot launch).
-        val selectedWindowHwnds: LongArray = intent.getLongArrayExtra("selectedWindowHwnds")
-            ?: LongArray(0)
-        val selectedWindowIds: LongArray = intent.getLongArrayExtra("selectedWindowIds")
-            ?: LongArray(0)
-        val windowId: ULong = when {
-            streamIndex < selectedWindowHwnds.size -> {
-                val targetHwnd: Long = selectedWindowHwnds[streamIndex]
-                serverHello.windows.firstOrNull { descriptor -> descriptor.hwnd == targetHwnd }
-                    ?.windowId
-                    ?: error("no window in ServerHello with hwnd=$targetHwnd; available hwnds=${serverHello.windows.map { it.hwnd }}")
-            }
-            streamIndex < selectedWindowIds.size ->
-                selectedWindowIds[streamIndex].toULong()
-            else ->
-                (serverHello.windows.firstOrNull()
-                    ?: error("server advertised no windows in ServerHello"))
-                    .windowId
-        }
+        val windowId: ULong = streamSelection.resolveWindowId(streamIndex, serverHello.windows)
         Log.i(TAG, "stream $streamIndex ServerHello: udpPort=${serverHello.udpPort}, advertising ${serverHello.windows.size} window(s); opening windowId=$windowId")
-        connection.send(ControlMessage.OpenStream(windowId = windowId))
 
-        val stream: ControlMessage.StreamStarted = withTimeout(10_000) {
-            connection.incoming.awaitOrError(ControlMessage.StreamStarted::class)
+        val stream: StreamLifecycleEvent.Opened = withTimeout(10_000) {
+            when (val event = connection.openStream(windowId, scope).first()) {
+                is StreamLifecycleEvent.Opened -> event
+                is StreamLifecycleEvent.Refused -> error(
+                    "server error ${event.errorCode}: ${event.message}"
+                )
+                else -> error("unexpected stream lifecycle event before stream opened: $event")
+            }
         }
+        streamStates[streamIndex].streamId = stream.streamId
 
         Log.i(TAG, "stream $streamIndex ${stream.streamId}: ${stream.width}x${stream.height} @ ${stream.framesPerSecond} fps, windowId=${stream.windowId}")
 
-        val udpReceiver = UdpTransportReceiver(
-            bindAddress = InetAddress.getByName("0.0.0.0"),
-            requestedPort = 0
-        )
-        val frames: Flow<EncodedFrame> = udpReceiver.start(scope)
-        val viewerUdpPort: Int = udpReceiver.boundPort
-        Log.i(TAG, "stream $streamIndex viewer UDP bound on port $viewerUdpPort")
-
-        // TODO(v2-phase5): VIEWER_READY no longer carries streamId in v2.
-        connection.send(ControlMessage.ViewerReady(viewerUdpPort = viewerUdpPort))
-        connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
+        val frames: Flow<EncodedFrame> = session.multiplexer.flowFor(stream.streamId)
+        connection.requestKeyframe(stream.streamId)
 
         // Re-read the Surface from the holder at the LAST moment, after the
         // TCP handshake has settled. If the OS invalidated it during the
         // gap (Galaxy XR's spatial-panel layer composition can recreate the
-        // underlying Surface ~500 ms in), poll for a recovered one — the
+        // underlying Surface ~500 ms in), poll for a recovered one - the
         // SurfaceHolder framework updates holder.surface to the new Surface
         // before our surfaceCreated callback necessarily fires.
         val freshSurface: Surface = awaitValidSurface(streamIndex, holder)
@@ -352,11 +338,37 @@ class DemoActivity : Activity() {
         val decoder = MediaCodecDecoder(
             frameSink = frameSink,
             onKeyframeRequested = {
-                connection.send(ControlMessage.RequestKeyframe(streamId = stream.streamId))
-            }
+                connection.requestKeyframe(stream.streamId)
+            },
+            streamId = stream.streamId
         )
         streamStates[streamIndex].decoder = decoder
         decoder.start(scope, frames, stream.width, stream.height)
+    }
+
+    private suspend fun createServerSession(host: String, port: Int): ServerSession {
+        val client = MultiStreamControlClient(
+            host = host,
+            port = port,
+            displayCapabilities = DisplayCapabilities(
+                maximumWidth = 3840,
+                maximumHeight = 2160,
+                supportedCodecs = listOf("h264")
+            )
+        )
+        val connection: MultiStreamControlConnection = client.connect(demoScope)
+        val udpReceiver = UdpTransportReceiver(
+            bindAddress = InetAddress.getByName("0.0.0.0"),
+            requestedPort = 0,
+            emissionCapacity = MULTIPLEX_EMISSION_CAPACITY
+        )
+        val multiplexer = StreamMultiplexer()
+        val frames: Flow<EncodedFrame> = udpReceiver.start(demoScope)
+        connection.send(ControlMessage.ViewerReady(viewerUdpPort = udpReceiver.boundPort))
+        demoScope.launch {
+            frames.collect { frame -> multiplexer.route(frame) }
+        }
+        return ServerSession(connection, multiplexer, udpReceiver).also(activeServerSessions::add)
     }
 
     private suspend fun awaitValidSurface(streamIndex: Int, holder: SurfaceHolder): Surface {
@@ -408,7 +420,14 @@ class DemoActivity : Activity() {
         val state: StreamState = streamStates[streamIndex]
         state.decoder?.runCatching { stop() }
         state.decoder = null
-        state.connection = null
+        val streamId: Int? = state.streamId
+        val session: ServerSession? = state.session
+        state.streamId = null
+        state.session = null
+        if (streamId != null && session != null) {
+            runCatching { session.connection.closeStream(streamId) }
+            runCatching { session.multiplexer.closeStream(streamId) }
+        }
 
         val scope: CoroutineScope = state.scope ?: return
         state.scope = null
@@ -468,7 +487,7 @@ class DemoActivity : Activity() {
 
     private fun sendKeyEventToPrimary(message: ControlMessage.KeyEvent) {
         demoScope.launch {
-            runCatching { streamStates.firstOrNull()?.connection?.send(message) }
+            runCatching { streamStates.firstOrNull()?.session?.connection?.send(message) }
         }
     }
 
@@ -546,9 +565,14 @@ class DemoActivity : Activity() {
         streamStates.forEach { state ->
             state.decoder?.runCatching { stop() }
             state.decoder = null
-            state.connection = null
+            state.session = null
+            state.streamId = null
         }
-        demoScope.cancel()
+        activeServerSessions.forEach { session -> session.udpReceiver.close() }
+        demoScope.launch {
+            activeServerSessions.forEach { session -> session.connection.close() }
+            demoScope.cancel()
+        }
         super.onDestroy()
     }
 
@@ -570,5 +594,6 @@ class DemoActivity : Activity() {
         // layer composition recreates the Surface ~500 ms after surfaceCreated).
         const val SURFACE_POLL_INTERVAL_MILLISECONDS: Long = 50
         const val SURFACE_POLL_TIMEOUT_MILLISECONDS: Long = 10_000
+        const val MULTIPLEX_EMISSION_CAPACITY: Int = 64
     }
 }

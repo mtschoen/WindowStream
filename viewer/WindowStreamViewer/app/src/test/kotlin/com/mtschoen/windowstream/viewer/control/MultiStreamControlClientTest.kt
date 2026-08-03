@@ -3,6 +3,7 @@ package com.mtschoen.windowstream.viewer.control
 import com.mtschoen.windowstream.viewer.observability.InAppBufferTree
 import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,7 +13,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -568,10 +568,6 @@ class MultiStreamControlClientTest {
     @Test
     fun `transport failure emits TRANSPORT_FAILURE to incoming`() = runBlocking {
         val scope = CoroutineScope(Dispatchers.IO)
-        // The subscriber signals the gate from its onStart operator (i.e., after the
-        // SharedFlow subscription is established) so the server only sends the malformed
-        // bytes once the collector is guaranteed to be listening. This avoids the race
-        // inherent with replay=0 SharedFlow.
         val subscriberReadyGate = CompletableDeferred<Unit>()
         val (serverSocket, serverJob) = startFakeServer(scope) { _, _, output ->
             subscriberReadyGate.await()
@@ -593,12 +589,14 @@ class MultiStreamControlClientTest {
             ).connect(scope)
         }
 
-        val errorDeferred = scope.async {
+        // UNDISPATCHED runs first() synchronously until it suspends with the
+        // SharedFlow subscription installed. Only then release the fake server.
+        val errorDeferred = scope.async(start = CoroutineStart.UNDISPATCHED) {
             connection.incoming
-                .onStart { subscriberReadyGate.complete(Unit) }
                 .filter { it is ControlMessage.ErrorMessage }
                 .first()
         }
+        subscriberReadyGate.complete(Unit)
 
         val errorMessage = withTimeout(3.seconds) { errorDeferred.await() }
         assertTrue(errorMessage is ControlMessage.ErrorMessage)
@@ -612,9 +610,6 @@ class MultiStreamControlClientTest {
     @Test
     fun `non-routed server messages are emitted on incoming`() = runBlocking {
         val scope = CoroutineScope(Dispatchers.IO)
-        // The subscriber's onStart signals when the SharedFlow subscription is live,
-        // so the server only sends WindowAdded after the collector is guaranteed to
-        // be receiving — avoids the replay=0 race.
         val subscriberReadyGate = CompletableDeferred<Unit>()
         val (serverSocket, serverJob) = startFakeServer(scope) { _, _, output ->
             subscriberReadyGate.await()
@@ -639,12 +634,12 @@ class MultiStreamControlClientTest {
             clientFor(serverSocket.localPort).connect(scope)
         }
 
-        val messageDeferred = scope.async {
+        val messageDeferred = scope.async(start = CoroutineStart.UNDISPATCHED) {
             connection.incoming
-                .onStart { subscriberReadyGate.complete(Unit) }
                 .filter { it is ControlMessage.WindowAdded }
                 .first()
         }
+        subscriberReadyGate.complete(Unit)
 
         val message = withTimeout(3.seconds) { messageDeferred.await() }
         assertTrue(message is ControlMessage.WindowAdded)
@@ -677,12 +672,13 @@ class MultiStreamControlClientTest {
             ).connect(scope)
         }
 
-        // Advance fake time past silence timeout
-        timeValue = 500L
-
-        val error = withTimeout(5.seconds) {
+        val errorDeferred = scope.async(start = CoroutineStart.UNDISPATCHED) {
             connection.incoming.filter { it is ControlMessage.ErrorMessage }.first()
         }
+        // Advance fake time only after the replay-zero SharedFlow has a subscriber.
+        timeValue = 500L
+
+        val error = withTimeout(5.seconds) { errorDeferred.await() }
         assertTrue(error is ControlMessage.ErrorMessage)
         assertEquals("HEARTBEAT_TIMEOUT", (error as ControlMessage.ErrorMessage).code)
 

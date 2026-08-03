@@ -203,7 +203,7 @@ class MultiStreamControlConnection internal constructor(
  * [MultiStreamControlConnection] for stream management.
  *
  * This replaces [ControlClient] for v2 multi-window scenarios. [ControlClient] is retained
- * for the legacy DemoActivity path until Phase 5.5.
+ * for legacy single-stream callers.
  */
 class MultiStreamControlClient(
     private val host: String,

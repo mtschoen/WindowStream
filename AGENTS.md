@@ -175,11 +175,11 @@ adb install -r viewer/WindowStreamViewer/app/build/outputs/apk/portable/debug/ap
 # Or bypass the picker (adb-only) with explicit IP:
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --es streamHost <pc-lan-ip> --ei streamPort <tcpPort>
-# Bypass picker AND target a specific HWND (skips the launcher window-picker step):
+# Bypass picker and target one or more HWNDs (one shared control session):
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --es streamHost <pc-lan-ip> --ei streamPort <tcpPort> \
-    --ela selectedWindowHwnds <hwnd>
-# DemoActivity resolves the HWND to v2 windowId via ServerHello.windows.
+    --ela selectedWindowHwnds <hwnd1>,<hwnd2>
+# DemoActivity resolves each HWND to a v2 windowId via ServerHello.windows.
 # Multi-server via adb:
 adb shell am start -n com.mtschoen.windowstream.viewer/.demo.DemoActivity \
     --esa streamHosts "<ip1>,<ip2>" --eia streamPorts "<port1>,<port2>"
