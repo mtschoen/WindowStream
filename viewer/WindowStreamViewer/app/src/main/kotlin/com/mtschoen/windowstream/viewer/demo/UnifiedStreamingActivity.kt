@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.TypedValue
@@ -622,6 +623,7 @@ class UnifiedStreamingActivity : Activity() {
 
     private fun createPanelSurfaceView(panelIndex: Int): SurfaceView =
         SurfaceView(this).apply {
+            retainPanelSurfaceWhileAttached(this, Build.VERSION.SDK_INT)
             val tabBarHeightPx = dpToPx(TAB_BAR_HEIGHT_DP)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
