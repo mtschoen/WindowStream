@@ -17,6 +17,15 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val mediaCodecLowLatency = providers
+            .environmentVariable("WINDOWSTREAM_MEDIACODEC_LOW_LATENCY")
+            .map { if (it == "0") "0" else "1" }
+            .orElse("1")
+        buildConfigField(
+            "String",
+            "MEDIACODEC_LOW_LATENCY",
+            "\"${mediaCodecLowLatency.get()}\""
+        )
     }
 
     // Two flavors: `portable` runs on Quest / phones / tablets / Galaxy XR as
@@ -42,6 +51,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     testOptions {
@@ -112,6 +122,9 @@ kover {
     reports {
         filters {
             excludes {
+                // Android Gradle Plugin generates BuildConfig as constant-only
+                // infrastructure; its private constructor has no application behavior.
+                classes("com.mtschoen.windowstream.viewer.BuildConfig")
                 // Lifecycle entry points are not unit-testable on the JVM.
                 classes(
                     "com.mtschoen.windowstream.viewer.app.WindowStreamViewerApplication",

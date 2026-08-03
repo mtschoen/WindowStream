@@ -121,6 +121,33 @@ Below is the durable ground truth and software-level end-to-end latency baseline
   - **p50 (Median)**: **24 ms** (4 frames at 165 Hz; improved from 28 ms after UDP transport fix, 2026-05-28)
   - **p95**: **73 ms** (occasional compositor hitches; steady-state p95 clusters near 40 ms)
 
+### Low-latency A/B settings
+
+The current low-latency defaults can be changed independently with environment variables. Invalid numeric server values fall back to their defaults.
+
+| Variable | Component | Default | Effect |
+| --- | --- | --- | --- |
+| `WINDOWSTREAM_NVENC_SURFACES` | Server | `1` | Sets the NVENC input-surface queue size from 1 to 64. |
+| `WINDOWSTREAM_NVENC_TUNE` | Server | `ull` | Sets the FFmpeg NVENC `tune` option, such as `ll` or `ull`. |
+| `WINDOWSTREAM_NVENC_GOP` | Server | `30` | Sets the encoder GOP length from 1 to 600 frames. |
+| `WINDOWSTREAM_NVENC_FPS` | Server | `60` | Sets the encoder frame rate from 1 to 240; bitrate scales with this value. |
+| `WINDOWSTREAM_MEDIACODEC_LOW_LATENCY` | Viewer build | `1` | Set to `0` to disable `MediaFormat.KEY_LOW_LATENCY`; other values enable it. |
+
+Server settings are read when a stream and encoder are configured. For example, this PowerShell session compares the default single-surface queue
+against four surfaces:
+
+```powershell
+$env:WINDOWSTREAM_NVENC_SURFACES = '4'
+dotnet run --project src/WindowStream.Cli -f net8.0-windows10.0.19041.0 -- serve
+```
+
+Android applications cannot receive a practical per-launch shell environment override, so the viewer variable is captured in `BuildConfig` when
+Gradle builds the APK. Rebuild and reinstall the viewer for each side of that comparison:
+
+```bash
+WINDOWSTREAM_MEDIACODEC_LOW_LATENCY=0 ./gradlew :app:assemblePortableDebug
+```
+
 The manual recipe below is the fallback when the script itself is broken or you want to test something the script doesn't cover.
 
 ### Server side (Windows)

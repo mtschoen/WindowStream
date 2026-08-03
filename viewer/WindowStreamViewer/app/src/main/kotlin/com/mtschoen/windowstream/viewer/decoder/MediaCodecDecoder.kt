@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Choreographer
+import com.mtschoen.windowstream.viewer.BuildConfig
 import com.mtschoen.windowstream.viewer.observability.Diagnostics
 import com.mtschoen.windowstream.viewer.observability.PipelineEvent
 import com.mtschoen.windowstream.viewer.transport.EncodedFrame
@@ -46,7 +47,9 @@ class MediaCodecDecoder(
         val surface = if (outputToSurface) frameSink.acquireSurface(expectedWidth, expectedHeight) else null
 
         val mediaFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, expectedWidth, expectedHeight)
-        mediaFormat.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+        val environmentSettings = DecoderEnvironmentSettings.load(BuildConfig.MEDIACODEC_LOW_LATENCY)
+        mediaFormat.setInteger(MediaFormat.KEY_LOW_LATENCY, environmentSettings.lowLatencyMode)
+        Log.i("MediaCodecDecoder", "lowLatencyMode=${environmentSettings.lowLatencyMode}")
         // Schedule the decoder as realtime and ask Qualcomm decoders to run
         // at their maximum clock — the moonlight-android low-latency recipe.
         // Short.MAX_VALUE is the documented sentinel for "as fast as possible".

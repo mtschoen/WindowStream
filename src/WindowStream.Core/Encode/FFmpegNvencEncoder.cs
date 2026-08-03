@@ -127,24 +127,32 @@ public sealed class FFmpegNvencEncoder : IVideoEncoder, IFrameTexturePool
         context->max_b_frames = 0;
 
         ffmpeg.av_opt_set(context->priv_data, "preset", "p1", 0);
-        // tune is read from env so the operator can A/B test ll vs ull without rebuilding.
+        var environmentSettings = EncoderEnvironmentSettings.Load(
+            Environment.GetEnvironmentVariable);
+        // Tune is read from env so the operator can A/B test ll vs ull without rebuilding.
         // Default = ull (ultra-low-latency). Measured improvement vs ll on Unity 4K → GXR:
         // server cap stdev 101ms → 9ms, viewer reasm p99 577ms → 40ms, cap→dec max 185ms → 96ms.
         // Mechanism: ull disables enough prediction/rate-control machinery that every frame
         // encodes in a similar fixed time, so NVENC stops back-pressuring the WGC capture
         // pump and the entire pipeline runs at smooth ~28ms intervals. Set
         // WINDOWSTREAM_NVENC_TUNE=ll to fall back if visual quality regresses on a source.
-        var tune = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_TUNE") ?? "ull";
-        ffmpeg.av_opt_set(context->priv_data, "tune", tune, 0);
-        Console.Error.WriteLine($"[FFmpegNvencEncoder] tune={tune}");
+        ffmpeg.av_opt_set(context->priv_data, "tune", environmentSettings.Tune, 0);
         ffmpeg.av_opt_set(context->priv_data, "zerolatency", "1", 0);
         ffmpeg.av_opt_set(context->priv_data, "rc", "cbr", 0);
         // Cap NVENC's input surface queue to its minimum. With the default
         // (~4 surfaces), discrete-event capture (typing) shows 3 frames
         // permanently buffered inside the encoder — measured 751ms cap->enc
         // median lag at 250ms event spacing, perfectly matching the user-felt
-        // "4-5 keypresses behind" symptom.
-        ffmpeg.av_opt_set(context->priv_data, "surfaces", "1", 0);
+        // "4-5 keypresses behind" symptom. Set WINDOWSTREAM_NVENC_SURFACES to
+        // compare a deeper queue without rebuilding the server.
+        ffmpeg.av_opt_set(
+            context->priv_data,
+            "surfaces",
+            environmentSettings.SurfaceCount.ToString(CultureInfo.InvariantCulture),
+            0);
+        Console.Error.WriteLine(
+            $"[FFmpegNvencEncoder] tune={environmentSettings.Tune} surfaces={environmentSettings.SurfaceCount} " +
+            $"gop={options.GroupOfPicturesLength} fps={options.FramesPerSecond}");
 
         // Build AVHWDeviceContext (D3D11VA) wrapping the shared D3D11 device.
         var deviceContextReference = ffmpeg.av_hwdevice_ctx_alloc(AVHWDeviceType.AV_HWDEVICE_TYPE_D3D11VA);

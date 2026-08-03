@@ -299,19 +299,9 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             return null;
         }
 
-        var gopLength = 30;
-        var gopOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_GOP");
-        if (gopOverride is not null && int.TryParse(gopOverride, out var parsedGop) && parsedGop >= 1)
-        {
-            gopLength = parsedGop;
-        }
-
-        var framesPerSecond = 60;
-        var fpsOverride = Environment.GetEnvironmentVariable("WINDOWSTREAM_NVENC_FPS");
-        if (fpsOverride is not null && int.TryParse(fpsOverride, out var parsedFps) && parsedFps >= 1)
-        {
-            framesPerSecond = parsedFps;
-        }
+        var environmentSettings = EncoderEnvironmentSettings.Load(
+            Environment.GetEnvironmentVariable);
+        var framesPerSecond = environmentSettings.FramesPerSecond;
         var bitrateBitsPerSecond = 6_000_000 * framesPerSecond / 30;
 
         return new EncoderOptions(
@@ -319,7 +309,7 @@ public sealed class CoordinatorLauncher : ISessionHostLauncher
             heightPixels: physicalHeight,
             framesPerSecond: framesPerSecond,
             bitrateBitsPerSecond: bitrateBitsPerSecond,
-            groupOfPicturesLength: gopLength,
+            groupOfPicturesLength: environmentSettings.GroupOfPicturesLength,
             safetyKeyframeIntervalSeconds: 1);
     }
 
