@@ -20,15 +20,7 @@ public class WindowStreamFileLoggingTests
     public void CreateConfiguration_Creates_LogsDirectory_And_Writes_A_Rolling_Jsonl_File()
     {
         var directory = WindowStreamFileLogging.LogsDirectory;
-        if (Directory.Exists(directory))
-        {
-            foreach (var stale in Directory.GetFiles(directory, "server-*.jsonl"))
-            {
-                File.Delete(stale);
-            }
-        }
-
-        const string marker = nameof(CreateConfiguration_Creates_LogsDirectory_And_Writes_A_Rolling_Jsonl_File);
+        var marker = $"{nameof(CreateConfiguration_Creates_LogsDirectory_And_Writes_A_Rolling_Jsonl_File)}-{Guid.NewGuid():N}";
         using (var logger = WindowStreamFileLogging.CreateConfiguration().CreateLogger())
         {
             logger.Information(marker);
@@ -37,6 +29,26 @@ public class WindowStreamFileLoggingTests
         Assert.True(Directory.Exists(directory));
         var files = Directory.GetFiles(directory, "server-*.jsonl");
         Assert.Contains(files, file => File.ReadAllText(file, Encoding.UTF8).Contains(marker, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CreateConfiguration_Filters_Events_Below_Information()
+    {
+        var directory = WindowStreamFileLogging.LogsDirectory;
+        var debugMarker = $"debug-{Guid.NewGuid():N}";
+        var informationMarker = $"information-{Guid.NewGuid():N}";
+
+        using (var logger = WindowStreamFileLogging.CreateConfiguration().CreateLogger())
+        {
+            logger.Debug(debugMarker);
+            logger.Information(informationMarker);
+        }
+
+        var fileContents = Directory.GetFiles(directory, "server-*.jsonl")
+            .Select(file => File.ReadAllText(file, Encoding.UTF8));
+
+        Assert.Contains(fileContents, contents => contents.Contains(informationMarker, StringComparison.Ordinal));
+        Assert.DoesNotContain(fileContents, contents => contents.Contains(debugMarker, StringComparison.Ordinal));
     }
 
     [Fact]

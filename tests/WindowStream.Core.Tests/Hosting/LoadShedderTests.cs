@@ -47,23 +47,29 @@ public class LoadShedderTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         var task = shedder.RunAsync(cancellation.Token);
 
-        await input.Writer.WriteAsync(Chunk(1, 100, keyframe: false)); // fills bounded(1) output
-        await input.Writer.WriteAsync(Chunk(1, 200, keyframe: false)); // queued internally — backpressured
-        await input.Writer.WriteAsync(Chunk(1, 300, keyframe: true));  // keyframe — must survive
+        await input.Writer.WriteAsync(Chunk(1, 100, keyframe: false));
+        await input.Writer.WriteAsync(Chunk(1, 200, keyframe: false));
+        await input.Writer.WriteAsync(Chunk(1, 300, keyframe: true));
 
-        // Let the shedder process all three inputs before we start draining.
-        await Task.Delay(150, cancellation.Token);
+        var emittedChunks = new List<TaggedChunk>();
+        var nextPresentationTimestampMicroseconds = 400UL;
+        while (emittedChunks.Count < 3)
+        {
+            var emittedChunk = await output.Reader.ReadAsync(cancellation.Token);
+            emittedChunks.Add(emittedChunk);
+            if (emittedChunk.Frame.IsKeyframe)
+            {
+                break;
+            }
 
-        // Drain output one slot at a time. After each read, send another
-        // non-keyframe to re-trigger the shedder's drain step (the shedder
-        // pushes-to-output only on input arrival in this implementation).
-        var first = await output.Reader.ReadAsync(cancellation.Token);
-        await input.Writer.WriteAsync(Chunk(1, 400, keyframe: false), cancellation.Token);
-        await Task.Delay(50, cancellation.Token);
-        var second = await output.Reader.ReadAsync(cancellation.Token);
+            await input.Writer.WriteAsync(
+                Chunk(1, nextPresentationTimestampMicroseconds),
+                cancellation.Token);
+            nextPresentationTimestampMicroseconds += 100;
+        }
 
-        Assert.True(first.Frame.IsKeyframe || second.Frame.IsKeyframe,
-            "keyframe (pts=300) must appear in output");
+        Assert.Contains(emittedChunks, chunk =>
+            chunk.Frame.IsKeyframe && chunk.Frame.PresentationTimestampMicroseconds == 300);
 
         await cancellation.CancelAsync();
         try { await task; } catch (OperationCanceledException) { }
