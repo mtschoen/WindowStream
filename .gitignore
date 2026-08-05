@@ -119,13 +119,11 @@ tools/test_*.py
 .claude/*
 !.claude/settings.json
 
-# ---------- aislop ----------
-# Ignore aislop ephemera (session/history logs) at root and in any nested project
-# (e.g. viewer/.aislop/), but keep the checked-in gate config/settings.
-**/.aislop/*
-!**/.aislop/config.yml
-!**/.aislop/settings.json
-
 .claude/spikes/
 
 .maintenance.json
+
+# aislop runtime artifacts (session/history logs, caches, baselines).
+# Unanchored so nested project directories are covered too.
+**/.aislop/*
+!**/.aislop/config.yml
