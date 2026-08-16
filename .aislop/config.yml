@@ -1,5 +1,18 @@
+# WindowStream also ships a Kotlin viewer companion under
+# viewer/WindowStreamViewer (build.gradle.kts). aislop has no Kotlin/ktlint/
+# detekt engine, so nothing below scores or gates that half of the repo; a
+# green aislop run only speaks for the C# side.
+
 ci:
   failBelow: 80
+
+lint:
+  csharp:
+    # Required 0.14.1 opt-in to keep jb inspectcode / roslynator / dotnet format
+    # running under the C# lint trust gate. First-party repo, and CI already
+    # builds the project these project-backed engines evaluate, so trusting
+    # real project evaluation here is safe.
+    projectEvaluation: true
 
 exclude:
   - "tests/**"
