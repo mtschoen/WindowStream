@@ -18,21 +18,9 @@ Pick a window on your PC, encode it live with NVENC, ship the frames over LAN, a
 </p>
 
 <p align="center">
-  <img src="docs/images/quest-picker.jpg" alt="Meta Quest 3 view of the WindowStream server picker." width="900" />
-  <br />
-  <sub><i>Meta Quest 3, server picker with both LAN-discovered servers visible.</i></sub>
-</p>
-
-<p align="center">
   <img src="docs/images/fold-grid.png" alt="Two Windows PC windows streaming simultaneously to a Galaxy Z Fold 6, rendered side by side." width="780" />
   <br />
   <sub><i>Two PC windows streamed simultaneously to a Galaxy Z Fold 6. Left: source code. Right: a live <code>python</code> dashboard.</i></sub>
-</p>
-
-<p align="center">
-  <img src="docs/images/fold-picker.png" alt="Multi-select server picker on the Galaxy Z Fold 6." width="420" />
-  <br />
-  <sub><i>Multi-select server picker. Servers auto-discover over mDNS; tick the ones you want to stream simultaneously.</i></sub>
 </p>
 
 **Status:** working proof-of-concept. Validated end-to-end on the author's LAN across three viewer platforms. Not production-ready — no
@@ -63,11 +51,11 @@ path for a proof-of-concept.
 
 ## The obvious limitations
 
-- **Latency is janky.** Next on the list: `MediaFormat.KEY_LOW_LATENCY` on the viewer, NVENC `p1` preset + `-tune ull` on the server,
-  end-to-end round-trip measurement to prioritize. Currently feels like "several hundred ms" round-trip — fine for watching a terminal,
-  wrong for playing a video game.
+- **Connection UX is thin.** Both viewer flavors auto-connect to the first mDNS-discovered server (30 s timeout) with no server list, no
+  manual IP entry, no retry, and no reconnect when the server restarts. Restarting the viewer app is the recovery path today.
 - **First-run setup requires admin.** Windows Firewall has to be on the `Private` profile (for mDNS) and firewall rules need to be added
-  per session (ephemeral ports). A binary-based rule on `windowstream.exe` would fix that but isn't in yet.
+  by hand (the server picks ephemeral ports and does not add rules itself). A binary-scoped rule on `windowstream.exe` covers every
+  session; see `AGENTS.md`.
 - **FFmpeg DLLs.** The server grabs FFmpeg 7.x native DLLs from `$(ProgramFiles)\obs-studio\bin\64bit\` as a stopgap. If you don't have
   OBS installed, the server won't start.
 - **Keyboard polish.** Soft-keyboard Enter doesn't clear the buffer, backspace-on-empty doesn't relay. US layouts only. Modifier-key

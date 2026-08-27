@@ -161,14 +161,21 @@ The manual recipe below is the fallback when the script itself is broken or you 
    Set-NetConnectionProfile -Name <ssid> -NetworkCategory Private
    ```
 
-3. First run adds firewall rules as admin (UAC). If auto-prompt doesn't cover it, run in an elevated PowerShell:
+3. The server does not add firewall rules itself. Add them once from an elevated PowerShell, scoped to the binary so they survive the
+   per-session ephemeral ports (use the CLI exe path you actually run; `dotnet run` executes `windowstream.exe` from the build output):
+
+   ```powershell
+   New-NetFirewallRule -DisplayName WindowStream-CLI -Direction Inbound -Program <path>\windowstream.exe -Action Allow -Profile Any
+   ```
+
+   Per-port rules are the fallback when a binary rule is impractical:
 
    ```powershell
    New-NetFirewallRule -DisplayName WindowStream-Session-TCP-<port> -Direction Inbound -LocalPort <tcpPort> -Protocol TCP -Action Allow -Profile Any
    New-NetFirewallRule -DisplayName WindowStream-Session-UDP-<port> -Direction Inbound -LocalPort <udpPort> -Protocol UDP -Action Allow -Profile Any
    ```
 
-   (OS assigns ports per session; a broader binary-based rule covering `windowstream.exe` is cleaner. `/wrap` removes `WindowStream-Session-*` rules
+   (OS assigns ports per session. `/wrap` removes `WindowStream-Session-*` rules
    at session end.)
 4. Start the server (v2 coordinator — `serve` takes no `--hwnd` arg; the viewer picks the window remotely via OPEN_STREAM):
 
